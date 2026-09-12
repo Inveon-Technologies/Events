@@ -1,0 +1,60 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./docker/nginx/certbot/www:/var/www/certbot:ro
+      - ./docker/nginx/certbot/conf:/etc/letsencrypt:ro
+      - web_static:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/inveon-technologies/events-api:${IMAGE_TAG:-latest}
+    env_file:
+      - apps/api/.env
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Static build output only — copies the built React app into a shared
+  # volume that nginx serves directly, then exits. Not a long-running service.
+  web:
+    image: ghcr.io/inveon-technologies/events-web:${IMAGE_TAG:-latest}
+    volumes:
+      - web_static:/usr/share/nginx/html
+    restart: "no"
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: inveon_events
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+  redis_data:
+  web_static:

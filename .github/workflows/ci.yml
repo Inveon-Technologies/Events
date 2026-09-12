@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, web]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/${{ matrix.app }}
+        run: npm ci
+
+      - name: Lint
+        working-directory: apps/${{ matrix.app }}
+        run: npm run lint
+
+      - name: Type check
+        working-directory: apps/${{ matrix.app }}
+        run: npm run typecheck --if-present
+
+      - name: Unit tests
+        working-directory: apps/${{ matrix.app }}
+        run: npm test -- --ci
+
+      - name: Build
+        working-directory: apps/${{ matrix.app }}
+        run: npm run build
+
+  # Runs the booking-concurrency test suite specifically, on every PR touching the API.
+  # This is the oversell-prevention logic (BE-11) — it must never go green by accident.
+  concurrency-tests:
+    runs-on: ubuntu-latest
+    needs: lint-test-build
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: inveon_events_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Run migrations against test DB
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/inveon_events_test
+        run: npm run migrate
+
+      - name: Run booking concurrency tests
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/inveon_events_test
+          REDIS_URL: redis://localhost:6379
+        run: npm run test:concurrency
