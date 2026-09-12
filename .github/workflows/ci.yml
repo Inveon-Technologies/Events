@@ -20,10 +20,15 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: apps/${{ matrix.app }}/package-lock.json
 
+      # actions/setup-node's cache step fails the whole job with "unable to
+      # cache dependencies" if apps/<app>/package-lock.json doesn't exist yet.
+      # `npm ci` also requires that file to exist, so commit a real lockfile
+      # per app (apps/api/package-lock.json, apps/web/package-lock.json) —
+      # this isn't optional plumbing, both the cache step and npm ci need it.
       - name: Install dependencies
         working-directory: apps/${{ matrix.app }}
         run: npm ci
@@ -74,7 +79,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: apps/api/package-lock.json
 
