@@ -41,9 +41,12 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: npm run typecheck --if-present
 
+      # Each app's own `test` script decides how it wants to run in CI (e.g.
+      # the api bakes `--ci` into its Jest script) since api (Jest) and web
+      # (Vitest) don't share the same CLI flags.
       - name: Unit tests
         working-directory: apps/${{ matrix.app }}
-        run: npm test -- --ci
+        run: npm test
 
       - name: Build
         working-directory: apps/${{ matrix.app }}
