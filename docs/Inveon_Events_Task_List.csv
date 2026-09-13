@@ -1,0 +1,82 @@
+Phase,Task ID,Task Name,Description,Category,Priority,Est. Days,Dependencies
+0,INF-01,Repo & monorepo setup,Create repo structure for frontend (React) and backend (Express) with shared config,Infra,High,1,
+0,INF-02,Lint/format/TS config,"ESLint, Prettier, TypeScript configs for both apps",Infra,Medium,1,INF-01
+0,INF-03,Docker Compose skeleton,"Compose file defining nginx, app, postgres, redis services",Infra,High,2,INF-01
+0,INF-04,Node app Dockerfile,Multi-stage Dockerfile for the Express API,Infra,High,1,INF-01
+0,INF-05,Provision VPS/AWS instance,"Provision 4-8GB RAM / 50GB SSD server, base OS hardening",Infra,High,1,
+0,INF-06,Cloudflare DNS + CDN setup,"Point domain through Cloudflare, enable CDN + basic WAF",Infra,High,1,INF-05
+0,INF-07,Nginx reverse proxy + SSL,"Nginx config, Let's Encrypt/Certbot TLS, gzip/brotli",Infra,High,2,INF-05
+0,BE-01,Design PostgreSQL schema,"Organizers, events, ticket_categories, bookings, tickets, attendees, payments, check_ins, cancellations, certificates, media_assets",Backend,High,3,
+0,BE-02,ORM models & migrations,"Sequelize/Prisma models matching schema, initial migration",Backend,High,2,BE-01
+0,BE-03,Redis connection & config,"Base Redis client, config for cache vs queue usage",Backend,Medium,1,INF-03
+0,BE-04,Auth system,"JWT auth for admin, organizer owner/staff, gate-volunteer roles",Backend,High,3,BE-02
+0,OPS-01,CI pipeline,"GitHub Actions: lint, test, build on PR",DevOps,High,2,INF-01
+0,OPS-02,CD pipeline,"Build image, push to GHCR, SSH deploy, health check, rollback",DevOps,High,3,"OPS-01,INF-04"
+0,BE-05,Health-check endpoint,/health endpoint for CD pipeline and uptime monitoring,Backend,Medium,1,BE-01
+0,BE-06,Structured logging,Winston/Pino JSON logs + logrotate config,Backend,Medium,1,BE-01
+0,OPS-03,Secrets & env management,".env structure, secrets handling for CI/CD and containers",DevOps,High,1,OPS-02
+0,OPS-04,PM2 ecosystem config,Cluster mode config sized to CPU cores - 1,DevOps,High,1,INF-04
+1,BE-07,Organizer onboarding API,Admin creates organizer accounts + credentials,Backend,High,2,BE-04
+1,FE-01,Organizer dashboard shell,"React layout, nav, auth-protected routes",Frontend,High,2,BE-04
+1,FE-02,Event creation form,"Name, date, venue, description, banner upload",Frontend,High,2,FE-01
+1,BE-08,Event CRUD API,Create/edit/publish/close events,Backend,High,2,BE-01
+1,FE-03,Ticket category management UI,"Add/edit categories: name, price, quota",Frontend,High,2,FE-02
+1,BE-09,Ticket category CRUD API,Backend for category management with quota field,Backend,High,1,BE-08
+1,FE-04,Public organizer home page,Branded landing page per organizer,Frontend,Medium,2,FE-01
+1,FE-05,Public event listing page,List of upcoming events for an organizer,Frontend,High,1,BE-08
+1,FE-06,Public event details page,"Date, venue, rules, live ticket availability",Frontend,High,2,BE-10
+1,BE-10,Event details + availability API (cached),Redis-cached endpoint for event details and live counts,Backend,High,2,"BE-09,BE-03"
+1,FE-07,Ticket selection UI,Category + quantity picker with live price calc,Frontend,High,2,FE-06
+1,FE-08,Checkout / registration form,"Name, WhatsApp, email, city, age, custom questions",Frontend,High,2,FE-07
+1,BE-11,Booking creation API (atomic quota reservation),"Transaction-safe ticket decrement, prevents overselling",Backend,High,3,BE-09
+1,BE-12,Payment gateway integration,"Cashfree/Razorpay online payment (UPI, cards, netbanking)",Backend,High,3,BE-11
+1,BE-13,Payment webhook handler,Signature-verified webhook confirms booking as paid,Backend,High,2,BE-12
+1,BE-14,QR ticket generation,Generate cryptographically random QR token per ticket,Backend,High,1,BE-11
+1,BE-15,WhatsApp Business API integration,Send digital ticket via WhatsApp,Backend,High,2,BE-14
+1,BE-16,Email delivery integration,SES/Brevo relay for ticket + receipt email,Backend,High,1,BE-14
+1,BE-17,BullMQ job queue setup,"Async queue for notifications, decoupled from booking request",Backend,High,2,BE-03
+1,FE-09,Organizer basic dashboard metrics,"Total bookings, revenue, remaining tickets (Redis-cached)",Frontend,Medium,2,BE-10
+1,BE-18,Rate limiting middleware,express-rate-limit backed by Redis on booking endpoint,Backend,High,1,BE-03
+1,QA-01,Unit tests: booking/oversell logic,Concurrency tests proving no oversell under simultaneous bookings,QA,High,2,BE-11
+1,OPS-05,Deploy MVP to staging,First staging deploy through CI/CD pipeline,DevOps,High,1,OPS-02
+2,FE-10,Cash payment option UI,Checkout option for offline cash payment,Frontend,High,1,FE-08
+2,BE-19,Cash booking API,payment_pending status + booking reference number,Backend,High,2,BE-11
+2,FE-11,Organizer cash-approval UI,"Search by reference, approve cash booking",Frontend,High,2,BE-19
+2,BE-20,Approve-cash API,"Flips booking to paid/confirmed, triggers ticket delivery",Backend,High,1,BE-19
+2,FE-12,QR check-in scanner web app,"Camera-based scanner, mobile-friendly, works for gate volunteers",Frontend,High,3,BE-14
+2,BE-21,Ticket verify/check-in API,Fast indexed lookup by qr_code_token,Backend,High,2,BE-14
+2,BE-22,Duplicate-scan protection,Already-checked-in detection with prior scan time,Backend,High,1,BE-21
+2,FE-13,Event-day live dashboard,"Arrivals per hour, checked-in vs sold, refreshed via polling/websocket",Frontend,Medium,3,BE-21
+2,BE-23,Walk-in registration API,Organizer issues ticket at the door,Backend,Medium,2,BE-11
+2,BE-24,Gate-volunteer scoped role,"Restricted permissions: check-in only, no financial data",Backend,Medium,1,BE-04
+2,QA-02,Load test: check-in endpoint,Simulate gate-rush concurrency on /tickets/:qrToken/verify,QA,High,2,BE-21
+3,FE-14,Cancellation request UI,Customer-facing cancel booking flow,Frontend,Medium,1,BE-11
+3,BE-25,Cancellation API + policy check,Validates against organizer's cancellation deadline rules,Backend,Medium,2,BE-11
+3,BE-26,Refund processing integration,Routes approved refunds via payment gateway,Backend,Medium,2,"BE-25,BE-12"
+3,BE-27,Next-day broadcast job,Automated WhatsApp/Email with photo/certificate links,Backend,Medium,2,BE-17
+3,FE-15,Photo/video upload UI (organizer),Upload event media to object storage,Frontend,Medium,2,INF-08
+3,INF-08,Object storage integration (S3/R2),"Configure bucket, upload/signing for photos & PDFs",Infra,High,2,INF-05
+3,FE-16,Public gallery / memory portal page,Attendees view/download event photos,Frontend,Medium,2,INF-08
+3,BE-28,Certificate template design,"Design PDF layout: name, event, date, cert number, seal",Backend,Low,2,
+3,BE-29,Certificate PDF generation job,Queued job generating unique certificate PDFs,Backend,Medium,2,"BE-17,BE-28"
+3,BE-30,Certificate delivery,Send certificate PDF via WhatsApp/Email,Backend,Medium,1,BE-29
+3,FE-17,Organizer reports/export,"CSV/Excel export of attendees, sales, check-ins",Frontend,Medium,2,BE-10
+4,QA-03,Load test: booking endpoint,k6/Artillery test at 1000+ simulated concurrent users,QA,High,2,BE-11
+4,QA-04,Load test: gate-rush simulation,Simulate first-hour check-in traffic spike,QA,High,1,BE-21
+4,OPS-06,Tune PM2/Postgres pool sizing,Adjust worker count and connection pool from load-test data,DevOps,High,1,QA-03
+4,OPS-07,Tune Nginx & compression,"worker_connections, gzip/brotli, static caching tuning",DevOps,Medium,1,INF-07
+4,OPS-08,Redis persistence tuning,"AOF config, memory eviction policy review",DevOps,Medium,1,BE-03
+4,OPS-09,Verify CI/CD rollback drill,End-to-end test of automatic rollback on failed health check,DevOps,High,1,OPS-02
+4,OPS-10,Alerting setup,"Error-rate/latency alerts, UptimeRobot checks",DevOps,Medium,1,BE-06
+4,SEC-01,Security audit,"QR token randomness, authz boundaries, webhook signature checks",Security,High,2,"BE-14,BE-13"
+4,SEC-02,Basic vulnerability scan,Automated scan + manual review of public endpoints,Security,Medium,1,SEC-01
+4,BE-31,Database index audit,"Verify indexes on qr_code_token, event_id, organizer_id",Backend,High,1,BE-02
+4,OPS-11,Backup & restore drill,Test Postgres backup/restore procedure end-to-end,DevOps,High,1,INF-05
+5,FE-18,Platform admin panel,"Multi-organizer oversight, onboarding, platform health",Frontend,Medium,3,BE-07
+5,BE-32,Promo/discount code system,Codes for marketing campaigns and group bookings,Backend,Low,2,BE-11
+5,FE-19,Reserved seating map,Visual seat picking for auditorium-style events,Frontend,Low,4,BE-09
+5,BE-33,Volunteer-scanner-only accounts,Special limited login scoped only to check-in scanning,Backend,Low,1,BE-24
+5,FE-20,Cross-event analytics dashboard,Aggregated reporting across events/organizers,Frontend,Low,3,BE-10
+5,OPS-12,Move Postgres to managed DB,Migrate to RDS/managed Postgres when scale requires it,DevOps,Medium,2,BE-02
+5,OPS-13,Add second app server + load balancer,Horizontal scale-out once single-VPS limits are hit,DevOps,Medium,2,OPS-12
+5,OPS-14,Read replica for reporting,Offload dashboard/report queries from primary DB,DevOps,Low,2,OPS-12
