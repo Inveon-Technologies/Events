@@ -1,7 +1,7 @@
 import { CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model } from 'sequelize';
 import { sequelize } from '../db/connection';
 
-export type UserRole = 'platform_admin' | 'organizer_owner' | 'organizer_staff';
+export type UserRole = 'platform_admin' | 'organizer_owner' | 'organizer_staff' | 'gate_volunteer';
 
 export class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
   declare id: CreationOptional<string>;
@@ -19,7 +19,7 @@ User.init(
     organizerId: { type: DataTypes.UUID, allowNull: true },
     email: { type: DataTypes.STRING, allowNull: false, unique: true },
     passwordHash: { type: DataTypes.STRING, allowNull: false },
-    role: { type: DataTypes.ENUM('platform_admin', 'organizer_owner', 'organizer_staff'), allowNull: false },
+    role: { type: DataTypes.ENUM('platform_admin', 'organizer_owner', 'organizer_staff', 'gate_volunteer'), allowNull: false },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },
