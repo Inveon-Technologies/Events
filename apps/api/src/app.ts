@@ -1,4 +1,5 @@
 import express, { Express, Request, Response } from 'express';
+import { authRouter } from './routes/auth';
 
 export function createApp(): Express {
   const app = express();
@@ -12,6 +13,8 @@ export function createApp(): Express {
   app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });
   });
+
+  app.use('/auth', authRouter);
 
   return app;
 }
