@@ -1,5 +1,6 @@
 import express, { Express, Request, Response } from 'express';
 import { authRouter } from './routes/auth';
+import { organizerRouter } from './routes/organizer';
 
 export function createApp(): Express {
   const app = express();
@@ -15,6 +16,7 @@ export function createApp(): Express {
   });
 
   app.use('/auth', authRouter);
+  app.use('/organizer', organizerRouter);
 
   return app;
 }
