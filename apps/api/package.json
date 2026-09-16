@@ -13,7 +13,8 @@
     "test": "jest --ci",
     "test:concurrency": "jest --testPathPattern=concurrency",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts up",
-    "migrate:down": "tsx --env-file-if-exists=.env src/db/migrate.ts down"
+    "migrate:down": "tsx --env-file-if-exists=.env src/db/migrate.ts down",
+    "seed": "tsx --env-file-if-exists=.env src/db/seed.ts"
   },
   "engines": {
     "node": ">=20"

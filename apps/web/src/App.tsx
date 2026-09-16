@@ -12,6 +12,9 @@ import { ManageBookingPage } from './pages/ManageBookingPage';
 import { VerificationLookupPage } from './pages/VerificationLookupPage';
 import { BookingNotFoundPage } from './pages/BookingNotFoundPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
+import { OrganizerLoginPage } from './organizer/pages/OrganizerLoginPage';
+import { OrganizerDashboardPage } from './organizer/pages/OrganizerDashboardPage';
+import { ProtectedRoute } from './organizer/components/ProtectedRoute';
 
 export default function App() {
   return (
@@ -32,6 +35,17 @@ export default function App() {
       <Route path="/bookings/:bookingId/confirmed" element={<BookingConfirmedPage />} />
       <Route path="/bookings/:bookingId/manage" element={<ManageBookingPage />} />
       <Route path="/bookings/:bookingId" element={<BookingHubPage />} />
+
+      {/* Organizer back office */}
+      <Route path="/organizer/login" element={<OrganizerLoginPage />} />
+      <Route
+        path="/organizer/dashboard"
+        element={
+          <ProtectedRoute>
+            <OrganizerDashboardPage />
+          </ProtectedRoute>
+        }
+      />
 
       {/* Catch-all */}
       <Route path="*" element={<EventUnavailablePage reference="404" />} />
