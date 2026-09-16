@@ -1,0 +1,163 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { OrganizerAuthProvider } from './context/AuthContext';
+import { OrganizerLoginPage } from './pages/OrganizerLoginPage';
+import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+
+function renderWithProviders(ui: React.ReactNode, initialPath = '/') {
+  return render(
+    <OrganizerAuthProvider>
+      <MemoryRouter initialEntries={[initialPath]}>{ui}</MemoryRouter>
+    </OrganizerAuthProvider>,
+  );
+}
+
+describe('OrganizerLoginPage', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('submits real form values to POST /auth/login and shows a server error on failure', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Invalid email or password' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerLoginPage />);
+
+    fireEvent.change(screen.getByLabelText(/email address/i), { target: { value: 'owner@ecopandhari.example' } });
+    fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'wrong-password' } });
+    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/invalid email or password/i));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/login'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'owner@ecopandhari.example', password: 'wrong-password' }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('OrganizerDashboardPage', () => {
+  const dashboardPayload = {
+    organizerName: 'Eco Pandhari Club',
+    totalEvents: 2,
+    upcomingEventsCount: 2,
+    nextUpcomingEventName: 'Rajgad Sunrise Trek',
+    totalBookings: 8,
+    bookingsThisWeek: 3,
+    totalParticipants: 15,
+    revenuePaiseThisMonth: 769000,
+    checkedInCount: 5,
+    checkedInEligibleCount: 15,
+    upcomingEvents: [
+      {
+        id: 'evt-1',
+        name: 'Rajgad Sunrise Trek',
+        eventDate: '2026-10-05T13:00:00.000Z',
+        venueAddress: 'Rajgad Fort, Pune',
+        bannerUrl: null,
+        status: 'published',
+        capacity: 150,
+        bookedCount: 13,
+        revenuePaise: 499000,
+      },
+    ],
+    recentBookings: [
+      {
+        id: 'bkg-1',
+        bookingReference: 'EPC-2026-00124',
+        eventName: 'Rajgad Sunrise Trek',
+        customerName: 'Rahul Sharma',
+        ticketCount: 3,
+        totalAmountPaise: 149700,
+        status: 'confirmed',
+      },
+    ],
+    bookingActivity: Array.from({ length: 14 }, (_, i) => ({
+      date: `2026-09-${String(i + 1).padStart(2, '0')}`,
+      count: i % 3,
+    })),
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(
+      'inveon.organizer.auth',
+      JSON.stringify({
+        token: 'fake-token',
+        user: { id: 'u1', email: 'owner@ecopandhari.example', role: 'organizer_owner', organizerId: 'org-1' },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches real dashboard data and renders the actual numbers, not placeholders', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => dashboardPayload,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerDashboardPage />);
+
+    await waitFor(() => expect(screen.getByText(/welcome back, eco pandhari club/i)).toBeInTheDocument());
+
+    function statValue(icon: string): string | null {
+      const card = screen.getByTestId(`stat-${icon}`);
+      return card.querySelector('p.text-2xl')?.textContent ?? null;
+    }
+
+    // Stat cards — scoped to each card's testid so this doesn't collide
+    // with the same digit/label text appearing elsewhere on the page.
+    expect(statValue('events')).toBe('2');
+    expect(statValue('bookings')).toBe('8');
+    expect(statValue('participants')).toBe('15');
+    expect(statValue('revenue')).toBe('₹7,690');
+
+    // Upcoming events list — real event name + real progress numbers.
+    // The booked/capacity text is split across nested <span>s in the
+    // markup (matches the mockup's own structure), so match on normalized
+    // textContent rather than RTL's default (which doesn't span nested
+    // elements reliably).
+    expect(screen.getAllByText(/rajgad sunrise trek/i).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((_, node) => (node?.textContent ?? '').replace(/\s+/g, ' ').trim() === '13 / 150 booked')
+        .length,
+    ).toBeGreaterThan(0);
+
+    // Recent bookings table — real booking reference + customer
+    expect(screen.getByText('EPC-2026-00124')).toBeInTheDocument();
+    expect(screen.getByText('Rahul Sharma')).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/organizer/dashboard'),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer fake-token' }) }),
+    );
+  });
+
+  it('shows an error message when the dashboard request fails instead of silently staying blank', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Internal server error' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerDashboardPage />);
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/internal server error/i));
+  });
+});

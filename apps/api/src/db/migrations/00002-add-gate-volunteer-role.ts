@@ -6,7 +6,10 @@ import { QueryInterface } from 'sequelize';
 // scan-only* volunteer accounts as future scope, but the role itself is
 // needed now for BE-04's JWT auth to have something to issue.
 export async function up({ context: qi }: { context: QueryInterface }) {
-  await qi.sequelize.query("ALTER TYPE enum_users_role ADD VALUE 'gate_volunteer';");
+  // IF NOT EXISTS makes this safe to re-run — needed because down() below is
+  // a no-op (see its comment), so an up/down/up cycle would otherwise hit
+  // "enum label already exists" on the second up().
+  await qi.sequelize.query("ALTER TYPE enum_users_role ADD VALUE IF NOT EXISTS 'gate_volunteer';");
 }
 
 export async function down() {

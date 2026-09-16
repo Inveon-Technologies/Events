@@ -114,6 +114,13 @@ export default {
         },
         darkNavy: '#070f21',
         footerNavy: '#081226',
+        // Organizer back-office sidebar palette (from the organizer UI mockups).
+        navy: {
+          900: '#071228',
+          850: '#0a1936',
+          800: '#0f2347',
+          700: '#1e3a6d',
+        },
         accent: {
           amber: '#f59e0b',
         },
