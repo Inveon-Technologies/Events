@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { OrganizerAuthProvider } from './context/AuthContext';
 import { OrganizerLoginPage } from './pages/OrganizerLoginPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
+import { OrganizerBookingsPage } from './pages/OrganizerBookingsPage';
 
 function renderWithProviders(ui: React.ReactNode, initialPath = '/') {
   return render(
@@ -159,5 +160,138 @@ describe('OrganizerDashboardPage', () => {
     renderWithProviders(<OrganizerDashboardPage />);
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/internal server error/i));
+  });
+});
+
+describe('OrganizerBookingsPage', () => {
+  // Shaped exactly like the live-verified API response for the Rajgad
+  // Sunrise Trek seed data (counts, the partially-cancelled booking's
+  // reduced ticket count, etc. all match what GET /organizer/bookings
+  // actually returned against a real Postgres instance).
+  const bookingsPayload = {
+    organizerName: 'Eco Pandhari Club',
+    event: { id: 'evt-rajgad', name: 'Rajgad Sunrise Trek', eventDate: '2026-10-05T13:00:00.000Z', status: 'published' },
+    organizerEvents: [
+      { id: 'evt-rajgad', name: 'Rajgad Sunrise Trek' },
+      { id: 'evt-workshop', name: 'Pune Business Workshop' },
+    ],
+    counts: { all: 7, confirmed: 4, pending: 1, cancelled: 1, partially_cancelled: 1 },
+    bookings: [
+      {
+        id: 'bkg-partial',
+        bookingReference: 'EPC-2026-18099',
+        customerName: 'Sneha Joshi',
+        customerEmail: 'sneha.joshi@example.com',
+        eventName: 'Rajgad Sunrise Trek',
+        ticketCount: 2,
+        totalAmountPaise: 149700,
+        paymentStatus: 'paid',
+        displayStatus: 'partially_cancelled' as const,
+        createdAt: '2026-09-13T00:00:00.000Z',
+      },
+      {
+        id: 'bkg-cancelled',
+        bookingReference: 'EPC-2026-93711',
+        customerName: 'Amit Kumar',
+        customerEmail: 'amit.kumar@example.com',
+        eventName: 'Rajgad Sunrise Trek',
+        ticketCount: 0,
+        totalAmountPaise: 49900,
+        paymentStatus: null,
+        displayStatus: 'cancelled' as const,
+        createdAt: '2026-09-09T00:00:00.000Z',
+      },
+    ],
+    pagination: { page: 1, pageSize: 10, total: 7 },
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(
+      'inveon.organizer.auth',
+      JSON.stringify({
+        token: 'fake-token',
+        user: { id: 'u1', email: 'owner@ecopandhari.example', role: 'organizer_owner', organizerId: 'org-1' },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches real bookings for the selected event and renders correct per-status counts and rows', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => bookingsPayload,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerBookingsPage />);
+
+    await waitFor(() => expect(screen.getByText('EPC-2026-18099')).toBeInTheDocument());
+
+    // Tab counts reflect the real derived-status breakdown, not just "all".
+    expect(screen.getByRole('button', { name: /all \(7\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /confirmed \(4\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /partially cancelled \(1\)/i })).toBeInTheDocument();
+
+    // The partially-cancelled row shows the REDUCED ticket count (2, not
+    // the original 3) and its distinct badge — proving the derived status
+    // from the backend renders correctly, not just a raw booking.status.
+    expect(screen.getByText('PARTIALLY CANCELLED')).toBeInTheDocument();
+    const partialRow = screen.getByText('EPC-2026-18099').closest('tr');
+    expect(partialRow).toHaveTextContent('2'); // ticket count
+    expect(partialRow).toHaveTextContent('₹1,497');
+
+    // The cancelled row shows no payment status (null -> em dash), not a
+    // fabricated one.
+    const cancelledRow = screen.getByText('EPC-2026-93711').closest('tr');
+    expect(cancelledRow).toHaveTextContent('—');
+
+    // Verify the request actually asked for the right event and defaults.
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toContain('/organizer/bookings');
+    expect(calledUrl).toContain('status=all');
+    expect(calledUrl).toContain('sort=newest');
+  });
+
+  it('re-fetches with the new status when a tab is clicked', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => bookingsPayload,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerBookingsPage />);
+    await waitFor(() => expect(screen.getByText('EPC-2026-18099')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /pending \(1\)/i }));
+
+    await waitFor(() => {
+      const lastCallUrl = fetchMock.mock.calls[fetchMock.mock.calls.length - 1][0] as string;
+      expect(lastCallUrl).toContain('status=pending');
+    });
+  });
+
+  it('re-fetches with the search term when typed into the search box', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => bookingsPayload,
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerBookingsPage />);
+    await waitFor(() => expect(screen.getByText('EPC-2026-18099')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText(/search by booking id/i), { target: { value: 'sharma' } });
+
+    await waitFor(() => {
+      const lastCallUrl = fetchMock.mock.calls[fetchMock.mock.calls.length - 1][0] as string;
+      expect(lastCallUrl).toContain('search=sharma');
+    });
   });
 });
