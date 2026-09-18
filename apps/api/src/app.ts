@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import { authRouter } from './routes/auth';
 import { organizerRouter } from './routes/organizer';
+import { publicBookingsRouter } from './routes/publicBookings';
 
 export function createApp(): Express {
   const app = express();
@@ -17,6 +18,7 @@ export function createApp(): Express {
 
   app.use('/auth', authRouter);
   app.use('/organizer', organizerRouter);
+  app.use(publicBookingsRouter);
 
   return app;
 }
