@@ -1,7 +1,7 @@
 import { CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model } from 'sequelize';
 import { sequelize } from '../db/connection';
 
-export type EventStatus = 'draft' | 'published' | 'closed';
+export type EventStatus = 'draft' | 'published' | 'closed' | 'cancelled';
 
 export class Event extends Model<InferAttributes<Event>, InferCreationAttributes<Event>> {
   declare id: CreationOptional<string>;
@@ -36,7 +36,7 @@ Event.init(
     bannerUrl: { type: DataTypes.STRING, allowNull: true },
     termsAndConditions: { type: DataTypes.TEXT, allowNull: true },
     cancellationPolicy: { type: DataTypes.TEXT, allowNull: true },
-    status: { type: DataTypes.ENUM('draft', 'published', 'closed'), allowNull: false, defaultValue: 'draft' },
+    status: { type: DataTypes.ENUM('draft', 'published', 'closed', 'cancelled'), allowNull: false, defaultValue: 'draft' },
     capacity: { type: DataTypes.INTEGER, allowNull: false },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,

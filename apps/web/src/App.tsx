@@ -15,6 +15,7 @@ import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
 import { OrganizerLoginPage } from './organizer/pages/OrganizerLoginPage';
 import { OrganizerDashboardPage } from './organizer/pages/OrganizerDashboardPage';
 import { OrganizerBookingsPage } from './organizer/pages/OrganizerBookingsPage';
+import { OrganizerEventsPage } from './organizer/pages/OrganizerEventsPage';
 import { ProtectedRoute } from './organizer/components/ProtectedRoute';
 
 export default function App() {
@@ -52,6 +53,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <OrganizerBookingsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/organizer/events"
+        element={
+          <ProtectedRoute>
+            <OrganizerEventsPage />
           </ProtectedRoute>
         }
       />

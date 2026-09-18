@@ -5,6 +5,7 @@ import { OrganizerAuthProvider } from './context/AuthContext';
 import { OrganizerLoginPage } from './pages/OrganizerLoginPage';
 import { OrganizerDashboardPage } from './pages/OrganizerDashboardPage';
 import { OrganizerBookingsPage } from './pages/OrganizerBookingsPage';
+import { OrganizerEventsPage } from './pages/OrganizerEventsPage';
 
 function renderWithProviders(ui: React.ReactNode, initialPath = '/') {
   return render(
@@ -292,6 +293,88 @@ describe('OrganizerBookingsPage', () => {
     await waitFor(() => {
       const lastCallUrl = fetchMock.mock.calls[fetchMock.mock.calls.length - 1][0] as string;
       expect(lastCallUrl).toContain('search=sharma');
+    });
+  });
+});
+
+describe('OrganizerEventsPage', () => {
+  // Shaped exactly like the live-verified GET /organizer/events response.
+  const eventsPayload = {
+    organizerName: 'Eco Pandhari Club',
+    counts: { all: 5, draft: 1, published: 2, completed: 1, cancelled: 1 },
+    events: [
+      { id: 'e1', eventCode: 'EVT-33723B', name: 'Sandhan Valley Night Trek', eventDate: '2026-11-02T15:59:39.725Z', venueAddress: null, bannerUrl: null, capacity: 80, ticketsSold: 0, revenuePaise: 0, displayStatus: 'draft' as const },
+      { id: 'e2', eventCode: 'EVT-E1E19A', name: 'Pune Business Workshop', eventDate: '2026-10-15T15:59:39.660Z', venueAddress: 'Pune', bannerUrl: null, capacity: 50, ticketsSold: 3, revenuePaise: 270000, displayStatus: 'published' as const },
+      { id: 'e3', eventCode: 'EVT-E4FC35', name: 'Rajgad Sunrise Trek', eventDate: '2026-10-08T15:59:39.655Z', venueAddress: 'Rajgad Fort, Pune', bannerUrl: null, capacity: 150, ticketsSold: 14, revenuePaise: 648700, displayStatus: 'published' as const },
+      { id: 'e4', eventCode: 'EVT-8B0BEA', name: 'Monsoon Trek Challenge', eventDate: '2026-10-03T15:59:39.730Z', venueAddress: null, bannerUrl: null, capacity: 60, ticketsSold: 0, revenuePaise: 0, displayStatus: 'cancelled' as const },
+      { id: 'e5', eventCode: 'EVT-4262BA', name: 'Pawna Lake Camping', eventDate: '2026-09-08T15:59:39.727Z', venueAddress: 'Pawna Lake, Lonavala', bannerUrl: null, capacity: 100, ticketsSold: 0, revenuePaise: 0, displayStatus: 'completed' as const },
+    ],
+  };
+
+  beforeEach(() => {
+    localStorage.setItem(
+      'inveon.organizer.auth',
+      JSON.stringify({
+        token: 'fake-token',
+        user: { id: 'u1', email: 'owner@ecopandhari.example', role: 'organizer_owner', organizerId: 'org-1' },
+      }),
+    );
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches and renders all events with correct derived statuses and revenue', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => eventsPayload });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerEventsPage />);
+
+    await waitFor(() => expect(screen.getByText('Rajgad Sunrise Trek')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: /all \(5\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /drafts \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /completed \(1\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancelled \(1\)/i })).toBeInTheDocument();
+
+    // Real revenue for the real event, not a placeholder.
+    const rajgadRow = screen.getByText('Rajgad Sunrise Trek').closest('tr');
+    expect(rajgadRow).toHaveTextContent('₹6,487');
+    expect(rajgadRow).toHaveTextContent('14');
+
+    // Completed event correctly shows COMPLETED even though it was seeded
+    // with status 'published' — proves the past-date derivation works.
+    const pawnaRow = screen.getByText('Pawna Lake Camping').closest('tr');
+    expect(pawnaRow).toHaveTextContent('COMPLETED');
+  });
+
+  it('filters client-side by search text across name, code and venue', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => eventsPayload });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerEventsPage />);
+    await waitFor(() => expect(screen.getByText('Rajgad Sunrise Trek')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByPlaceholderText(/search events/i), { target: { value: 'lonavala' } });
+
+    expect(screen.getByText('Pawna Lake Camping')).toBeInTheDocument();
+    expect(screen.queryByText('Rajgad Sunrise Trek')).not.toBeInTheDocument();
+  });
+
+  it('re-fetches with the new status when a tab is clicked', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => eventsPayload });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderWithProviders(<OrganizerEventsPage />);
+    await waitFor(() => expect(screen.getByText('Rajgad Sunrise Trek')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /drafts \(1\)/i }));
+
+    await waitFor(() => {
+      const lastCallUrl = fetchMock.mock.calls[fetchMock.mock.calls.length - 1][0] as string;
+      expect(lastCallUrl).toContain('status=draft');
     });
   });
 });
