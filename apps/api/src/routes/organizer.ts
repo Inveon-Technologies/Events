@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
+import { getOrganizerEvents, DisplayEventStatus } from '../services/organizerEvents';
 
 export const organizerRouter = Router();
 
@@ -52,5 +53,21 @@ organizerRouter.get('/bookings', async (req, res) => {
     pageSize: pageSize ? Number(pageSize) : undefined,
   });
 
+  res.status(200).json(result);
+});
+
+const VALID_EVENT_STATUSES: Array<'all' | DisplayEventStatus> = ['all', 'draft', 'published', 'completed', 'cancelled'];
+
+organizerRouter.get('/events', async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const { status } = req.query;
+  const statusParam = typeof status === 'string' && VALID_EVENT_STATUSES.includes(status as never) ? (status as 'all' | DisplayEventStatus) : 'all';
+
+  const result = await getOrganizerEvents({ organizerId, status: statusParam });
   res.status(200).json(result);
 });

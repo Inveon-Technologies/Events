@@ -164,6 +164,31 @@ async function main() {
   await makeBooking(workshop, workshopTier, 1, { status: 'confirmed', daysAgo: 0 });
 
   console.log('Seeded:', organizer.name, '->', trek.name, '&', workshop.name);
+
+  // A few more events, purely to exercise the My Events page's derived
+  // statuses (draft, completed, cancelled) — none of these get bookings.
+  await Event.create({
+    organizerId: organizer.id,
+    name: 'Sandhan Valley Night Trek',
+    eventDate: daysFromNow(45),
+    capacity: 80,
+    status: 'draft',
+  });
+  await Event.create({
+    organizerId: organizer.id,
+    name: 'Pawna Lake Camping',
+    eventDate: daysFromNow(-10), // in the past — should derive to 'completed'
+    venueAddress: 'Pawna Lake, Lonavala',
+    capacity: 100,
+    status: 'published',
+  });
+  await Event.create({
+    organizerId: organizer.id,
+    name: 'Monsoon Trek Challenge',
+    eventDate: daysFromNow(15),
+    capacity: 60,
+    status: 'cancelled',
+  });
   await sequelize.close();
 }
 

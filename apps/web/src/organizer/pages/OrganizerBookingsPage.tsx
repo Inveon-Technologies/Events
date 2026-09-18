@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useOrganizerAuth } from '../context/AuthContext';
 import { apiRequest, ApiError } from '../lib/api';
 import { OrganizerLayout } from '../components/OrganizerLayout';
@@ -67,7 +68,8 @@ const TABS: { key: 'all' | DisplayBookingStatus; label: string }[] = [
 export function OrganizerBookingsPage() {
   const { user, token, logout } = useOrganizerAuth();
 
-  const [eventId, setEventId] = useState<string | undefined>(undefined);
+  const [searchParams] = useSearchParams();
+  const [eventId, setEventId] = useState<string | undefined>(searchParams.get('eventId') ?? undefined);
   const [status, setStatus] = useState<'all' | DisplayBookingStatus>('all');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'newest' | 'oldest' | 'amount_desc' | 'amount_asc'>('newest');
