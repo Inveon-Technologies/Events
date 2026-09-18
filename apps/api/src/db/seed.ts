@@ -1,6 +1,6 @@
 /* eslint-disable no-console -- this is a CLI script; printing status is the point */
 import { sequelize } from './connection';
-import { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment } from '../models';
+import { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation } from '../models';
 import { hashPassword } from '../auth/password';
 
 const ORGANIZER_SLUG = 'eco-pandhari';
@@ -15,8 +15,19 @@ async function main() {
   const existing = await Organizer.findOne({ where: { slug: ORGANIZER_SLUG } });
   if (existing) {
     console.log(`Organizer '${ORGANIZER_SLUG}' already exists (id ${existing.id}) — wiping and reseeding.`);
-    // Cascades through events -> ticket_categories/bookings -> tickets/payments
-    // per the FK onDelete rules in the 00001 migration.
+    // bookings.event_id is deliberately ON DELETE RESTRICT (a real event
+    // with real bookings should never silently cascade-delete them), so a
+    // single Organizer.destroy() can't cascade all the way down — tear
+    // down in explicit dependency order instead.
+    const eventIds = (await Event.findAll({ where: { organizerId: existing.id }, attributes: ['id'] })).map((e) => e.id);
+    const bookingIds = (await Booking.findAll({ where: { eventId: eventIds }, attributes: ['id'] })).map((b) => b.id);
+    await Cancellation.destroy({ where: { bookingId: bookingIds } });
+    await Payment.destroy({ where: { bookingId: bookingIds } });
+    await Ticket.destroy({ where: { bookingId: bookingIds } });
+    await Booking.destroy({ where: { id: bookingIds } });
+    await TicketCategory.destroy({ where: { eventId: eventIds } });
+    await Event.destroy({ where: { id: eventIds } });
+    await User.destroy({ where: { organizerId: existing.id } });
     await existing.destroy();
   }
 
@@ -139,6 +150,14 @@ async function main() {
   await makeBooking(trek, trekTier, 4, { status: 'confirmed', checkedIn: false, daysAgo: 1 });
   await makeBooking(trek, trekTier, 2, { status: 'pending', daysAgo: 1 });
   await makeBooking(trek, trekTier, 1, { status: 'cancelled', daysAgo: 6 });
+
+  // One "partially cancelled" booking — confirmed overall, but one of its
+  // tickets was individually cancelled after the fact. This exercises the
+  // derived (not stored) partially_cancelled status the bookings list
+  // computes from ticket state.
+  const partialBooking = await makeBooking(trek, trekTier, 3, { status: 'confirmed', daysAgo: 3 });
+  const partialTickets = await Ticket.findAll({ where: { bookingId: partialBooking.id } });
+  await partialTickets[0].update({ status: 'cancelled' });
 
   // Workshop: a smaller, newer set of bookings.
   await makeBooking(workshop, workshopTier, 2, { status: 'confirmed', daysAgo: 1 });
