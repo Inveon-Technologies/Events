@@ -102,7 +102,7 @@ export function HomePage() {
                     </svg>
                   </a>
                   <Link
-                    to="/organizers/example-adventures"
+                    to="/organizer/login"
                     className="w-full sm:w-auto inline-flex items-center justify-center px-6 sm:px-7 py-3 sm:py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-semibold text-sm sm:text-base shadow-sm transition-all hover:border-slate-400"
                   >
                     Host an Event
@@ -742,7 +742,7 @@ export function HomePage() {
 
                 <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 mt-6">
                   <Link
-                    to="/organizers/example-adventures"
+                    to="/organizer/login"
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-sm shadow-md shadow-brand-500/25 transition-all"
                   >
                     <span>Host an Event</span>
