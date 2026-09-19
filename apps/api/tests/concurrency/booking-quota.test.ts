@@ -49,7 +49,7 @@ describe('booking concurrency: atomic quota reservation (BE-11 / QA-01)', () => 
   it(`allows exactly ${QUOTA} of ${CONCURRENT_REQUESTS} simultaneous requests to succeed, never more`, async () => {
     const makeRequest = (i: number) =>
       request(app)
-        .post(`/events/${event.id}/bookings`)
+        .post(`/api/events/${event.id}/bookings`)
         .send({
           ticketCategoryId: ticketCategory.id,
           quantity: 1,

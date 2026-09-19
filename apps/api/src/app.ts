@@ -16,9 +16,9 @@ export function createApp(): Express {
     res.status(200).json({ status: 'ok' });
   });
 
-  app.use('/auth', authRouter);
-  app.use('/organizer', organizerRouter);
-  app.use(publicBookingsRouter);
+  app.use('/api/auth', authRouter);
+  app.use('/api/organizer', organizerRouter);
+  app.use('/api', publicBookingsRouter);
 
   return app;
 }
