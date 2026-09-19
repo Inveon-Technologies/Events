@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { User } from '../models';
 import { comparePassword } from '../auth/password';
 import { signAccessToken } from '../auth/jwt';
+import { asyncHandler } from '../middleware/asyncHandler';
 import {
   initiateSignup,
   verifySignup,
@@ -20,7 +21,7 @@ import {
 
 export const authRouter = Router();
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', asyncHandler(async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -52,9 +53,9 @@ authRouter.post('/login', async (req, res) => {
     token,
     user: { id: user.id, email: user.email, role: user.role, organizerId: user.organizerId },
   });
-});
+}));
 
-authRouter.post('/signup', async (req, res) => {
+authRouter.post('/signup', asyncHandler(async (req, res) => {
   const { fullName, email, phone, orgName, password } = req.body as Record<string, unknown>;
 
   if (
@@ -78,9 +79,9 @@ authRouter.post('/signup', async (req, res) => {
     }
     throw err;
   }
-});
+}));
 
-authRouter.post('/verify-otp', async (req, res) => {
+authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
   const { email, code } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || typeof code !== 'string') {
@@ -102,9 +103,9 @@ authRouter.post('/verify-otp', async (req, res) => {
     }
     throw err;
   }
-});
+}));
 
-authRouter.post('/resend-otp', async (req, res) => {
+authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
   const { email } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string') {
@@ -124,9 +125,9 @@ authRouter.post('/resend-otp', async (req, res) => {
     }
     throw err;
   }
-});
+}));
 
-authRouter.post('/forgot-password', async (req, res) => {
+authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
   const { email } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || !email.trim()) {
@@ -138,9 +139,9 @@ authRouter.post('/forgot-password', async (req, res) => {
   // initiateForgotPassword's own comment for why.
   await initiateForgotPassword(email);
   res.status(200).json({ message: 'If that email is registered, a verification code has been sent' });
-});
+}));
 
-authRouter.post('/verify-reset-otp', async (req, res) => {
+authRouter.post('/verify-reset-otp', asyncHandler(async (req, res) => {
   const { email, code } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || typeof code !== 'string') {
@@ -158,9 +159,9 @@ authRouter.post('/verify-reset-otp', async (req, res) => {
     }
     throw err;
   }
-});
+}));
 
-authRouter.post('/reset-password', async (req, res) => {
+authRouter.post('/reset-password', asyncHandler(async (req, res) => {
   const { resetToken, newPassword } = req.body as Record<string, unknown>;
 
   if (typeof resetToken !== 'string' || typeof newPassword !== 'string' || newPassword.length < 8) {
@@ -178,4 +179,4 @@ authRouter.post('/reset-password', async (req, res) => {
     }
     throw err;
   }
-});
+}));

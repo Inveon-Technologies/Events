@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
+import { asyncHandler } from '../middleware/asyncHandler';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
 import { getOrganizerEvents, DisplayEventStatus } from '../services/organizerEvents';
@@ -9,7 +10,7 @@ export const organizerRouter = Router();
 
 organizerRouter.use(authenticate, requireRole('organizer_owner', 'organizer_staff'));
 
-organizerRouter.get('/dashboard', async (req, res) => {
+organizerRouter.get('/dashboard', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
     // Shouldn't happen for these two roles (schema requires organizerId for
@@ -20,7 +21,7 @@ organizerRouter.get('/dashboard', async (req, res) => {
 
   const dashboard = await getOrganizerDashboard(organizerId);
   res.status(200).json(dashboard);
-});
+}));
 
 const VALID_STATUSES: Array<'all' | DisplayBookingStatus> = [
   'all',
@@ -31,7 +32,7 @@ const VALID_STATUSES: Array<'all' | DisplayBookingStatus> = [
 ];
 const VALID_SORTS = ['newest', 'oldest', 'amount_desc', 'amount_asc'] as const;
 
-organizerRouter.get('/bookings', async (req, res) => {
+organizerRouter.get('/bookings', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
     res.status(400).json({ error: 'This account has no associated organizer' });
@@ -54,11 +55,11 @@ organizerRouter.get('/bookings', async (req, res) => {
   });
 
   res.status(200).json(result);
-});
+}));
 
 const VALID_EVENT_STATUSES: Array<'all' | DisplayEventStatus> = ['all', 'draft', 'published', 'completed', 'cancelled'];
 
-organizerRouter.get('/events', async (req, res) => {
+organizerRouter.get('/events', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
     res.status(400).json({ error: 'This account has no associated organizer' });
@@ -70,4 +71,4 @@ organizerRouter.get('/events', async (req, res) => {
 
   const result = await getOrganizerEvents({ organizerId, status: statusParam });
   res.status(200).json(result);
-});
+}));
