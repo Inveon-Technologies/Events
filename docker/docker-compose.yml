@@ -15,7 +15,7 @@ services:
     ports:
       - "127.0.0.1:8081:80"
     volumes:
-      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - web_static:/usr/share/nginx/html:ro
     depends_on:
       - api
@@ -24,7 +24,11 @@ services:
   api:
     image: ghcr.io/inveon-technologies/events-api:${IMAGE_TAG:-latest}
     env_file:
-      - apps/api/.env
+      # Relative to this file's own directory (docker/) — docker compose
+      # resolves relative paths against wherever you invoke it from when
+      # that's where the compose file lives, i.e. `cd docker && docker
+      # compose up`, not the repo root.
+      - ../apps/api/.env
     environment:
       - NODE_ENV=production
     depends_on:

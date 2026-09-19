@@ -3,13 +3,21 @@
 # automatically if the health check fails.
 #
 # Usage: bash scripts/deploy.sh <image_tag>
-# Run from the project root on the VPS (expects docker-compose.yml there).
+# Invoked from the repo root (e.g. by deploy.yml's `cd /opt/inveon-events`),
+# but internally cd's into docker/ itself — docker-compose.yml lives there,
+# not at the repo root, and its relative paths (env_file, the nginx config
+# bind mount) are written assuming that's where `docker compose` runs from.
 
 set -euo pipefail
 
-APP_DIR="/opt/inveon-events"
+REPO_ROOT="/opt/inveon-events"
+APP_DIR="$REPO_ROOT/docker"
 LAST_GOOD_FILE="$APP_DIR/.last_good_tag"
-HEALTH_URL="http://localhost:3000/health"
+# Through nginx (127.0.0.1:8081), not the api container directly — its
+# port isn't exposed to the host at all, only nginx's is. Hitting it this
+# way also verifies nginx is actually proxying correctly, not just that
+# the api process is alive.
+HEALTH_URL="http://127.0.0.1:8081/health"
 MAX_ATTEMPTS=10
 SLEEP_SECONDS=3
 
