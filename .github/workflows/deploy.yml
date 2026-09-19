@@ -66,6 +66,8 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # VPS_HOST/VPS_USER/VPS_SSH_KEY live under this GitHub Environment, not
     # as plain repo-level secrets — without naming it here, the job can't
     # see them at all (they'd silently resolve empty), regardless of
@@ -74,15 +76,23 @@ jobs:
     steps:
       - name: Deploy to VPS over SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          # The VPS's git checkout has no stored credentials for this
+          # private repo, and can't be prompted non-interactively.
+          # GITHUB_TOKEN is provided automatically for every run, scoped
+          # only to this repo, and expires when the job ends — no
+          # additional secret to create or rotate.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: GH_TOKEN
           script_stop: true
           script: |
             cd /var/www/Events
-            git fetch origin main
-            git reset --hard origin/main
+            git fetch "https://x-access-token:${GH_TOKEN}@github.com/Inveon-Technologies/Events.git" main
+            git reset --hard FETCH_HEAD
             bash scripts/deploy.sh ${{ needs.build-and-push.outputs.image_tag }}
 
       - name: Notify on failure
