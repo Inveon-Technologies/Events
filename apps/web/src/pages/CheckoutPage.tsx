@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useLocation, useParams, Link } from 'react-router-dom';
-import { getEventData } from '../mockData/rajgadTrek';
+import { fetchEventData, EventDetails } from '../mockData/rajgadTrek';
 import { formatINR } from '../lib/format';
+import { apiRequest, ApiError } from '../organizer/lib/api';
 
 interface Attendee {
   name: string;
@@ -15,8 +16,18 @@ interface Attendee {
 
 export function CheckoutPage() {
   const { eventId } = useParams();
-  const event = getEventData(eventId);
+  const [event, setEvent] = useState<EventDetails | null>(null);
   const location = useLocation();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEventData(eventId).then((data) => {
+      if (!cancelled) setEvent(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
 
   // Initial quantities from navigation state or defaults (General: 2, VIP: 1, Premium: 0 as in mockup)
   const initialQuantities: Record<string, number> = useMemo(() => {
@@ -43,8 +54,6 @@ export function CheckoutPage() {
   const [isDigitalPassOpen, setIsDigitalPassOpen] = useState(false);
   const [isEventInfoOpen, setIsEventInfoOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const bookingId = 'INV-BKG-1001';
 
   // Default sample attendees
   const sampleAttendees: Attendee[] = useMemo(
@@ -138,11 +147,24 @@ export function CheckoutPage() {
   const totalTickets = Object.values(quantities).reduce((a, b) => a + b, 0);
 
   const totalAmount = useMemo(() => {
+    if (!event) return 0;
     return event.ticketCategories.reduce(
       (sum, t) => sum + t.price * (quantities[t.id] ?? 0),
       0,
     );
   }, [quantities, event]);
+
+  const [bookingId, setBookingId] = useState('INV-BKG-1001');
+  const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
+  const [bookingError, setBookingError] = useState<string | null>(null);
+
+  if (!event) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   function showToast(msg: string) {
     setToastMessage(msg);
@@ -185,28 +207,55 @@ export function CheckoutPage() {
       showToast('Proceeding to: Participant Details (Step 2)');
       setTimeout(() => goToStep(2), 200);
     } else if (currentStep === 2) {
-      validateAndConfirm();
+      void validateAndConfirm();
     }
   }
 
-  function validateAndConfirm() {
-    // Check or fill fallback lead attendee if empty
-    setAttendees((prev) => {
-      if (prev.length === 0) return prev;
-      const copy = [...prev];
-      if (!copy[0].name.trim()) {
-        copy[0] = {
-          ...copy[0],
-          name: 'Rohit Deshmukh',
-          email: 'rohit@example.com',
-          phone: '9876543210',
-        };
-      }
-      return copy;
-    });
+  async function validateAndConfirm() {
+    if (isSubmittingBooking) return;
 
-    showToast('Payment successful! Issuing digital passes...');
-    setTimeout(() => goToStep(3), 350);
+    const lead = attendees[0];
+    if (!lead || !lead.name.trim() || !lead.email.trim() || !lead.phone.trim()) {
+      showToast('Please fill in the lead attendee\u2019s name, email, and phone.');
+      return;
+    }
+
+    const primaryTier = event!.ticketCategories[0];
+    if (!primaryTier) {
+      showToast('This event has no ticket categories available.');
+      return;
+    }
+
+    setIsSubmittingBooking(true);
+    setBookingError(null);
+
+    try {
+      const result = await apiRequest<{ bookingId: string; bookingReference: string }>(
+        `/events/${event!.id}/bookings`,
+        {
+          method: 'POST',
+          body: {
+            ticketCategoryId: primaryTier.id,
+            quantity: totalTickets,
+            primaryContactName: lead.name,
+            primaryContactWhatsapp: lead.phone,
+            primaryContactEmail: lead.email,
+            paymentMethod: 'online',
+            attendeeNames: attendees.map((a) => a.name || lead.name),
+          },
+        },
+      );
+
+      setBookingId(result.bookingReference);
+      showToast('Payment successful! Issuing digital passes...');
+      setTimeout(() => goToStep(3), 350);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Something went wrong creating your booking. Please try again.';
+      setBookingError(message);
+      showToast(message);
+    } finally {
+      setIsSubmittingBooking(false);
+    }
   }
 
   function copyBookingId() {
@@ -699,6 +748,11 @@ export function CheckoutPage() {
                         ))}
                       </div>
 
+                      {bookingError && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 mt-space-md" role="alert">
+                          {bookingError}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between pt-space-md">
                         <button
                           className="px-5 py-2.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md flex items-center gap-2 transition"
@@ -708,11 +762,12 @@ export function CheckoutPage() {
                           <span className="material-symbols-outlined text-base">arrow_back</span> Back to Tickets
                         </button>
                         <button
-                          className="px-6 py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-label-md flex items-center gap-2 shadow-sm transition active:scale-98"
-                          onClick={validateAndConfirm}
+                          className="px-6 py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-label-md flex items-center gap-2 shadow-sm transition active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
+                          disabled={isSubmittingBooking}
+                          onClick={() => void validateAndConfirm()}
                           type="button"
                         >
-                          Proceed to Secure Payment <span className="material-symbols-outlined text-base">arrow_forward</span>
+                          {isSubmittingBooking ? 'Processing…' : 'Proceed to Secure Payment'} <span className="material-symbols-outlined text-base">arrow_forward</span>
                         </button>
                       </div>
                     </div>

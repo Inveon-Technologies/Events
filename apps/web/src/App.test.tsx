@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -30,9 +30,12 @@ describe('App routing', () => {
     }
   });
 
-  it('renders event details for a known mock event', () => {
+  it('renders event details for a known mock event', async () => {
     renderApp('/events/rajgad-sunrise-trek-2026');
-    expect(screen.getAllByText(/Rajgad Sunrise Trek/i).length).toBeGreaterThan(0);
+    // EventDetailsPage now loads asynchronously (tries the real API first,
+    // falls back to the mock template) — wait for it instead of asserting
+    // synchronously against the loading spinner.
+    await waitFor(() => expect(screen.getAllByText(/Rajgad Sunrise Trek/i).length).toBeGreaterThan(0));
   });
 
   it('falls back to the catch-all route for an unknown path', () => {

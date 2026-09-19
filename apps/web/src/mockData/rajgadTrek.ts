@@ -417,3 +417,54 @@ export function getEventData(eventId?: string): EventDetails {
   };
 }
 
+// --- Real backend integration ---
+// getEventData() above is a synchronous template generator (rich filler
+// content — highlights, schedule, packing list, etc. — layered onto a
+// few real-ish fields looked up from the mock catalog). fetchEventData()
+// below keeps ALL of that same template, but sources the fields that
+// actually matter for a real booking (name, venue, date, organizer,
+// and — critically — real ticket category ids/prices/availability) from
+// the real backend via GET /api/events/:eventId. If that fetch 404s
+// (an id from the mock catalog, not a real database UUID) or fails for
+// any other reason, this falls back to the pure mock template so every
+// existing mock-event route keeps working exactly as before.
+export async function fetchEventData(eventId?: string): Promise<EventDetails> {
+  const template = getEventData(eventId);
+  if (!eventId) return template;
+
+  try {
+    const res = await fetch(`/api/events/${eventId}`);
+    if (!res.ok) return template;
+    const real = await res.json();
+
+    const eventDate = new Date(real.eventDate);
+    const dateStr = eventDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+    const timeStr = eventDate.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    return {
+      ...template,
+      id: real.id,
+      name: real.name,
+      tagline: real.tagline || template.tagline,
+      date: dateStr,
+      time: timeStr,
+      venue: real.venueAddress || template.venue,
+      organizer: {
+        ...template.organizer,
+        slug: real.organizerSlug,
+        name: real.organizerName,
+      },
+      about: real.description || template.about,
+      ticketCategories: real.ticketCategories.map((tc: { id: string; name: string; description: string | null; pricePaise: number; maxPerBooking: number; available: number }) => ({
+        id: tc.id,
+        name: tc.name,
+        description: tc.description || `₹${Math.round(tc.pricePaise / 100)} per ticket`,
+        price: Math.round(tc.pricePaise / 100),
+        maxPerBooking: tc.maxPerBooking,
+        available: tc.available,
+      })),
+    };
+  } catch {
+    return template;
+  }
+}
