@@ -3,21 +3,27 @@
 # automatically if the health check fails.
 #
 # Usage: bash scripts/deploy.sh <image_tag>
-# Invoked from the repo root (e.g. by deploy.yml's `cd /opt/inveon-events`),
-# but internally cd's into docker/ itself — docker-compose.yml lives there,
-# not at the repo root, and its relative paths (env_file, the nginx config
-# bind mount) are written assuming that's where `docker compose` runs from.
+# Invoked from this repo's own checkout (deploy.yml's `cd /var/www/Events`),
+# but the actual docker compose stack this operates on lives in a SEPARATE
+# repo/checkout: inveontechnologies-website, at APP_DIR below. That other
+# repo's docker-compose.yml runs events-api/events-postgres/events-web
+# alongside the company's main site, portal, and CRM on the same shared
+# VPS — see its own docker-compose.yml comments for why (Events' own
+# docker/docker-compose.yml, in *this* repo, binds its own nginx to
+# 80/443, which collides with the site that already owns those ports on
+# this box; that file is for standalone/local use only, not this server).
+#
+# This script deliberately touches ONLY events-api and events-web —
+# never events-postgres (never recreate the database on a deploy), and
+# never the other apps' containers (web/portal-frontend/portal-backend/
+# crm_*) sharing this same compose file and VPS.
 
 set -euo pipefail
 
-REPO_ROOT="/opt/inveon-events"
-APP_DIR="$REPO_ROOT/docker"
-LAST_GOOD_FILE="$APP_DIR/.last_good_tag"
-# Through nginx (127.0.0.1:8081), not the api container directly — its
-# port isn't exposed to the host at all, only nginx's is. Hitting it this
-# way also verifies nginx is actually proxying correctly, not just that
-# the api process is alive.
-HEALTH_URL="http://127.0.0.1:8081/health"
+APP_DIR="/home/ubuntu/inveontechnologies-website"
+# Deliberately outside any git-managed checkout — this is deploy-state
+# bookkeeping, not part of either repo.
+LAST_GOOD_FILE="$HOME/.events_last_good_tag"
 MAX_ATTEMPTS=10
 SLEEP_SECONDS=3
 
@@ -27,14 +33,19 @@ cd "$APP_DIR"
 
 deploy_tag() {
   local tag="$1"
-  echo "IMAGE_TAG=${tag}" > .env.deploy
-  docker compose --env-file .env.deploy pull api web
-  docker compose --env-file .env.deploy up -d --no-deps api web
+  echo "EVENTS_IMAGE_TAG=${tag}" > .env.deploy
+  docker compose --env-file .env.deploy pull events-api events-web
+  docker compose --env-file .env.deploy up -d --no-deps events-api events-web
 }
 
 health_check() {
+  # Inside the events-api container itself, not through the public
+  # domain — this is a "did the container we just started come up
+  # healthy" gate, not an end-to-end external check, so it shouldn't
+  # depend on DNS/TLS/the shared nginx's routing being correct too.
+  # events-api's own Dockerfile installs curl specifically for this.
   for i in $(seq 1 "$MAX_ATTEMPTS"); do
-    if curl -sf "$HEALTH_URL" > /dev/null; then
+    if docker compose exec -T events-api curl -sf http://localhost:3000/health > /dev/null; then
       return 0
     fi
     echo "Health check attempt $i/$MAX_ATTEMPTS failed, retrying in ${SLEEP_SECONDS}s..."

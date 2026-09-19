@@ -80,10 +80,10 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script_stop: true
           script: |
-            cd /opt/inveon-events
+            cd /var/www/Events
             bash scripts/deploy.sh ${{ needs.build-and-push.outputs.image_tag }}
 
       - name: Notify on failure
         if: failure()
         run: |
-          echo "Deploy failed or rollback was triggered. Check the VPS logs at /opt/inveon-events."
+          echo "Deploy failed or rollback was triggered. Check the VPS logs at /home/ubuntu/inveontechnologies-website (docker compose logs events-api)."
