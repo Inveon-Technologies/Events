@@ -34,8 +34,15 @@ cd "$APP_DIR"
 deploy_tag() {
   local tag="$1"
   echo "EVENTS_IMAGE_TAG=${tag}" > .env.deploy
-  docker compose --env-file .env.deploy pull events-api events-web
-  docker compose --env-file .env.deploy up -d --no-deps events-api events-web
+  # --env-file REPLACES the directory's default .env auto-load rather than
+  # adding to it — without also passing .env explicitly here, every other
+  # var that file provides (EVENTS_POSTGRES_PASSWORD, PORTAL_POSTGRES_PASSWORD,
+  # etc.) disappears, and Compose fails just interpolating the file, since
+  # that happens for every service up front regardless of which ones
+  # pull/up actually targets. Passing both merges them, .env.deploy's
+  # EVENTS_IMAGE_TAG taking precedence for that one key.
+  docker compose --env-file .env --env-file .env.deploy pull events-api events-web
+  docker compose --env-file .env --env-file .env.deploy up -d --no-deps events-api events-web
 }
 
 health_check() {
