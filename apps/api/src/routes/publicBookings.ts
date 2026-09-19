@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createBooking, SoldOutError, NotFoundError } from '../services/bookingCreation';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
+import { sendBookingConfirmationEmail } from '../services/bookingEmails';
 
 export const publicBookingsRouter = Router();
 
@@ -55,7 +56,15 @@ publicBookingsRouter.post('/events/:eventId/bookings', async (req, res) => {
       paymentMethod,
       attendeeNames: Array.isArray(attendeeNames) ? attendeeNames.filter((n): n is string => typeof n === 'string') : undefined,
     });
-    res.status(201).json(result);
+
+    // Fire-and-forget: the booking is already committed at this point, and
+    // a slow or failed email send must never delay the HTTP response or
+    // undo the reservation. sendBookingConfirmationEmail() catches
+    // everything internally, so this can never produce an unhandled
+    // rejection either.
+    void sendBookingConfirmationEmail(result);
+
+    res.status(201).json({ bookingId: result.bookingId, bookingReference: result.bookingReference });
   } catch (err) {
     if (err instanceof SoldOutError) {
       res.status(409).json({ error: err.message });

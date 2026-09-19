@@ -1,6 +1,6 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../db/connection';
-import { Event, TicketCategory, Booking, Ticket } from '../models';
+import { Event, TicketCategory, Booking, Ticket, Organizer } from '../models';
 import { randomUUID } from 'crypto';
 
 export interface CreateBookingParams {
@@ -47,7 +47,25 @@ function generateBookingReference(): string {
  * the database is the single source of truth for quota, so there's
  * nothing to keep in sync or get out of sync.
  */
-export async function createBooking(params: CreateBookingParams): Promise<{ bookingId: string; bookingReference: string }> {
+export interface CreateBookingResult {
+  bookingId: string;
+  bookingReference: string;
+  email: {
+    eventName: string;
+    eventDate: Date;
+    venueAddress: string | null;
+    organizerName: string;
+    customerName: string;
+    customerEmail: string;
+    tierName: string;
+    unitPricePaise: number;
+    quantity: number;
+    totalAmountPaise: number;
+    ticketQrTokens: string[];
+  };
+}
+
+export async function createBooking(params: CreateBookingParams): Promise<CreateBookingResult> {
   if (params.quantity < 1) {
     throw new Error('quantity must be at least 1');
   }
@@ -102,8 +120,9 @@ export async function createBooking(params: CreateBookingParams): Promise<{ book
       { transaction: t },
     );
 
+    const tickets: Ticket[] = [];
     for (let i = 0; i < params.quantity; i += 1) {
-      await Ticket.create(
+      const ticket = await Ticket.create(
         {
           bookingId: booking.id,
           ticketCategoryId: ticketCategory.id,
@@ -113,8 +132,30 @@ export async function createBooking(params: CreateBookingParams): Promise<{ book
         },
         { transaction: t },
       );
+      tickets.push(ticket);
     }
 
-    return { bookingId: booking.id, bookingReference: booking.bookingReference };
+    const organizer = await Organizer.findByPk(event.organizerId, { transaction: t });
+
+    return {
+      bookingId: booking.id,
+      bookingReference: booking.bookingReference,
+      // Everything needed to send the confirmation email, returned here
+      // rather than re-queried by the caller — this transaction already
+      // has all of it loaded.
+      email: {
+        eventName: event.name,
+        eventDate: event.eventDate,
+        venueAddress: event.venueAddress,
+        organizerName: organizer?.name ?? 'Event Organizer',
+        customerName: params.primaryContactName,
+        customerEmail: params.primaryContactEmail,
+        tierName: ticketCategory.name,
+        unitPricePaise: ticketCategory.pricePaise,
+        quantity: params.quantity,
+        totalAmountPaise,
+        ticketQrTokens: tickets.map((tk) => tk.qrToken),
+      },
+    };
   });
 }
