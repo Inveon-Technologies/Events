@@ -3,18 +3,20 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Building, Phone, ArrowRight, Check } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { ApiError } from '../../lib/api';
 
 export default function SignUp() {
   const [formData, setFormData] = useState({
-    fullName: 'Eeshan Agrawal',
-    email: 'eeshan.agrawal@inveon.dev',
-    phone: '+91 98765 43210',
-    orgName: 'Sahyadri Wanderers Club',
+    fullName: '',
+    email: '',
+    phone: '',
+    orgName: '',
     category: 'Adventure & Trekking',
-    password: 'Password@123',
-    agreeTerms: true
+    password: '',
+    agreeTerms: false
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const { signup } = useAuth();
   const { showToast } = useNotifications();
@@ -28,18 +30,23 @@ export default function SignUp() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.agreeTerms) {
       showToast('Please accept terms of service to proceed', 'error');
       return;
     }
+    setError(null);
     setLoading(true);
-    setTimeout(() => {
-      signup(formData);
+    try {
+      await signup(formData);
       showToast('Verification code sent to your email', 'info');
-      navigate('/organizer/verify-otp');
-    }, 400);
+      navigate('/organizer/verify-otp', { state: { email: formData.email, context: 'signup' } });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to sign up. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -52,14 +59,20 @@ export default function SignUp() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-3.5">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" role="alert">
+            {error}
+          </div>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="fullName">Full Name</label>
             <div className="relative">
               <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
                 name="fullName"
+                id="fullName"
                 required
                 value={formData.fullName}
                 onChange={handleChange}
@@ -70,12 +83,13 @@ export default function SignUp() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number</label>
+            <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="phone">Phone Number</label>
             <div className="relative">
               <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="tel"
                 name="phone"
+                id="phone"
                 required
                 value={formData.phone}
                 onChange={handleChange}
@@ -87,12 +101,13 @@ export default function SignUp() {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Work / Official Email</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="email">Work / Official Email</label>
           <div className="relative">
             <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="email"
               name="email"
+                id="email"
               required
               value={formData.email}
               onChange={handleChange}
@@ -103,12 +118,13 @@ export default function SignUp() {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Organization / Brand Name</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="orgName">Organization / Brand Name</label>
           <div className="relative">
             <Building className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               name="orgName"
+                id="orgName"
               required
               value={formData.orgName}
               onChange={handleChange}
@@ -119,12 +135,13 @@ export default function SignUp() {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="password">Password</label>
           <div className="relative">
             <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="password"
               name="password"
+                id="password"
               required
               value={formData.password}
               onChange={handleChange}
