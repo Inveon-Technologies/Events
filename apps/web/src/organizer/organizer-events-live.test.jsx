@@ -68,6 +68,7 @@ describe('organizer portal: real events data through EventsContext', () => {
       }),
     );
     localStorage.removeItem('inveon_events');
+    localStorage.removeItem('inveon_bookings');
   });
 
   afterEach(() => {
@@ -102,6 +103,110 @@ describe('organizer portal: real events data through EventsContext', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/organizer/events'),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer fake-token' }) }),
+    );
+  });
+});
+
+describe('organizer portal: real bookings data through EventsContext', () => {
+  // Shaped exactly like the live-verified GET /api/organizer/bookings?eventId=all
+  // response (hand-checked against a real server with real seed data — 9
+  // bookings, including real customerPhone, eventId, and ticketTierNames,
+  // none of which existed on this endpoint before this pass).
+  const realBookingsResponse = {
+    organizerName: 'Eco Pandhari Club',
+    event: null,
+    organizerEvents: [{ id: 'evt-rajgad', name: 'Rajgad Sunrise Trek' }],
+    counts: { all: 2, confirmed: 1, pending: 1, cancelled: 0, partially_cancelled: 0 },
+    bookings: [
+      {
+        id: 'bkg-1',
+        bookingReference: 'EPC-2026-84998',
+        customerName: 'Divya Iyer',
+        customerEmail: 'divya.iyer@example.com',
+        customerPhone: '+919012259619',
+        eventId: 'evt-rajgad',
+        eventName: 'Rajgad Sunrise Trek',
+        ticketCount: 2,
+        totalAmountPaise: 99800,
+        paymentStatus: 'paid',
+        displayStatus: 'confirmed',
+        ticketTierNames: 'Solo Entry',
+        createdAt: '2026-09-15T00:00:00.000Z',
+      },
+      {
+        id: 'bkg-2',
+        bookingReference: 'EPC-2026-23569',
+        customerName: 'Rahul Sharma',
+        customerEmail: 'rahul.sharma@example.com',
+        customerPhone: '+919028249850',
+        eventId: 'evt-rajgad',
+        eventName: 'Rajgad Sunrise Trek',
+        ticketCount: 4,
+        totalAmountPaise: 199600,
+        paymentStatus: 'pending',
+        displayStatus: 'pending',
+        ticketTierNames: 'Solo Entry',
+        createdAt: '2026-09-18T00:00:00.000Z',
+      },
+    ],
+    pagination: { page: 1, pageSize: 100, total: 2 },
+  };
+
+  const emptyEventsResponse = { organizerName: 'Eco Pandhari Club', counts: { all: 0, draft: 0, published: 0, completed: 0, cancelled: 0 }, events: [] };
+
+  beforeEach(() => {
+    localStorage.setItem(
+      'inveon_user',
+      JSON.stringify({
+        id: 'u1',
+        email: 'owner@ecopandhari.example',
+        role: 'organizer_owner',
+        organizerId: 'org-1',
+        token: 'fake-token',
+        name: 'owner',
+        orgName: null,
+        avatar: 'https://example.com/avatar.png',
+        isLoggedIn: true,
+      }),
+    );
+    localStorage.removeItem('inveon_events');
+    localStorage.removeItem('inveon_bookings');
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('fetches real bookings across all events and renders them on the global Bookings page with correctly mapped fields', async () => {
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      const body = String(url).includes('/organizer/bookings') ? realBookingsResponse : emptyEventsResponse;
+      return Promise.resolve({ ok: true, status: 200, json: async () => body });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/bookings');
+
+    // The mock catalog's flagship booking is "Aarav Sharma" / BK-89211
+    // (see mockBookings.js) — if that's what's showing, the real fetch
+    // never took over.
+    await waitFor(() => expect(screen.getByText('EPC-2026-84998')).toBeInTheDocument());
+    expect(screen.getByText('EPC-2026-23569')).toBeInTheDocument();
+    expect(screen.queryByText('BK-89211')).not.toBeInTheDocument();
+    expect(screen.queryByText('Aarav Sharma')).not.toBeInTheDocument();
+
+    // Real customer/contact/tier data, not mock placeholders.
+    expect(screen.getByText('Divya Iyer')).toBeInTheDocument();
+    expect(screen.getByText('+919012259619')).toBeInTheDocument();
+    expect(screen.getByText(/2x Solo Entry/)).toBeInTheDocument();
+
+    // Real paise-to-rupees conversion.
+    expect(screen.getByText('₹998')).toBeInTheDocument();
+    expect(screen.getByText('₹1,996')).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/organizer/bookings?eventId=all'),
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer fake-token' }) }),
     );
   });

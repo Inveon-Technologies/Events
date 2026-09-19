@@ -1,5 +1,5 @@
 import { Op, WhereOptions } from 'sequelize';
-import { Organizer, Event, Booking, Ticket, Payment } from '../models';
+import { Organizer, Event, Booking, Ticket, Payment, TicketCategory } from '../models';
 
 export type DisplayBookingStatus = 'confirmed' | 'pending' | 'cancelled' | 'partially_cancelled';
 
@@ -11,6 +11,7 @@ export interface OrganizerBookingRow {
   customerPhone: string;
   eventId: string;
   eventName: string;
+  ticketTierNames: string;
   ticketCount: number;
   totalAmountPaise: number;
   paymentStatus: string | null;
@@ -96,7 +97,7 @@ export async function getOrganizerBookings(params: OrganizerBookingsParams): Pro
   const allBookings = await Booking.findAll({
     where: { ...(singleEvent ? { eventId: singleEvent.id } : {}), ...searchWhere },
     include: [
-      { model: Ticket },
+      { model: Ticket, include: [{ model: TicketCategory, attributes: ['name'] }] },
       { model: Payment, limit: 1, order: [['createdAt', 'DESC']] },
       wantsAllEvents
         ? { model: Event, attributes: ['id', 'name'], where: { organizerId } }
@@ -118,6 +119,13 @@ export async function getOrganizerBookings(params: OrganizerBookingsParams): Pro
       customerPhone: b.primaryContactWhatsapp,
       eventId: singleEvent ? singleEvent.id : bookingEvent.id,
       eventName: singleEvent ? singleEvent.name : bookingEvent.name,
+      ticketTierNames:
+        [...new Set(
+          tickets
+            .filter((t) => t.status !== 'cancelled')
+            .map((t) => (t as unknown as { TicketCategory: TicketCategory }).TicketCategory?.name)
+            .filter((name): name is string => Boolean(name)),
+        )].join(', ') || '—',
       ticketCount: activeTicketCount,
       totalAmountPaise: b.totalAmountPaise,
       paymentStatus: payments[0]?.status ?? null,

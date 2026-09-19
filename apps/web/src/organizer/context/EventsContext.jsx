@@ -48,6 +48,30 @@ function apiEventToMockShape(e) {
   };
 }
 
+// Maps GET /api/organizer/bookings?eventId=all onto the shape every page
+// reading `bookings` already expects (see data/mockBookings.js). ticketIds
+// and notes aren't tracked by this backend — they come through empty
+// rather than fabricated.
+function apiBookingToMockShape(b) {
+  const d = new Date(b.createdAt);
+  return {
+    id: b.bookingReference,
+    bookingDate: `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`,
+    eventId: b.eventId,
+    eventName: b.eventName,
+    customerName: b.customerName,
+    customerEmail: b.customerEmail,
+    customerPhone: b.customerPhone,
+    ticketsCount: b.ticketCount,
+    tierName: b.ticketTierNames,
+    amount: Math.round(b.totalAmountPaise / 100),
+    paymentStatus: b.paymentStatus || 'pending',
+    bookingStatus: b.displayStatus,
+    ticketIds: [],
+    notes: '',
+  };
+}
+
 export function EventsProvider({ children }) {
   const { showToast } = useNotifications();
   const { user } = useAuth();
@@ -94,11 +118,12 @@ export function EventsProvider({ children }) {
   });
 
   const [eventsLoadError, setEventsLoadError] = useState(null);
+  const [bookingsLoadError, setBookingsLoadError] = useState(null);
 
-  // Real data: events. Bookings/participants/payments/settings stay on the
-  // mock/localStorage layer above — this backend doesn't have endpoints
-  // for those yet (a global cross-event bookings list, a participants API,
-  // and a payments/payouts API are all separate work, not built here).
+  // Real data: events and bookings (across every event this organizer
+  // owns). Participants/payments/settings stay on the mock/localStorage
+  // layer above — those need their own backend domains this project
+  // doesn't have yet.
   useEffect(() => {
     if (!user?.isLoggedIn || !user?.token) return;
     let cancelled = false;
@@ -111,6 +136,16 @@ export function EventsProvider({ children }) {
       })
       .catch((err) => {
         if (!cancelled) setEventsLoadError(err.message ?? 'Failed to load events');
+      });
+
+    apiRequest('/organizer/bookings?eventId=all&pageSize=100', { token: user.token })
+      .then((data) => {
+        if (cancelled) return;
+        setBookings(data.bookings.map(apiBookingToMockShape));
+        setBookingsLoadError(null);
+      })
+      .catch((err) => {
+        if (!cancelled) setBookingsLoadError(err.message ?? 'Failed to load bookings');
       });
 
     return () => {
@@ -398,6 +433,7 @@ export function EventsProvider({ children }) {
       value={{
         events,
         eventsLoadError,
+        bookingsLoadError,
         bookings,
         participants,
         payments,
