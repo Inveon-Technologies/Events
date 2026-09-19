@@ -12,11 +12,7 @@ import { ManageBookingPage } from './pages/ManageBookingPage';
 import { VerificationLookupPage } from './pages/VerificationLookupPage';
 import { BookingNotFoundPage } from './pages/BookingNotFoundPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
-import { OrganizerLoginPage } from './organizer/pages/OrganizerLoginPage';
-import { OrganizerDashboardPage } from './organizer/pages/OrganizerDashboardPage';
-import { OrganizerBookingsPage } from './organizer/pages/OrganizerBookingsPage';
-import { OrganizerEventsPage } from './organizer/pages/OrganizerEventsPage';
-import { ProtectedRoute } from './organizer/components/ProtectedRoute';
+import { OrganizerApp } from './organizer/OrganizerApp';
 
 export default function App() {
   return (
@@ -38,32 +34,8 @@ export default function App() {
       <Route path="/bookings/:bookingId/manage" element={<ManageBookingPage />} />
       <Route path="/bookings/:bookingId" element={<BookingHubPage />} />
 
-      {/* Organizer back office */}
-      <Route path="/organizer/login" element={<OrganizerLoginPage />} />
-      <Route
-        path="/organizer/dashboard"
-        element={
-          <ProtectedRoute>
-            <OrganizerDashboardPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/organizer/bookings"
-        element={
-          <ProtectedRoute>
-            <OrganizerBookingsPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/organizer/events"
-        element={
-          <ProtectedRoute>
-            <OrganizerEventsPage />
-          </ProtectedRoute>
-        }
-      />
+      {/* Organizer back office — entire nested app, all 44 pages */}
+      <Route path="/organizer/*" element={<OrganizerApp />} />
 
       {/* Catch-all */}
       <Route path="*" element={<EventUnavailablePage reference="404" />} />

@@ -3,17 +3,14 @@ import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
-import { OrganizerAuthProvider } from './organizer/context/AuthContext';
 
 function renderApp(initialPath = '/') {
   const queryClient = new QueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
-      <OrganizerAuthProvider>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <App />
-        </MemoryRouter>
-      </OrganizerAuthProvider>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <App />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }
@@ -45,13 +42,13 @@ describe('App routing', () => {
 
   it('renders the organizer login form', () => {
     renderApp('/organizer/login');
-    expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /organizer sign in/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/work email/i)).toBeInTheDocument();
   });
 
   it('redirects an unauthenticated visitor away from the organizer dashboard', () => {
     renderApp('/organizer/dashboard');
-    // ProtectedRoute should have redirected to /organizer/login instead.
-    expect(screen.getByRole('heading', { name: /welcome back/i })).toBeInTheDocument();
+    // AppLayout should have redirected to /organizer/login instead.
+    expect(screen.getByRole('heading', { name: /organizer sign in/i })).toBeInTheDocument();
   });
 });
