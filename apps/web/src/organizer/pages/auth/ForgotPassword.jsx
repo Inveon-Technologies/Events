@@ -1,21 +1,30 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Mail, ArrowRight, ArrowLeft } from 'lucide-react';
+import { useAuth, ApiError } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState('eeshan.agrawal@inveon.dev');
+  const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const { forgotPassword } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
-    setTimeout(() => {
-      showToast('Password reset OTP sent to ' + email, 'info');
-      navigate('/organizer/verify-otp');
-    }, 400);
+    try {
+      await forgotPassword(email);
+      showToast('If that email is registered, a code has been sent to ' + email, 'info');
+      navigate('/organizer/verify-otp', { state: { email, context: 'reset' } });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to send the code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -32,12 +41,18 @@ export default function ForgotPassword() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" role="alert">
+            {error}
+          </div>
+        )}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Registered Email Address</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="email">Registered Email Address</label>
           <div className="relative">
             <Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="email"
+              id="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}

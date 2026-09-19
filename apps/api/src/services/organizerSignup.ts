@@ -1,7 +1,7 @@
 import { Organizer, User } from '../models';
 import { hashPassword } from '../auth/password';
 import { signAccessToken } from '../auth/jwt';
-import { issueSignupOtp, verifySignupOtp as checkOtp, OTP_EXPIRY_MINUTES } from './otp';
+import { issueOtp, verifyOtp as checkOtp, OTP_EXPIRY_MINUTES } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
 import { otpEmail, registrationSuccessEmail } from '../emails/templates';
 
@@ -68,7 +68,7 @@ export async function initiateSignup(params: InitiateSignupParams): Promise<void
     emailVerified: false,
   });
 
-  const code = await issueSignupOtp(params.email);
+  const code = await issueOtp('signup', params.email);
 
   if (isEmailConfigured()) {
     await sendEmail({
@@ -86,7 +86,7 @@ export async function resendSignupOtp(email: string): Promise<void> {
   const user = await User.findOne({ where: { email } });
   if (!user || user.emailVerified) throw new UserNotFoundError();
 
-  const code = await issueSignupOtp(email);
+  const code = await issueOtp('signup', email);
 
   if (isEmailConfigured()) {
     await sendEmail({
@@ -109,7 +109,7 @@ export async function verifySignup(email: string, code: string): Promise<VerifyS
   const user = await User.findOne({ where: { email } });
   if (!user) throw new UserNotFoundError();
 
-  const ok = await checkOtp(email, code);
+  const ok = await checkOtp('signup', email, code);
   if (!ok) throw new InvalidOtpError();
 
   user.emailVerified = true;
