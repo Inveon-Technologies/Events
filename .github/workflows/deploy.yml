@@ -81,6 +81,8 @@ jobs:
           script_stop: true
           script: |
             cd /var/www/Events
+            git fetch origin main
+            git reset --hard origin/main
             bash scripts/deploy.sh ${{ needs.build-and-push.outputs.image_tag }}
 
       - name: Notify on failure
