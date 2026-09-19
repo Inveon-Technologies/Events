@@ -104,8 +104,39 @@ export function AuthProvider({ children }) {
     });
   };
 
+  // Real forgot-password flow. None of these three log the user in —
+  // forgotPassword just triggers an email, verifyResetOtp exchanges a
+  // correct code for a short-lived reset token (not the code itself,
+  // so it can't be replayed against the final step), and resetPassword
+  // is the actual password change. Same enumeration-avoidance response
+  // shape as login/signup throughout — callers can't tell from the
+  // response whether an email was actually registered.
+  const forgotPassword = async (email) => {
+    await apiRequest('/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+    });
+  };
+
+  const verifyResetOtp = async (email, code) => {
+    const data = await apiRequest('/auth/verify-reset-otp', {
+      method: 'POST',
+      body: { email, code },
+    });
+    return data.resetToken;
+  };
+
+  const resetPassword = async (resetToken, newPassword) => {
+    await apiRequest('/auth/reset-password', {
+      method: 'POST',
+      body: { resetToken, newPassword },
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, setUser, login, signup, verifyOtp, resendOtp, logout }}>
+    <AuthContext.Provider
+      value={{ user, setUser, login, signup, verifyOtp, resendOtp, forgotPassword, verifyResetOtp, resetPassword, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -8,16 +8,19 @@ export default function VerifyOtp() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { verifyOtp, resendOtp } = useAuth();
+  const { verifyOtp, resendOtp, verifyResetOtp, forgotPassword } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
   const inputRefs = useRef([]);
 
-  // Signup (real POST /api/auth/verify-otp, then log in for real) vs.
-  // forgot-password (no real backend flow for that yet — untouched mock
-  // behavior, same as before this page had any real wiring at all).
-  const isSignupContext = location.state?.context === 'signup';
+  // Three real paths land here: signup (POST /verify-otp, then logged
+  // in for real), reset (POST /verify-reset-otp, exchanged for a reset
+  // token, then on to actually setting a new password) — and a
+  // no-context fallback for anyone who somehow lands on this route
+  // directly without going through either flow, which just sends them
+  // back rather than guessing what they meant.
+  const context = location.state?.context;
   const email = location.state?.email;
 
   const handleChange = (index, value) => {
@@ -43,28 +46,24 @@ export default function VerifyOtp() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!isSignupContext) {
-      // Forgot-password flow has no real backend endpoint yet — preserve
-      // exactly the previous mock behavior.
-      setLoading(true);
-      setTimeout(() => {
-        showToast('Email verified successfully!', 'success');
-        navigate('/organizer/create-new-password');
-      }, 400);
+    if (!email || !context) {
+      setError('Missing context — please restart from sign up or forgot password.');
       return;
     }
 
-    if (!email) {
-      setError('Missing email — please restart sign up.');
-      return;
-    }
-
+    const code = otp.join('');
     setError(null);
     setLoading(true);
     try {
-      await verifyOtp(email, otp.join(''));
-      showToast('Email verified successfully! Welcome to Inveon Events.', 'success');
-      navigate('/organizer/dashboard');
+      if (context === 'signup') {
+        await verifyOtp(email, code);
+        showToast('Email verified successfully! Welcome to Inveon Events.', 'success');
+        navigate('/organizer/dashboard');
+      } else {
+        const resetToken = await verifyResetOtp(email, code);
+        showToast('Code verified — set your new password.', 'success');
+        navigate('/organizer/create-new-password', { state: { resetToken } });
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unable to verify. Please try again.');
     } finally {
@@ -73,13 +72,13 @@ export default function VerifyOtp() {
   };
 
   const handleResend = async () => {
-    if (!isSignupContext) {
-      showToast('New OTP sent to your inbox', 'info');
-      return;
-    }
     if (!email) return;
     try {
-      await resendOtp(email);
+      if (context === 'signup') {
+        await resendOtp(email);
+      } else {
+        await forgotPassword(email);
+      }
       showToast('New OTP sent to your inbox', 'info');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not resend code.', 'error');

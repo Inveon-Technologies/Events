@@ -10,6 +10,13 @@ import {
   UserNotFoundError,
   InvalidOtpError,
 } from '../services/organizerSignup';
+import {
+  initiateForgotPassword,
+  verifyForgotPasswordOtp,
+  resetPassword,
+  InvalidOtpError as InvalidResetOtpError,
+  InvalidResetTokenError,
+} from '../services/passwordReset';
 
 export const authRouter = Router();
 
@@ -113,6 +120,60 @@ authRouter.post('/resend-otp', async (req, res) => {
       // Same enumeration-avoidance reasoning as login — don't reveal
       // whether an email is registered or already verified.
       res.status(200).json({ message: 'Verification code resent' });
+      return;
+    }
+    throw err;
+  }
+});
+
+authRouter.post('/forgot-password', async (req, res) => {
+  const { email } = req.body as Record<string, unknown>;
+
+  if (typeof email !== 'string' || !email.trim()) {
+    res.status(400).json({ error: 'email is required' });
+    return;
+  }
+
+  // Always the same response, registered or not — see
+  // initiateForgotPassword's own comment for why.
+  await initiateForgotPassword(email);
+  res.status(200).json({ message: 'If that email is registered, a verification code has been sent' });
+});
+
+authRouter.post('/verify-reset-otp', async (req, res) => {
+  const { email, code } = req.body as Record<string, unknown>;
+
+  if (typeof email !== 'string' || typeof code !== 'string') {
+    res.status(400).json({ error: 'email and code are required' });
+    return;
+  }
+
+  try {
+    const resetToken = await verifyForgotPasswordOtp(email, code);
+    res.status(200).json({ resetToken });
+  } catch (err) {
+    if (err instanceof InvalidResetOtpError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+});
+
+authRouter.post('/reset-password', async (req, res) => {
+  const { resetToken, newPassword } = req.body as Record<string, unknown>;
+
+  if (typeof resetToken !== 'string' || typeof newPassword !== 'string' || newPassword.length < 8) {
+    res.status(400).json({ error: 'resetToken is required and newPassword must be at least 8 characters' });
+    return;
+  }
+
+  try {
+    await resetPassword(resetToken, newPassword);
+    res.status(200).json({ message: 'Password updated' });
+  } catch (err) {
+    if (err instanceof InvalidResetTokenError) {
+      res.status(400).json({ error: err.message });
       return;
     }
     throw err;

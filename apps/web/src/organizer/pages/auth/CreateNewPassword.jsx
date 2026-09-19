@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Lock, ArrowRight, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { useAuth, ApiError } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 
 export default function CreateNewPassword() {
@@ -8,11 +9,15 @@ export default function CreateNewPassword() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
+  const { resetPassword } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();
+  const location = useLocation();
+  const resetToken = location.state?.resetToken;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       showToast('Passwords do not match', 'error');
@@ -22,11 +27,26 @@ export default function CreateNewPassword() {
       showToast('Password must be at least 8 characters', 'error');
       return;
     }
+    if (!resetToken) {
+      setError('This reset link has expired. Please start over from Forgot Password.');
+      return;
+    }
+
+    setError(null);
     setLoading(true);
-    setTimeout(() => {
-      showToast('Password reset successfully! Please verify identity.', 'success');
-      navigate('/organizer/verify-identity');
-    }, 400);
+    try {
+      await resetPassword(resetToken, password);
+      showToast('Password reset successfully! Please sign in.', 'success');
+      // A password reset doesn't require re-verifying identity or bank
+      // details — those are onboarding steps for a brand-new account,
+      // not something resetting a password should ever revisit. Straight
+      // to sign in.
+      navigate('/organizer/login');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Unable to reset password. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -39,12 +59,18 @@ export default function CreateNewPassword() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {error && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700" role="alert">
+            {error}
+          </div>
+        )}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">New Password</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="new-password">New Password</label>
           <div className="relative">
             <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type={showPassword ? 'text' : 'password'}
+              id="new-password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -62,11 +88,12 @@ export default function CreateNewPassword() {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm New Password</label>
+          <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor="confirm-password">Confirm New Password</label>
           <div className="relative">
             <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type={showPassword ? 'text' : 'password'}
+              id="confirm-password"
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
