@@ -1,4 +1,10 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
+// No base URL by default — same-origin, relative requests. This is what
+// production needs: nginx serves the web build and proxies /api/* to the
+// api container on the same origin, so there's nothing to configure and
+// no CORS to worry about. Local dev, where the Vite dev server (5173) and
+// the API (3000) are different origins, sets VITE_API_BASE_URL explicitly
+// in apps/web/.env (see .env.example) to override this.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export class ApiError extends Error {
   status: number;
@@ -12,7 +18,7 @@ export async function apiRequest<T>(
   path: string,
   options: { method?: string; body?: unknown; token?: string | null } = {},
 ): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const res = await fetch(`${API_BASE_URL}/api${path}`, {
     method: options.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
