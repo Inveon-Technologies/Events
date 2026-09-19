@@ -1,7 +1,22 @@
 import { Router } from 'express';
 import { createBooking, SoldOutError, NotFoundError } from '../services/bookingCreation';
+import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
 
 export const publicBookingsRouter = Router();
+
+publicBookingsRouter.get('/events', async (_req, res) => {
+  const events = await listPublicEvents();
+  res.status(200).json({ events });
+});
+
+publicBookingsRouter.get('/events/:eventId', async (req, res) => {
+  const event = await getPublicEvent(req.params.eventId);
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' });
+    return;
+  }
+  res.status(200).json(event);
+});
 
 publicBookingsRouter.post('/events/:eventId/bookings', async (req, res) => {
   const { eventId } = req.params;

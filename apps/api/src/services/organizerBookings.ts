@@ -8,6 +8,8 @@ export interface OrganizerBookingRow {
   bookingReference: string;
   customerName: string;
   customerEmail: string;
+  customerPhone: string;
+  eventId: string;
   eventName: string;
   ticketCount: number;
   totalAmountPaise: number;
@@ -58,10 +60,15 @@ export async function getOrganizerBookings(params: OrganizerBookingsParams): Pro
     attributes: ['id', 'name'],
   });
 
-  const eventId = params.eventId ?? organizerEvents[0]?.id;
-  const event = eventId ? await Event.findOne({ where: { id: eventId, organizerId } }) : null;
+  // eventId === 'all' (or omitted with no events at all) means "every
+  // event this organizer owns" — used by the dashboard and the global
+  // Bookings operations page, as opposed to the per-event bookings tab
+  // reached from a specific event's own workspace.
+  const wantsAllEvents = params.eventId === 'all';
+  const eventId = wantsAllEvents ? undefined : (params.eventId ?? organizerEvents[0]?.id);
+  const singleEvent = !wantsAllEvents && eventId ? await Event.findOne({ where: { id: eventId, organizerId } }) : null;
 
-  if (!event) {
+  if (!wantsAllEvents && !singleEvent) {
     return {
       organizerName: organizer?.name ?? 'Organizer',
       event: null,
@@ -82,25 +89,35 @@ export async function getOrganizerBookings(params: OrganizerBookingsParams): Pro
       }
     : {};
 
-  // Every booking for this event, with its tickets, is needed to derive
-  // status correctly — status filtering therefore happens in application
-  // code below, not via a WHERE clause on the DB status column.
+  // Every booking (for this event, or for every event this organizer
+  // owns) with its tickets, is needed to derive status correctly — status
+  // filtering therefore happens in application code below, not via a
+  // WHERE clause on the DB status column.
   const allBookings = await Booking.findAll({
-    where: { eventId: event.id, ...searchWhere },
-    include: [{ model: Ticket }, { model: Payment, limit: 1, order: [['createdAt', 'DESC']] }],
+    where: { ...(singleEvent ? { eventId: singleEvent.id } : {}), ...searchWhere },
+    include: [
+      { model: Ticket },
+      { model: Payment, limit: 1, order: [['createdAt', 'DESC']] },
+      wantsAllEvents
+        ? { model: Event, attributes: ['id', 'name'], where: { organizerId } }
+        : { model: Event, attributes: ['id', 'name'] },
+    ],
     order: [['createdAt', params.sort === 'oldest' ? 'ASC' : 'DESC']],
   });
 
   const rows: OrganizerBookingRow[] = allBookings.map((b) => {
     const tickets = (b as unknown as { Tickets: Ticket[] }).Tickets ?? [];
     const payments = (b as unknown as { Payments: Payment[] }).Payments ?? [];
+    const bookingEvent = (b as unknown as { Event: Event }).Event;
     const activeTicketCount = tickets.filter((t) => t.status !== 'cancelled').length;
     return {
       id: b.id,
       bookingReference: b.bookingReference,
       customerName: b.primaryContactName,
       customerEmail: b.primaryContactEmail,
-      eventName: event.name,
+      customerPhone: b.primaryContactWhatsapp,
+      eventId: singleEvent ? singleEvent.id : bookingEvent.id,
+      eventName: singleEvent ? singleEvent.name : bookingEvent.name,
       ticketCount: activeTicketCount,
       totalAmountPaise: b.totalAmountPaise,
       paymentStatus: payments[0]?.status ?? null,
@@ -131,7 +148,9 @@ export async function getOrganizerBookings(params: OrganizerBookingsParams): Pro
 
   return {
     organizerName: organizer?.name ?? 'Organizer',
-    event: { id: event.id, name: event.name, eventDate: event.eventDate.toISOString(), status: event.status },
+    event: singleEvent
+      ? { id: singleEvent.id, name: singleEvent.name, eventDate: singleEvent.eventDate.toISOString(), status: singleEvent.status }
+      : null,
     organizerEvents: organizerEvents.map((e) => ({ id: e.id, name: e.name })),
     counts,
     bookings: paged,
