@@ -1,22 +1,44 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { getEventData } from '../mockData/rajgadTrek';
+import { fetchEventData, EventDetails } from '../mockData/rajgadTrek';
 import { formatINR } from '../lib/format';
 
 export function EventDetailsPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
 
-  const event = getEventData(eventId);
+  const [event, setEvent] = useState<EventDetails | null>(null);
 
   const [activeTab, setActiveTab] = useState<'about' | 'details' | 'gear' | 'location' | 'policy'>('about');
   const [galleryIdx, setGalleryIdx] = useState(0);
-  const [quantities, setQuantities] = useState<Record<string, number>>(() => ({
-    general: 1,
-    vip: 0,
-  }));
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEventData(eventId).then((data) => {
+      if (cancelled) return;
+      setEvent(data);
+      // Pre-select 1 of the first (cheapest) real ticket tier — the
+      // previous hardcoded { general: 1, vip: 0 } only made sense for
+      // the mock event's fixed tier ids.
+      setQuantities(data.ticketCategories[0] ? { [data.ticketCategories[0].id]: 1 } : {});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId]);
+
+  if (!event) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
 
   const galleryImages = event.galleryImages && event.galleryImages.length > 0
     ? event.galleryImages
@@ -34,8 +56,8 @@ export function EventDetailsPage() {
   function handleShare() {
     if (navigator.share) {
       navigator.share({
-        title: event.name,
-        text: `Join me for ${event.name}!`,
+        title: event!.name,
+        text: `Join me for ${event!.name}!`,
         url: window.location.href,
       }).catch(() => {});
     } else {
@@ -68,7 +90,7 @@ export function EventDetailsPage() {
       showToast('Please select at least 1 ticket to proceed');
       return;
     }
-    navigate(`/events/${event.id}/checkout`, {
+    navigate(`/events/${event!.id}/checkout`, {
       state: { quantities },
     });
   }
