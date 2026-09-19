@@ -2,24 +2,25 @@ import { Router } from 'express';
 import { createBooking, SoldOutError, NotFoundError } from '../services/bookingCreation';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
 import { sendBookingConfirmationEmail } from '../services/bookingEmails';
+import { asyncHandler } from '../middleware/asyncHandler';
 
 export const publicBookingsRouter = Router();
 
-publicBookingsRouter.get('/events', async (_req, res) => {
+publicBookingsRouter.get('/events', asyncHandler(async (_req, res) => {
   const events = await listPublicEvents();
   res.status(200).json({ events });
-});
+}));
 
-publicBookingsRouter.get('/events/:eventId', async (req, res) => {
+publicBookingsRouter.get('/events/:eventId', asyncHandler(async (req, res) => {
   const event = await getPublicEvent(req.params.eventId);
   if (!event) {
     res.status(404).json({ error: 'Event not found' });
     return;
   }
   res.status(200).json(event);
-});
+}));
 
-publicBookingsRouter.post('/events/:eventId/bookings', async (req, res) => {
+publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const {
     ticketCategoryId,
@@ -76,4 +77,4 @@ publicBookingsRouter.post('/events/:eventId/bookings', async (req, res) => {
     }
     throw err;
   }
-});
+}));
