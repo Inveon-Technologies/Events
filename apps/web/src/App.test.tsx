@@ -24,6 +24,15 @@ describe('App routing', () => {
     expect(screen.getByText(/Discover\. Book\./i)).toBeInTheDocument();
   });
 
+  it('links "Host an Event" to organizer login, not the mock organizer profile page', () => {
+    renderApp('/');
+    const hostLinks = screen.getAllByRole('link', { name: /host an event/i });
+    expect(hostLinks.length).toBeGreaterThan(0);
+    for (const link of hostLinks) {
+      expect(link).toHaveAttribute('href', '/organizer/login');
+    }
+  });
+
   it('renders event details for a known mock event', () => {
     renderApp('/events/rajgad-sunrise-trek-2026');
     expect(screen.getAllByText(/Rajgad Sunrise Trek/i).length).toBeGreaterThan(0);

@@ -6,7 +6,7 @@ import { Icon } from './Icon';
 const NAV_LINKS = [
   { to: '/', label: 'Explore' },
   { to: '/#categories', label: 'Categories' },
-  { to: '/organizers/example-adventures', label: 'Host an Event' },
+  { to: '/organizer/login', label: 'Host an Event' },
 ];
 
 export function Header() {
@@ -75,7 +75,7 @@ export function Header() {
             </svg>
           </a>
           <Link
-            to="/organizers/example-adventures"
+            to="/organizer/login"
             className="hover:text-brand-600 transition-colors"
           >
             Host an Event
@@ -109,7 +109,7 @@ export function Header() {
 
           {/* Host an Event Primary button */}
           <Link
-            to="/organizers/example-adventures"
+            to="/organizer/login"
             className="inline-flex items-center justify-center px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 active:bg-brand-800 shadow-sm shadow-brand-500/30 transition-all hover:shadow-md"
           >
             Host an Event
@@ -180,7 +180,7 @@ export function Header() {
               Login
             </Link>
             <Link
-              to="/organizers/example-adventures"
+              to="/organizer/login"
               onClick={() => setMobileOpen(false)}
               className="w-full py-2.5 text-center text-sm font-semibold text-white bg-primary rounded-lg"
             >

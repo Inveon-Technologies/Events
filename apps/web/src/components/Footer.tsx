@@ -54,7 +54,7 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <Link to="/organizers/example-adventures" className="hover:text-white transition-colors">
+                <Link to="/organizer/login" className="hover:text-white transition-colors">
                   Host an Event
                 </Link>
               </li>
