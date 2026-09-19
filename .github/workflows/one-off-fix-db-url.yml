@@ -21,12 +21,20 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script_stop: true
           script: |
-            PGPASS=$(grep EVENTS_POSTGRES_PASSWORD ~/inveontechnologies-website/.env | cut -d= -f2)
+            PGPASS=$(grep -m1 '^EVENTS_POSTGRES_PASSWORD=' ~/inveontechnologies-website/.env | cut -d= -f2-)
             if [ -z "$PGPASS" ]; then
               echo "Could not find EVENTS_POSTGRES_PASSWORD in ~/inveontechnologies-website/.env"
               exit 1
             fi
-            sed -i "s#^DATABASE_URL=.*#DATABASE_URL=postgres://events:${PGPASS}@events-postgres:5432/events#" /var/www/Events/apps/api/.env
+            # Treat the password as pure data, never as part of a sed/regex
+            # pattern — a previous attempt built a sed program string with
+            # the password embedded in it, which broke (unterminated 's'
+            # command) because the real value collided with the delimiter.
+            # This rewrites the file with plain string concatenation
+            # instead, immune to whatever characters the password contains.
+            grep -v '^DATABASE_URL=' /var/www/Events/apps/api/.env > /tmp/api.env.new
+            echo "DATABASE_URL=postgres://events:${PGPASS}@events-postgres:5432/events" >> /tmp/api.env.new
+            mv /tmp/api.env.new /var/www/Events/apps/api/.env
             echo "DATABASE_URL now (password masked):"
             grep DATABASE_URL /var/www/Events/apps/api/.env | sed -E 's/(:\/\/[^:]+:)[^@]+(@)/\1***\2/'
 
