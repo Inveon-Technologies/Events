@@ -66,6 +66,11 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    # VPS_HOST/VPS_USER/VPS_SSH_KEY live under this GitHub Environment, not
+    # as plain repo-level secrets — without naming it here, the job can't
+    # see them at all (they'd silently resolve empty), regardless of
+    # whether they're stored as Secrets or Variables.
+    environment: "AWS 13.51.250.242"
     steps:
       - name: Deploy to VPS over SSH
         uses: appleboy/ssh-action@v1.0.3
