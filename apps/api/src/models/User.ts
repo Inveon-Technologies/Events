@@ -9,6 +9,8 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare email: string;
   declare passwordHash: string;
   declare role: UserRole;
+  declare emailVerified: CreationOptional<boolean>;
+  declare name: string | null;
   declare readonly createdAt: CreationOptional<Date>;
   declare readonly updatedAt: CreationOptional<Date>;
 }
@@ -20,6 +22,8 @@ User.init(
     email: { type: DataTypes.STRING, allowNull: false, unique: true },
     passwordHash: { type: DataTypes.STRING, allowNull: false },
     role: { type: DataTypes.ENUM('platform_admin', 'organizer_owner', 'organizer_staff', 'gate_volunteer'), allowNull: false },
+    emailVerified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    name: { type: DataTypes.STRING, allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

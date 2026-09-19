@@ -52,8 +52,10 @@ jobs:
         working-directory: apps/${{ matrix.app }}
         run: npm run build
 
-  # Runs the booking-concurrency test suite specifically, on every PR touching the API.
-  # This is the oversell-prevention logic (BE-11) — it must never go green by accident.
+  # Runs DB/Redis-dependent test suites specifically, on every PR touching
+  # the API: booking-concurrency (the oversell-prevention logic, BE-11 —
+  # must never go green by accident) and the signup/OTP integration tests
+  # (real account creation + email verification against a real DB+Redis).
   concurrency-tests:
     runs-on: ubuntu-latest
     needs: lint-test-build
@@ -102,3 +104,11 @@ jobs:
           DATABASE_URL: postgres://test:test@localhost:5432/inveon_events_test
           REDIS_URL: redis://localhost:6379
         run: npm run test:concurrency
+
+      - name: Run signup/OTP integration tests
+        working-directory: apps/api
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/inveon_events_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret
+        run: npm run test:integration

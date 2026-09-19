@@ -4,6 +4,26 @@ import { apiRequest, ApiError } from '../lib/api';
 const AuthContext = createContext();
 
 const STORAGE_KEY = 'inveon_user';
+const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
+
+function buildUserFromAuthResponse(data) {
+  return {
+    id: data.user.id,
+    email: data.user.email,
+    role: data.user.role,
+    organizerId: data.user.organizerId,
+    token: data.token,
+    // Not returned by either /auth/login or /auth/verify-otp — the
+    // dashboard page fetches and fills this in right after redirect (it
+    // already calls GET /organizer/dashboard, which returns
+    // organizerName as its first field, so this avoids a second
+    // round-trip during login just to learn the same thing).
+    name: data.user.email.split('@')[0],
+    orgName: null,
+    avatar: DEFAULT_AVATAR,
+    isLoggedIn: true,
+  };
+}
 
 export function AuthProvider({ children }) {
   // No default logged-in persona — a fresh visitor is NOT authenticated
@@ -30,30 +50,15 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   // Real POST /api/auth/login. Throws ApiError on failure (wrong
-  // credentials, wrong role, network error) — callers (Login.jsx) are
-  // responsible for catching it and showing the real error, not
-  // assuming success like the previous mock did.
+  // credentials, wrong role, unverified account, network error) —
+  // callers (Login.jsx) are responsible for catching it and showing the
+  // real error, not assuming success like the previous mock did.
   const login = async (email, password) => {
     const data = await apiRequest('/auth/login', {
       method: 'POST',
       body: { email, password },
     });
-    const updated = {
-      id: data.user.id,
-      email: data.user.email,
-      role: data.user.role,
-      organizerId: data.user.organizerId,
-      token: data.token,
-      // Not returned by /auth/login itself — the dashboard page fetches
-      // and fills this in right after redirect (it already calls
-      // GET /organizer/dashboard, which returns organizerName as its
-      // first field, so this avoids a second round-trip during login
-      // just to learn the same thing).
-      name: data.user.email.split('@')[0],
-      orgName: null,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-      isLoggedIn: true,
-    };
+    const updated = buildUserFromAuthResponse(data);
     setUser(updated);
     return updated;
   };
@@ -62,28 +67,45 @@ export function AuthProvider({ children }) {
     setUser({ isLoggedIn: false });
   };
 
-  // No real organizer-registration endpoint exists yet — kept as the
-  // original mock behavior (creates a fake local session) so SignUp.jsx
-  // still works as a demo, rather than breaking it outright. Genuinely
-  // wiring this needs a real POST /api/auth/signup this project doesn't
-  // have yet.
-  const signup = (userData) => {
-    const updated = {
-      name: userData.fullName || 'Organizer',
-      email: userData.email,
-      role: 'organizer_owner',
-      organizerId: null,
-      token: null,
-      orgName: userData.orgName || 'Inveon Experiences',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
-      isLoggedIn: true,
-    };
-    setUser(updated);
+  // Real POST /api/auth/signup. Does NOT log the user in — the account
+  // exists but is unverified until the OTP step succeeds, matching the
+  // real backend's contract. Throws ApiError on failure (email already
+  // registered, validation error).
+  const signup = async (userData) => {
+    await apiRequest('/auth/signup', {
+      method: 'POST',
+      body: {
+        fullName: userData.fullName,
+        email: userData.email,
+        phone: userData.phone,
+        orgName: userData.orgName,
+        password: userData.password,
+      },
+    });
     return true;
   };
 
+  // Real POST /api/auth/verify-otp. On success the account is now
+  // verified and this logs the user in for real, same as login().
+  const verifyOtp = async (email, code) => {
+    const data = await apiRequest('/auth/verify-otp', {
+      method: 'POST',
+      body: { email, code },
+    });
+    const updated = buildUserFromAuthResponse(data);
+    setUser(updated);
+    return updated;
+  };
+
+  const resendOtp = async (email) => {
+    await apiRequest('/auth/resend-otp', {
+      method: 'POST',
+      body: { email },
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, setUser, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, setUser, login, signup, verifyOtp, resendOtp, logout }}>
       {children}
     </AuthContext.Provider>
   );
