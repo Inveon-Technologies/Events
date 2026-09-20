@@ -29,7 +29,8 @@
     "pg": "^8.13.1",
     "qrcode": "^1.5.4",
     "redis": "^4.7.0",
-    "sequelize": "^6.37.5"
+    "sequelize": "^6.37.5",
+    "umzug": "^3.8.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -49,7 +50,6 @@
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "umzug": "^3.8.2"
+    "typescript": "^5.7.2"
   }
 }
