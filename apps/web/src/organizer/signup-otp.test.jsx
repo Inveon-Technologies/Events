@@ -126,10 +126,10 @@ describe('organizer portal: real signup + OTP verification', () => {
       ),
     );
 
-    // Real login on success — the dashboard's own real-data fetch (not
-    // mocked further here) means we just confirm navigation happened by
-    // checking the login/signup form is no longer showing.
-    await waitFor(() => expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument());
+    // Real login on success, but lands on identity verification next,
+    // not the dashboard directly — a real organizer needs to complete
+    // identity verification and bank details before running paid events.
+    await waitFor(() => expect(screen.getByRole('heading', { name: /organizer identity verification/i })).toBeInTheDocument());
   });
 
   it('resend is disabled behind a 2-minute cooldown, counts down, and re-enables — clicking while disabled never calls the API', async () => {

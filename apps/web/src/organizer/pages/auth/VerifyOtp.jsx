@@ -77,8 +77,11 @@ export default function VerifyOtp() {
     try {
       if (context === 'signup') {
         await verifyOtp(email, code);
-        showToast('Email verified successfully! Welcome to Inveon Events.', 'success');
-        navigate('/organizer/dashboard');
+        showToast('Email verified successfully! Let\'s finish setting up your account.', 'success');
+        // Straight to dashboard skipped identity verification and bank
+        // details entirely — real organizers need both completed before
+        // they can actually run paid events and receive payouts.
+        navigate('/organizer/verify-identity');
       } else {
         const resetToken = await verifyResetOtp(email, code);
         showToast('Code verified — set your new password.', 'success');
