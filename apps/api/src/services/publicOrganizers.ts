@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { Organizer, User, Event, TicketCategory } from '../models';
+import { getOrganizerRatingSummary, RatingSummary } from './eventReviews';
 
 export interface PublicOrganizerSummary {
   slug: string;
@@ -7,6 +8,7 @@ export interface PublicOrganizerSummary {
   logoUrl: string | null;
   about: string | null;
   publishedEventCount: number;
+  ratingSummary: RatingSummary;
 }
 
 export interface PublicOrganizerEvent {
@@ -27,6 +29,7 @@ export interface PublicOrganizerDetail {
   about: string | null;
   contactEmail: string | null;
   events: PublicOrganizerEvent[];
+  ratingSummary: RatingSummary;
 }
 
 // "Verified" here means the organizer has at least one user who has
@@ -56,12 +59,14 @@ export async function listPublicOrganizers(): Promise<PublicOrganizerSummary[]> 
       const publishedEventCount = await Event.count({
         where: { organizerId: organizer.id, status: 'published' },
       });
+      const ratingSummary = await getOrganizerRatingSummary(organizer.id);
       return {
         slug: organizer.slug,
         name: organizer.name,
         logoUrl: organizer.logoUrl,
         about: organizer.about,
         publishedEventCount,
+        ratingSummary,
       };
     }),
   );
@@ -105,5 +110,6 @@ export async function getPublicOrganizer(slug: string): Promise<PublicOrganizerD
     about: organizer.about,
     contactEmail: organizer.contactEmail,
     events: eventDetails,
+    ratingSummary: await getOrganizerRatingSummary(organizer.id),
   };
 }

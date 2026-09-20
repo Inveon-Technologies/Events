@@ -2,6 +2,12 @@ import { Router } from 'express';
 import { createBooking, SoldOutError, NotFoundError } from '../services/bookingCreation';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
 import { listPublicOrganizers, getPublicOrganizer } from '../services/publicOrganizers';
+import {
+  submitReview,
+  getEventReviews,
+  NotFoundError as ReviewNotFoundError,
+  ValidationError as ReviewValidationError,
+} from '../services/eventReviews';
 import { sendBookingConfirmationEmail } from '../services/bookingEmails';
 import { asyncHandler } from '../middleware/asyncHandler';
 
@@ -88,6 +94,44 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
     }
     if (err instanceof NotFoundError) {
       res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+publicBookingsRouter.get('/events/:eventId/reviews', asyncHandler(async (req, res) => {
+  // Accepts the event's real database id here specifically (not slug)
+  // — this route is only ever called from EventDetailsPage.tsx with the
+  // id already resolved from the event detail response it just fetched,
+  // same pattern as organizer-side event-scoped routes.
+  const reviews = await getEventReviews(req.params.eventId);
+  res.status(200).json({ reviews });
+}));
+
+publicBookingsRouter.post('/bookings/:bookingReference/feedback', asyncHandler(async (req, res) => {
+  const { email, rating, reviewText } = req.body as Record<string, unknown>;
+
+  if (typeof email !== 'string' || typeof rating !== 'number') {
+    res.status(400).json({ error: 'Email and rating are required' });
+    return;
+  }
+
+  try {
+    const result = await submitReview({
+      bookingReference: req.params.bookingReference,
+      email,
+      rating,
+      reviewText: typeof reviewText === 'string' ? reviewText : undefined,
+    });
+    res.status(201).json(result);
+  } catch (err) {
+    if (err instanceof ReviewNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof ReviewValidationError) {
+      res.status(400).json({ error: err.message });
       return;
     }
     throw err;
