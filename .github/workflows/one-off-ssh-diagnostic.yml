@@ -1,0 +1,23 @@
+name: One-off — SSH connectivity diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ssh-diagnostic:
+    runs-on: ubuntu-latest
+    environment: "AWS 13.51.250.242"
+    steps:
+      - name: Trivial SSH check
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            echo "SSH connection works"
+            whoami
+            pwd
+            date
+            cat /var/www/Events/apps/api/.env | grep -c "JWT_SECRET"
