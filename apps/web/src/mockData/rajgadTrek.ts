@@ -228,6 +228,12 @@ export interface EventDetails {
     bio: string;
     avatar: string;
   };
+  // Real fields only — no mock equivalent exists for these, unlike
+  // schedule/packingList above which have a rich hand-authored mock
+  // template to fall back to. null/undefined means "nothing to show",
+  // handled by the page rendering nothing rather than a placeholder.
+  cancellationPolicyText?: string | null;
+  faqItems?: { question: string; answer: string }[] | null;
   ticketCategories: TicketCategory[];
 }
 
@@ -468,6 +474,26 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
         ? realPhotos.map((m: { url: string }) => ({ src: m.url, alt: real.name }))
         : template.galleryImages,
       videoUrl: realVideo ? realVideo.url : null,
+      // Same "real data or the mock template, never a mix that implies
+      // a real event has content it doesn't" reasoning as the gallery
+      // above — an organizer who didn't fill in a schedule shouldn't
+      // have a fabricated one appear on their real event.
+      schedule: Array.isArray(real.scheduleItems) && real.scheduleItems.length > 0
+        ? real.scheduleItems.map((s: { time: string; title: string; description?: string }) => ({
+            time: s.time,
+            title: s.title,
+            desc: s.description || '',
+          }))
+        : template.schedule,
+      packingList: Array.isArray(real.packingChecklist) && real.packingChecklist.length > 0
+        ? real.packingChecklist.map((p: { item: string; mandatory: boolean }) => ({
+            icon: p.mandatory ? 'check_circle' : 'info',
+            title: p.item,
+            desc: p.mandatory ? 'Mandatory' : 'Optional',
+          }))
+        : template.packingList,
+      cancellationPolicyText: real.cancellationPolicy || null,
+      faqItems: Array.isArray(real.faqItems) && real.faqItems.length > 0 ? real.faqItems : null,
       ticketCategories: real.ticketCategories.map((tc: { id: string; name: string; description: string | null; pricePaise: number; maxPerBooking: number; available: number }) => ({
         id: tc.id,
         name: tc.name,
