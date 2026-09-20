@@ -24,15 +24,44 @@ import {
   Compass,
   LocateFixed,
   Building2,
-  AlertCircle
+  AlertCircle,
+  X,
+  Video,
+  Image as ImageIcon
 } from 'lucide-react';
 import { useEvents } from '../../../context/EventsContext';
 import { useNotifications } from '../../../context/NotificationContext';
-import { ApiError } from '../../../lib/api';
+import { useAuth } from '../../../context/AuthContext';
+import { ApiError, uploadEventMediaFile } from '../../../lib/api';
+
+const MAX_IMAGES = 5;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_VIDEO_DURATION_SECONDS = 20;
+
+// Client-side check for fast feedback before ever uploading — the
+// server (see apps/api/src/services/eventMedia.ts) re-checks this with
+// real ffprobe against the file's own container metadata regardless,
+// since a browser-reported duration isn't authoritative.
+function readVideoDuration(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src);
+      resolve(video.duration);
+    };
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src);
+      reject(new Error('Could not read this video file'));
+    };
+    video.src = URL.createObjectURL(file);
+  });
+}
 
 export default function CreateEvent() {
   const { addEvent } = useEvents();
   const { showToast } = useNotifications();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -85,6 +114,92 @@ export default function CreateEvent() {
   const [mapSearchQuery, setMapSearchQuery] = useState('');
   const [mapAutoFilled, setMapAutoFilled] = useState(true);
   const [isLocating, setIsLocating] = useState(false);
+
+  // Staged locally as real File objects, not yet uploaded — an event
+  // must exist in the database before media can be attached to it (the
+  // upload endpoint is scoped to a real event id), so these only
+  // actually upload once the event itself is successfully created, in
+  // handleNext/handleSaveDraft below.
+  const [mediaImages, setMediaImages] = useState([]);
+  const [mediaVideo, setMediaVideo] = useState(null);
+  const [mediaError, setMediaError] = useState('');
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
+  async function handleImageFilesSelected(e) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ''; // allow re-selecting the same file after removing it
+    setMediaError('');
+
+    if (mediaImages.length + files.length > MAX_IMAGES) {
+      setMediaError(`You can add up to ${MAX_IMAGES} images total.`);
+      return;
+    }
+    const oversized = files.find((f) => f.size > MAX_FILE_SIZE_BYTES);
+    if (oversized) {
+      setMediaError(`"${oversized.name}" is over the 10MB limit.`);
+      return;
+    }
+    setMediaImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+  }
+
+  function removeImage(index) {
+    setMediaImages((prev) => {
+      URL.revokeObjectURL(prev[index].previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  async function handleVideoFileSelected(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setMediaError('');
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setMediaError('Video is over the 10MB limit.');
+      return;
+    }
+    try {
+      const duration = await readVideoDuration(file);
+      if (duration > MAX_VIDEO_DURATION_SECONDS) {
+        setMediaError(`Video is ${duration.toFixed(1)}s — the limit is ${MAX_VIDEO_DURATION_SECONDS} seconds.`);
+        return;
+      }
+      setMediaVideo({ file, previewUrl: URL.createObjectURL(file), duration });
+    } catch {
+      setMediaError('Could not read this video file — please try a different one.');
+    }
+  }
+
+  function removeVideo() {
+    if (mediaVideo) URL.revokeObjectURL(mediaVideo.previewUrl);
+    setMediaVideo(null);
+  }
+
+  // Uploads every staged file to the now-real event, sequentially (not
+  // Promise.all) so one failure doesn't abandon uploads already in
+  // flight, and so the reported failure count is accurate rather than a
+  // race. The event itself is already created and safe by this point —
+  // a media upload failure is reported but never undoes it.
+  async function uploadStagedMedia(eventId) {
+    const allFiles = [...mediaImages.map((m) => m.file), ...(mediaVideo ? [mediaVideo.file] : [])];
+    if (allFiles.length === 0) return;
+
+    setUploadingMedia(true);
+    let failures = 0;
+    for (const file of allFiles) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await uploadEventMediaFile(eventId, file, user?.token);
+      } catch {
+        failures += 1;
+      }
+    }
+    setUploadingMedia(false);
+    if (failures > 0) {
+      showToast(`Event saved, but ${failures} of ${allFiles.length} media file(s) failed to upload.`, 'error');
+    }
+  }
 
   // Preset location venues for quick pin drop / auto-fill
   const PRESET_VENUES = [
@@ -272,6 +387,7 @@ export default function CreateEvent() {
     } else {
       try {
         const created = await addEvent({ ...formData, status: 'published' });
+        await uploadStagedMedia(created.id);
         navigate(`/organizer/events/${created.id}/dashboard`);
       } catch (err) {
         showToast(err instanceof ApiError ? err.message : 'Failed to publish event. Please try again.', 'error');
@@ -281,7 +397,8 @@ export default function CreateEvent() {
 
   const handleSaveDraft = async () => {
     try {
-      await addEvent({ ...formData, status: 'draft' });
+      const created = await addEvent({ ...formData, status: 'draft' });
+      await uploadStagedMedia(created.id);
       showToast('Saved as draft in My Events', 'info');
       navigate('/organizer/events?tab=draft');
     } catch (err) {
@@ -336,10 +453,11 @@ export default function CreateEvent() {
         <button
           onClick={handleSaveDraft}
           type="button"
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs"
+          disabled={uploadingMedia}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <Save className="w-3.5 h-3.5 text-slate-500" />
-          <span>Save as Draft</span>
+          <span>{uploadingMedia ? 'Uploading media…' : 'Save as Draft'}</span>
         </button>
       </div>
 
@@ -398,33 +516,76 @@ export default function CreateEvent() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Event Category *</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="Adventure & Trekking">Adventure & Trekking</option>
-                  <option value="Technology & Conferences">Technology & Conferences</option>
-                  <option value="Music & Festivals">Music & Festivals</option>
-                  <option value="Health & Wellness">Health & Wellness</option>
-                  <option value="Food & Heritage">Food & Heritage</option>
-                  <option value="Sports & Fitness">Sports & Fitness</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Event Category *</label>
+              <select
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                className="w-full sm:w-1/2 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                <option value="Adventure & Trekking">Adventure & Trekking</option>
+                <option value="Technology & Conferences">Technology & Conferences</option>
+                <option value="Music & Festivals">Music & Festivals</option>
+                <option value="Health & Wellness">Health & Wellness</option>
+                <option value="Food & Heritage">Food & Heritage</option>
+                <option value="Sports & Fitness">Sports & Fitness</option>
+              </select>
+            </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Primary Banner Image URL</label>
-                <input
-                  type="text"
-                  value={formData.bannerImage}
-                  onChange={(e) => setFormData({ ...formData, bannerImage: e.target.value })}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">Event Photos</label>
+                <span className="text-[11px] text-slate-400 font-medium">{mediaImages.length}/{MAX_IMAGES} images · up to 10MB each</span>
               </div>
+              <div className="flex flex-wrap gap-3">
+                {mediaImages.map((img, i) => (
+                  <div key={img.previewUrl} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 group">
+                    <img src={img.previewUrl} alt="" className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      aria-label="Remove image"
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {mediaImages.length < MAX_IMAGES && (
+                  <label className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 hover:border-brand-400 hover:bg-brand-50/50 flex flex-col items-center justify-center cursor-pointer transition-colors text-slate-400 hover:text-brand-500">
+                    <ImageIcon className="w-5 h-5" />
+                    <span className="text-[10px] font-bold mt-1">Add</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={handleImageFilesSelected} />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-slate-700">Title Video</label>
+                <span className="text-[11px] text-slate-400 font-medium">1 video max · up to {MAX_VIDEO_DURATION_SECONDS}s · up to 10MB</span>
+              </div>
+              {mediaVideo ? (
+                <div className="relative w-40 rounded-lg overflow-hidden border border-slate-200">
+                  <video src={mediaVideo.previewUrl} className="w-full h-24 object-cover bg-black" muted controls />
+                  <button
+                    type="button"
+                    onClick={removeVideo}
+                    aria-label="Remove video"
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <label className="w-40 h-24 rounded-lg border-2 border-dashed border-slate-300 hover:border-brand-400 hover:bg-brand-50/50 flex flex-col items-center justify-center cursor-pointer transition-colors text-slate-400 hover:text-brand-500">
+                  <Video className="w-5 h-5" />
+                  <span className="text-[10px] font-bold mt-1">Add video</span>
+                  <input type="file" accept="video/mp4,video/webm" className="hidden" onChange={handleVideoFileSelected} />
+                </label>
+              )}
+              {mediaError && <p className="mt-1.5 text-[11px] text-red-600">{mediaError}</p>}
             </div>
 
             <div>
@@ -896,7 +1057,13 @@ export default function CreateEvent() {
             </div>
 
             <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <img src={formData.bannerImage} alt={formData.title} className="w-full h-48 object-cover" />
+              {mediaImages.length > 0 ? (
+                <img src={mediaImages[0].previewUrl} alt={formData.title} className="w-full h-48 object-cover" />
+              ) : (
+                <div className="w-full h-48 bg-slate-100 flex items-center justify-center text-slate-400 text-xs font-semibold">
+                  No photos added yet
+                </div>
+              )}
               <div className="p-5 space-y-3">
                 <div className="flex items-center gap-2">
                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-200">
@@ -932,9 +1099,10 @@ export default function CreateEvent() {
           <button
             type="button"
             onClick={handleNext}
-            className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white shadow-md transition-all"
+            disabled={uploadingMedia}
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white shadow-md transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <span>{currentStep === 5 ? '🚀 Publish Event Live' : 'Next Step'}</span>
+            <span>{uploadingMedia ? 'Uploading media…' : currentStep === 5 ? '🚀 Publish Event Live' : 'Next Step'}</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

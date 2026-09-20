@@ -66,6 +66,19 @@ export async function listPublicEvents(): Promise<PublicEventSummary[]> {
         where: { eventId: event.id },
         order: [['pricePaise', 'ASC']],
       });
+      // Falls back to the first uploaded photo when there's no explicit
+      // banner — an event created with real uploaded images and no
+      // separate banner URL (the normal case now that CreateEvent.jsx
+      // uploads real files instead of asking for a URL) should still
+      // show something on a card, not a broken/missing image.
+      let effectiveBannerUrl = event.bannerUrl;
+      if (!effectiveBannerUrl) {
+        const firstPhoto = await EventMedia.findOne({
+          where: { eventId: event.id, mediaType: 'photo' },
+          order: [['createdAt', 'ASC']],
+        });
+        effectiveBannerUrl = firstPhoto?.url ?? null;
+      }
       const organizer = (event as unknown as { Organizer: Organizer }).Organizer;
       return {
         id: event.id,
@@ -74,7 +87,7 @@ export async function listPublicEvents(): Promise<PublicEventSummary[]> {
         tagline: event.tagline,
         eventDate: event.eventDate.toISOString(),
         venueAddress: event.venueAddress,
-        bannerUrl: event.bannerUrl,
+        bannerUrl: effectiveBannerUrl,
         organizerName: organizer.name,
         organizerSlug: organizer.slug,
         minPricePaise: cheapest?.pricePaise ?? null,
@@ -110,6 +123,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     order: [['createdAt', 'ASC']],
   });
   const organizer = (event as unknown as { Organizer: Organizer }).Organizer;
+  const firstPhoto = media.find((m) => m.mediaType === 'photo');
 
   return {
     id: event.id,
@@ -120,7 +134,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     eventDate: event.eventDate.toISOString(),
     venueAddress: event.venueAddress,
     venueMapUrl: event.venueMapUrl,
-    bannerUrl: event.bannerUrl,
+    bannerUrl: event.bannerUrl ?? firstPhoto?.url ?? null,
     termsAndConditions: event.termsAndConditions,
     cancellationPolicy: event.cancellationPolicy,
     scheduleItems: event.scheduleItems,
