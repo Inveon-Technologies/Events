@@ -9,4 +9,8 @@ coverage/
 .env.*
 !.env.example
 
+# Local dev's event media uploads (UPLOAD_DIR defaults here when unset) —
+# runtime data, not source; production uses a mounted volume instead.
+apps/api/uploads/
+
 .DS_Store

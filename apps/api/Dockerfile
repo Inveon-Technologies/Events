@@ -13,7 +13,11 @@ ENV NODE_ENV=production
 
 # docker-compose's healthcheck runs `curl -f http://localhost:3000/health`
 # inside this container — alpine's base image doesn't ship curl.
-RUN apk add --no-cache curl
+# ffmpeg (for ffprobe) is how eventMedia.ts verifies an uploaded video's
+# real duration server-side, rather than trusting whatever the browser
+# claims — without it, every video upload would fail outright in
+# production, since the command simply wouldn't exist.
+RUN apk add --no-cache curl ffmpeg
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
