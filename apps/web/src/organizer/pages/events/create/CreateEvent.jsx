@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useEvents } from '../../../context/EventsContext';
 import { useNotifications } from '../../../context/NotificationContext';
+import { ApiError } from '../../../lib/api';
 
 export default function CreateEvent() {
   const { addEvent } = useEvents();
@@ -43,54 +44,41 @@ export default function CreateEvent() {
   else if (location.pathname.includes('/preview')) currentStep = 5;
 
   const [formData, setFormData] = useState({
-    title: 'Sahyadri Monsoon Night Trek & Camp 2025',
+    title: '',
     category: 'Adventure & Trekking',
-    shortDescription: 'Witness mystical Sahyadri mist, night trails, star gazing, and authentic local cuisine.',
-    description: 'Join us for an unforgettable monsoon weekend exploring historical mountain trails, lush greenery, and scenic valley lookouts. Complete with experienced trek leaders, safety gear, camping tents, and warm local Maharashtrian meals.',
-    startDate: '2025-07-25',
-    startTime: '21:00',
-    endDate: '2025-07-26',
-    endTime: '12:00',
+    shortDescription: '',
+    description: '',
+    startDate: '',
+    startTime: '',
+    endDate: '',
+    endTime: '',
     timezone: 'IST (UTC+5:30)',
     venueType: 'physical',
-    venueName: 'Torna Fort Base Camp',
-    address: 'Velhe Base Village, Velhe Taluka',
-    city: 'Pune',
-    state: 'Maharashtra',
-    pincode: '412213',
-    coordinates: { lat: 18.2986, lng: 73.6214 },
-    pinPosition: { x: 52, y: 48 }, // Percentage coordinates on interactive map
-    bannerImage: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
-    totalCapacity: 60,
-    tags: ['Trek', 'Monsoon', 'Sahyadri', 'Camping', 'Pune'],
+    venueName: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    coordinates: { lat: 18.5204, lng: 73.8567 }, // Pune — a reasonable map center, not event content
+    pinPosition: { x: 50, y: 50 },
+    bannerImage: '',
+    totalCapacity: 0,
+    tags: [],
     ticketTiers: [
       {
         id: 'tier-1',
-        name: 'Standard Trek Pass',
-        price: 1399,
-        quantity: 40,
+        name: '',
+        price: 0,
+        quantity: 0,
         sold: 0,
-        description: 'Includes guided trek, transportation, safety equipment, and breakfast.'
-      },
-      {
-        id: 'tier-2',
-        name: 'Trek + Tent Stay Pass',
-        price: 2199,
-        quantity: 20,
-        sold: 0,
-        description: 'Includes 2-person tent accommodation, dinner on hill, campfire, and sunrise guide.'
+        description: ''
       }
     ],
     cancellationPolicy: {
       refundable: true,
       cutoffDays: 3,
       refundPercentage: 80,
-      description: 'Full refund up to 7 days before event. 80% refund between 7 and 3 days. Non-refundable within 72 hours.'
-    },
-    organizer: {
-      name: 'Sahyadri Wanderers Club',
-      email: 'explore@sahyadriwanderers.com',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80'
+      description: ''
     }
   });
 
@@ -278,27 +266,27 @@ export default function CreateEvent() {
     { num: 5, label: 'Preview & Publish', path: '/organizer/create-event/preview', icon: Eye },
   ];
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentStep < 5) {
       navigate(steps[currentStep].path);
     } else {
-      const created = addEvent({
-        ...formData,
-        id: formData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-        status: 'published'
-      });
-      navigate(`/organizer/events/${created.id}/dashboard`);
+      try {
+        const created = await addEvent({ ...formData, status: 'published' });
+        navigate(`/organizer/events/${created.id}/dashboard`);
+      } catch (err) {
+        showToast(err instanceof ApiError ? err.message : 'Failed to publish event. Please try again.', 'error');
+      }
     }
   };
 
-  const handleSaveDraft = () => {
-    const created = addEvent({
-      ...formData,
-      id: formData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      status: 'draft'
-    });
-    showToast('Saved as draft in My Events', 'info');
-    navigate('/organizer/events?tab=draft');
+  const handleSaveDraft = async () => {
+    try {
+      await addEvent({ ...formData, status: 'draft' });
+      showToast('Saved as draft in My Events', 'info');
+      navigate('/organizer/events?tab=draft');
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Failed to save draft. Please try again.', 'error');
+    }
   };
 
   const handlePrev = () => {

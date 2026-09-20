@@ -6,7 +6,7 @@ import { INITIAL_PAYMENTS } from '../data/mockPayments';
 import { INITIAL_SETTINGS } from '../data/mockSettings';
 import { useNotifications } from './NotificationContext';
 import { useAuth } from './AuthContext';
-import { apiRequest } from '../lib/api';
+import { apiRequest, ApiError } from '../lib/api';
 
 const EventsContext = createContext();
 
@@ -175,10 +175,40 @@ export function EventsProvider({ children }) {
   }, [settings]);
 
   // Event actions
-  const addEvent = (newEvent) => {
+  const addEvent = async (newEvent) => {
+    const result = await apiRequest('/organizer/events', {
+      method: 'POST',
+      token: user?.token,
+      body: {
+        title: newEvent.title,
+        shortDescription: newEvent.shortDescription,
+        description: newEvent.description,
+        startDate: newEvent.startDate,
+        startTime: newEvent.startTime,
+        venueName: newEvent.venueName,
+        address: newEvent.address,
+        city: newEvent.city,
+        state: newEvent.state,
+        pincode: newEvent.pincode,
+        bannerImage: newEvent.bannerImage,
+        cancellationPolicy: newEvent.cancellationPolicy,
+        ticketTiers: (newEvent.ticketTiers || []).map((tier) => ({
+          name: tier.name,
+          description: tier.description,
+          price: tier.price,
+          quantity: tier.quantity,
+        })),
+        status: newEvent.status || 'published',
+      },
+    });
+
+    // Real id/slug from the database, not a client-guessed one — the
+    // rest of the fields are kept as entered so the page can render
+    // immediately without a full re-fetch.
     const eventWithId = {
       ...newEvent,
-      id: newEvent.id || `event-${Date.now()}`,
+      id: result.id,
+      slug: result.slug,
       ticketsSold: 0,
       checkedInCount: 0,
       grossRevenue: 0,
