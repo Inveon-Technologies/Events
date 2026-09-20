@@ -131,4 +131,40 @@ describe('organizer portal: real signup + OTP verification', () => {
     // checking the login/signup form is no longer showing.
     await waitFor(() => expect(screen.queryByRole('button', { name: /confirm/i })).not.toBeInTheDocument());
   });
+
+  it('resend is disabled behind a 2-minute cooldown, counts down, and re-enables — clicking while disabled never calls the API', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ message: 'Verification code resent' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter
+          initialEntries={[{ pathname: '/organizer/verify-otp', state: { email: 'real.user@example.com', context: 'signup' } }]}
+        >
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    // Starts disabled immediately — a code was already sent to reach
+    // this page, so the cooldown applies from that send.
+    const resendButton = screen.getByRole('button', { name: /resend/i });
+    expect(resendButton).toBeDisabled();
+    expect(resendButton).toHaveTextContent('2:00');
+
+    resendButton.click();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(resendButton).toHaveTextContent('1:00');
+    expect(resendButton).toBeDisabled();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(resendButton).not.toBeDisabled();
+    expect(resendButton).toHaveTextContent(/resend otp/i);
+
+    vi.useRealTimers();
+  });
 });

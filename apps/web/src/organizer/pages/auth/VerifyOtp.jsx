@@ -1,13 +1,19 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { ShieldCheck, ArrowRight, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAuth, ApiError } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 
+const RESEND_COOLDOWN_SECONDS = 120;
+
 export default function VerifyOtp() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Starts counting down immediately on mount — a code was already sent
+  // to get here (from SignUp or ForgotPassword), so the cooldown applies
+  // from that send, not from a first resend.
+  const [resendCooldown, setResendCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const { verifyOtp, resendOtp, verifyResetOtp, forgotPassword } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();
@@ -22,6 +28,20 @@ export default function VerifyOtp() {
   // back rather than guessing what they meant.
   const context = location.state?.context;
   const email = location.state?.email;
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return undefined;
+    const timer = setInterval(() => {
+      setResendCooldown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown > 0]);
+
+  function formatCooldown(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
 
   const handleChange = (index, value) => {
     if (value.length > 1) {
@@ -72,7 +92,7 @@ export default function VerifyOtp() {
   };
 
   const handleResend = async () => {
-    if (!email) return;
+    if (!email || resendCooldown > 0) return;
     try {
       if (context === 'signup') {
         await resendOtp(email);
@@ -80,6 +100,7 @@ export default function VerifyOtp() {
         await forgotPassword(email);
       }
       showToast('New OTP sent to your inbox', 'info');
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not resend code.', 'error');
     }
@@ -97,7 +118,7 @@ export default function VerifyOtp() {
         </div>
         <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Verify Your Email</h2>
         <p className="text-xs text-slate-500 mt-1">
-          We've sent a 6-digit confirmation code to <span className="font-semibold text-slate-800">{email || 'your email'}</span>.
+          We've sent a 6-digit confirmation code to <span className="font-semibold text-slate-800">{email || 'your email'}</span>. This code is valid for 2 minutes.
         </p>
       </div>
 
@@ -138,10 +159,11 @@ export default function VerifyOtp() {
         <button
           onClick={handleResend}
           type="button"
-          className="text-brand-600 font-bold hover:underline flex items-center gap-1"
+          disabled={resendCooldown > 0}
+          className="text-brand-600 font-bold hover:underline flex items-center gap-1 disabled:text-slate-400 disabled:no-underline disabled:cursor-not-allowed"
         >
           <RefreshCw className="w-3 h-3" />
-          <span>Resend OTP</span>
+          <span>{resendCooldown > 0 ? `Resend in ${formatCooldown(resendCooldown)}` : 'Resend OTP'}</span>
         </button>
       </div>
     </div>
