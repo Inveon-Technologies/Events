@@ -108,7 +108,10 @@ export default function CreateEvent() {
       cutoffDays: 3,
       refundPercentage: 80,
       description: ''
-    }
+    },
+    scheduleItems: [],
+    packingChecklist: [],
+    faqItems: []
   });
 
   const [mapSearchQuery, setMapSearchQuery] = useState('');
@@ -377,7 +380,7 @@ export default function CreateEvent() {
     { num: 1, label: 'Basic Information', path: '/organizer/create-event/basic', icon: Info },
     { num: 2, label: 'Date & Location', path: '/organizer/create-event/date-location', icon: Calendar },
     { num: 3, label: 'Tickets & Pricing', path: '/organizer/create-event/tickets', icon: Ticket },
-    { num: 4, label: 'Cancellation Policy', path: '/organizer/create-event/cancellation', icon: ShieldAlert },
+    { num: 4, label: 'Policy & FAQ', path: '/organizer/create-event/cancellation', icon: ShieldAlert },
     { num: 5, label: 'Preview & Publish', path: '/organizer/create-event/preview', icon: Eye },
   ];
 
@@ -437,6 +440,58 @@ export default function CreateEvent() {
       ...prev,
       ticketTiers: prev.ticketTiers.filter(t => t.id !== tierId)
     }));
+  };
+
+  // Schedule/Timeline, Packing Checklist, and FAQ are all optional,
+  // simple add/update/remove lists — same shape as ticket tiers above,
+  // just without the "must have at least one" requirement since none
+  // of these are required for an event to be valid.
+  const addScheduleItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      scheduleItems: [...prev.scheduleItems, { id: `sched-${Date.now()}`, time: '', title: '', description: '' }]
+    }));
+  };
+  const updateScheduleItem = (id, field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      scheduleItems: prev.scheduleItems.map((s) => (s.id === id ? { ...s, [field]: value } : s))
+    }));
+  };
+  const removeScheduleItem = (id) => {
+    setFormData((prev) => ({ ...prev, scheduleItems: prev.scheduleItems.filter((s) => s.id !== id) }));
+  };
+
+  const addPackingItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      packingChecklist: [...prev.packingChecklist, { id: `pack-${Date.now()}`, item: '', mandatory: true }]
+    }));
+  };
+  const updatePackingItem = (id, field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      packingChecklist: prev.packingChecklist.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    }));
+  };
+  const removePackingItem = (id) => {
+    setFormData((prev) => ({ ...prev, packingChecklist: prev.packingChecklist.filter((p) => p.id !== id) }));
+  };
+
+  const addFaqItem = () => {
+    setFormData((prev) => ({
+      ...prev,
+      faqItems: [...prev.faqItems, { id: `faq-${Date.now()}`, question: '', answer: '' }]
+    }));
+  };
+  const updateFaqItem = (id, field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      faqItems: prev.faqItems.map((f) => (f.id === id ? { ...f, [field]: value } : f))
+    }));
+  };
+  const removeFaqItem = (id) => {
+    setFormData((prev) => ({ ...prev, faqItems: prev.faqItems.filter((f) => f.id !== id) }));
   };
 
   return (
@@ -608,6 +663,87 @@ export default function CreateEvent() {
                 placeholder="Include safety guidelines, schedule, things to carry, inclusions..."
                 className="w-full p-3.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 leading-relaxed"
               ></textarea>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-slate-700">Detailed Schedule & Timeline</label>
+                <button type="button" onClick={addScheduleItem} className="text-[11px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Add step
+                </button>
+              </div>
+              <div className="space-y-2">
+                {formData.scheduleItems.map((s) => (
+                  <div key={s.id} className="flex items-start gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <input
+                      type="text"
+                      value={s.time}
+                      onChange={(e) => updateScheduleItem(s.id, 'time', e.target.value)}
+                      placeholder="6:00 AM"
+                      className="w-24 shrink-0 px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                    <div className="flex-1 space-y-1.5">
+                      <input
+                        type="text"
+                        value={s.title}
+                        onChange={(e) => updateScheduleItem(s.id, 'title', e.target.value)}
+                        placeholder="Assembly at base camp"
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium"
+                      />
+                      <input
+                        type="text"
+                        value={s.description}
+                        onChange={(e) => updateScheduleItem(s.id, 'description', e.target.value)}
+                        placeholder="Optional details"
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      />
+                    </div>
+                    <button type="button" onClick={() => removeScheduleItem(s.id)} aria-label="Remove step" className="shrink-0 p-1.5 text-slate-400 hover:text-red-600">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {formData.scheduleItems.length === 0 && (
+                  <p className="text-[11px] text-slate-400">No schedule steps added yet — optional.</p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-slate-700">Mandatory Packing Checklist</label>
+                <button type="button" onClick={addPackingItem} className="text-[11px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Add item
+                </button>
+              </div>
+              <div className="space-y-2">
+                {formData.packingChecklist.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                    <input
+                      type="text"
+                      value={p.item}
+                      onChange={(e) => updatePackingItem(p.id, 'item', e.target.value)}
+                      placeholder="Trekking shoes"
+                      className="flex-1 px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                    <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={p.mandatory}
+                        onChange={(e) => updatePackingItem(p.id, 'mandatory', e.target.checked)}
+                        className="rounded border-slate-300"
+                      />
+                      Mandatory
+                    </label>
+                    <button type="button" onClick={() => removePackingItem(p.id)} aria-label="Remove item" className="shrink-0 p-1.5 text-slate-400 hover:text-red-600">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {formData.packingChecklist.length === 0 && (
+                  <p className="text-[11px] text-slate-400">No packing items added yet — optional.</p>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1038,6 +1174,43 @@ export default function CreateEvent() {
                   })}
                   className="w-full p-3 text-xs bg-slate-50 border border-slate-200 rounded-lg"
                 ></textarea>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-bold text-slate-700">Frequently Asked Questions</label>
+                <button type="button" onClick={addFaqItem} className="text-[11px] font-bold text-brand-600 hover:text-brand-700 flex items-center gap-1">
+                  <Plus className="w-3 h-3" /> Add question
+                </button>
+              </div>
+              <div className="space-y-2">
+                {formData.faqItems.map((f) => (
+                  <div key={f.id} className="flex items-start gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="flex-1 space-y-1.5">
+                      <input
+                        type="text"
+                        value={f.question}
+                        onChange={(e) => updateFaqItem(f.id, 'question', e.target.value)}
+                        placeholder="Is food included?"
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500 font-medium"
+                      />
+                      <textarea
+                        rows={2}
+                        value={f.answer}
+                        onChange={(e) => updateFaqItem(f.id, 'answer', e.target.value)}
+                        placeholder="Answer"
+                        className="w-full px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-brand-500"
+                      ></textarea>
+                    </div>
+                    <button type="button" onClick={() => removeFaqItem(f.id)} aria-label="Remove question" className="shrink-0 p-1.5 text-slate-400 hover:text-red-600">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {formData.faqItems.length === 0 && (
+                  <p className="text-[11px] text-slate-400">No FAQs added yet — optional.</p>
+                )}
               </div>
             </div>
           </div>

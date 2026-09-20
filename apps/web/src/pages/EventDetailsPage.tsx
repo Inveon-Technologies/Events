@@ -499,22 +499,45 @@ export function EventDetailsPage() {
 
               {/* TAB 5: Policy & FAQ Panel */}
               {activeTab === 'policy' && (
-                <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 animate-in fade-in duration-200">
-                  <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Cancellation &amp; Refund Policy</h3>
-                  <ul className="space-y-3 text-xs sm:text-sm text-slate-700">
-                    <li className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-[18px] shrink-0 mt-0.5">info</span>
-                      <span><strong>Full 100% Refund:</strong> Cancel up to 48 hours before the event start time with zero cancellation fee.</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0 mt-0.5">info</span>
-                      <span><strong>50% Refund:</strong> Cancellations between 24 and 48 hours prior to start.</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="material-symbols-outlined text-red-500 text-[18px] shrink-0 mt-0.5">info</span>
-                      <span><strong>No Refund:</strong> Cancellations within 24 hours of reporting time or no-shows.</span>
-                    </li>
-                  </ul>
+                <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+                  <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                    <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Cancellation &amp; Refund Policy</h3>
+                    {event.cancellationPolicyText ? (
+                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">{event.cancellationPolicyText}</p>
+                    ) : (
+                      <ul className="space-y-3 text-xs sm:text-sm text-slate-700">
+                        <li className="flex items-start gap-2">
+                          <span className="material-symbols-outlined text-emerald-600 text-[18px] shrink-0 mt-0.5">info</span>
+                          <span><strong>Full 100% Refund:</strong> Cancel up to 48 hours before the event start time with zero cancellation fee.</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0 mt-0.5">info</span>
+                          <span><strong>50% Refund:</strong> Cancellations between 24 and 48 hours prior to start.</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="material-symbols-outlined text-red-500 text-[18px] shrink-0 mt-0.5">info</span>
+                          <span><strong>No Refund:</strong> Cancellations within 24 hours of reporting time or no-shows.</span>
+                        </li>
+                      </ul>
+                    )}
+                  </div>
+
+                  {event.faqItems && event.faqItems.length > 0 && (
+                    <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                      <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Frequently Asked Questions</h3>
+                      <div className="divide-y divide-slate-100">
+                        {event.faqItems.map((faq, i) => (
+                          <details key={i} className="group py-3.5 first:pt-0 last:pb-0">
+                            <summary className="flex items-center justify-between gap-3 cursor-pointer list-none font-bold text-slate-900 text-sm">
+                              <span>{faq.question}</span>
+                              <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0 transition-transform group-open:rotate-180">expand_more</span>
+                            </summary>
+                            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mt-2">{faq.answer}</p>
+                          </details>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

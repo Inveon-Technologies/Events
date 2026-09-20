@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -203,6 +204,69 @@ describe('App routing', () => {
 
     // No video element should render at all when the event has none.
     expect(document.querySelector('video')).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('event details page renders real schedule, packing checklist, and FAQ content across their tabs', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-rich-content-1',
+        slug: 'rich-content-test-event',
+        name: 'Rich Content Test Event',
+        tagline: null,
+        description: 'A real description',
+        eventDate: '2026-12-01T06:00:00.000Z',
+        venueAddress: 'Real Venue',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: 'Full refund up to 7 days before the event, no refund after.',
+        scheduleItems: [
+          { time: '06:00 AM', title: 'Assembly', description: 'Meet at the gate' },
+          { time: '07:00 AM', title: 'Trek begins' },
+        ],
+        packingChecklist: [
+          { item: 'Trekking shoes', mandatory: true },
+          { item: 'Sunscreen', mandatory: false },
+        ],
+        faqItems: [{ question: 'Is food included?', answer: 'Yes, breakfast is included.' }],
+        media: [],
+        organizerName: 'Rich Content Test Org',
+        organizerSlug: 'rich-content-test-org',
+        ticketCategories: [
+          { id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-rich-content-1');
+    await waitFor(() => expect(screen.getAllByText('Rich Content Test Event').length).toBeGreaterThan(0));
+
+    // "Event Details" tab — real schedule, not the mock template's.
+    await user.click(screen.getByRole('button', { name: 'Event Details' }));
+    expect(screen.getByText('Assembly')).toBeInTheDocument();
+    expect(screen.getByText('Meet at the gate')).toBeInTheDocument();
+    expect(screen.getByText('Trek begins')).toBeInTheDocument();
+
+    // "What to Bring" tab — real packing checklist.
+    await user.click(screen.getByRole('button', { name: 'What to Bring' }));
+    expect(screen.getByText('Trekking shoes')).toBeInTheDocument();
+    expect(screen.getByText('Sunscreen')).toBeInTheDocument();
+    expect(screen.getByText('Mandatory')).toBeInTheDocument();
+    expect(screen.getByText('Optional')).toBeInTheDocument();
+
+    // "Policy & FAQ" tab — real cancellation text, not the hardcoded
+    // fake bullet list, plus a real FAQ entry.
+    await user.click(screen.getByRole('button', { name: 'Policy & FAQ' }));
+    expect(screen.getByText('Full refund up to 7 days before the event, no refund after.')).toBeInTheDocument();
+    expect(screen.queryByText(/Full 100% Refund:/)).not.toBeInTheDocument();
+    expect(screen.getByText('Is food included?')).toBeInTheDocument();
+    expect(screen.getByText('Yes, breakfast is included.')).toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });

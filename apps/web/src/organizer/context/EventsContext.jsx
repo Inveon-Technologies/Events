@@ -198,6 +198,19 @@ export function EventsProvider({ children }) {
           price: tier.price,
           quantity: tier.quantity,
         })),
+        scheduleItems: (newEvent.scheduleItems || []).map((s) => ({
+          time: s.time,
+          title: s.title,
+          description: s.description,
+        })),
+        packingChecklist: (newEvent.packingChecklist || []).map((p) => ({
+          item: p.item,
+          mandatory: p.mandatory,
+        })),
+        faqItems: (newEvent.faqItems || []).map((f) => ({
+          question: f.question,
+          answer: f.answer,
+        })),
         status: newEvent.status || 'published',
       },
     });
