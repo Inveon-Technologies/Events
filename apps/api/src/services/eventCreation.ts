@@ -1,6 +1,30 @@
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory } from '../models';
 
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+// Matches the site's existing URL style (e.g. /events/rajgad-sunrise-
+// trek-2026): the event's name plus its own year, not the creation
+// year — two events with the same name in different years should get
+// different, equally readable slugs rather than a random suffix.
+async function uniqueEventSlug(title: string, eventDate: Date): Promise<string> {
+  const root = `${slugify(title)}-${eventDate.getFullYear()}`;
+  let candidate = root;
+  let suffix = 1;
+  while (await Event.findOne({ where: { slug: candidate } })) {
+    suffix += 1;
+    candidate = `${root}-${suffix}`;
+  }
+  return candidate;
+}
+
 export interface CreateEventTicketTier {
   name: string;
   description?: string;
@@ -36,7 +60,7 @@ export class ValidationError extends Error {}
 // field that exists); the rest is silently dropped, not fabricated —
 // same "real fields real, everything else honestly absent" approach as
 // the customer-facing event page's own real-data adapter.
-export async function createOrganizerEvent(params: CreateEventParams): Promise<{ id: string }> {
+export async function createOrganizerEvent(params: CreateEventParams): Promise<{ id: string; slug: string }> {
   if (!params.title.trim()) throw new ValidationError('Event title is required');
   if (!params.ticketTiers || params.ticketTiers.length === 0) {
     throw new ValidationError('At least one ticket tier is required');
@@ -58,12 +82,14 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
     .join(', ') || null;
 
   const totalCapacity = params.ticketTiers.reduce((sum, t) => sum + t.quantity, 0);
+  const slug = await uniqueEventSlug(params.title, eventDate);
 
   return sequelize.transaction(async (t) => {
     const event = await Event.create(
       {
         organizerId: params.organizerId,
         name: params.title.trim(),
+        slug,
         tagline: params.shortDescription?.trim() || null,
         description: params.description?.trim() || null,
         venueAddress,
@@ -91,6 +117,6 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
       );
     }
 
-    return { id: event.id };
+    return { id: event.id, slug: event.slug! };
   });
 }

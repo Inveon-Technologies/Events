@@ -59,10 +59,12 @@ describe('organizer event creation (real DB)', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.id).toEqual(expect.any(String));
+    expect(res.body.slug).toBe(`integration-test-event-${new Date().getFullYear()}`);
 
     const event = await Event.findByPk(res.body.id);
     expect(event).not.toBeNull();
     expect(event!.name).toBe('Integration Test Event');
+    expect(event!.slug).toBe(res.body.slug);
     expect(event!.status).toBe('published');
     expect(event!.capacity).toBe(120); // 100 + 20
 
@@ -75,7 +77,7 @@ describe('organizer event creation (real DB)', () => {
     expect(tiers[1].pricePaise).toBe(150000);
   });
 
-  it('a published event immediately appears in the real public events list', async () => {
+  it('a published event immediately appears in the real public events list, and is fetchable by its own slug', async () => {
     const createRes = await request(app)
       .post('/api/organizer/events')
       .set('Authorization', `Bearer ${token}`)
@@ -91,6 +93,10 @@ describe('organizer event creation (real DB)', () => {
     const listRes = await request(app).get('/api/events');
     const names = listRes.body.events.map((e: { name: string }) => e.name);
     expect(names).toContain('Publicly Visible Test Event');
+
+    const detailRes = await request(app).get(`/api/events/${createRes.body.slug}`);
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.name).toBe('Publicly Visible Test Event');
   });
 
   it('a draft event does NOT appear in the public list', async () => {

@@ -3,6 +3,7 @@ import { Organizer, Event, TicketCategory } from '../models';
 
 export interface PublicEventSummary {
   id: string;
+  slug: string;
   name: string;
   tagline: string | null;
   eventDate: string;
@@ -24,6 +25,7 @@ export interface PublicTicketCategory {
 
 export interface PublicEventDetail {
   id: string;
+  slug: string;
   name: string;
   tagline: string | null;
   description: string | null;
@@ -57,6 +59,7 @@ export async function listPublicEvents(): Promise<PublicEventSummary[]> {
       const organizer = (event as unknown as { Organizer: Organizer }).Organizer;
       return {
         id: event.id,
+        slug: event.slug ?? event.id,
         name: event.name,
         tagline: event.tagline,
         eventDate: event.eventDate.toISOString(),
@@ -70,9 +73,20 @@ export async function listPublicEvents(): Promise<PublicEventSummary[]> {
   );
 }
 
-export async function getPublicEvent(eventId: string): Promise<PublicEventDetail | null> {
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetail | null> {
+  // Comparing a non-UUID string against the id column (a real UUID type)
+  // throws at the database level, not just "no match" — a slug like
+  // "rajgad-sunrise-trek-2026" would crash this query if id were included
+  // in the OR unconditionally. Only include it when the value actually
+  // looks like a UUID.
+  const where = UUID_PATTERN.test(idOrSlug)
+    ? { [Op.or]: [{ id: idOrSlug }, { slug: idOrSlug }], status: 'published' as const }
+    : { slug: idOrSlug, status: 'published' as const };
+
   const event = await Event.findOne({
-    where: { id: eventId, status: 'published' },
+    where,
     include: [{ model: Organizer, attributes: ['name', 'slug'] }],
   });
   if (!event) return null;
@@ -85,6 +99,7 @@ export async function getPublicEvent(eventId: string): Promise<PublicEventDetail
 
   return {
     id: event.id,
+    slug: event.slug ?? event.id,
     name: event.name,
     tagline: event.tagline,
     description: event.description,
