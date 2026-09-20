@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { discoverEvents } from '../mockData/rajgadTrek';
 import { formatINR } from '../lib/format';
+import { fetchDiscoverEvents, DiscoverEvent } from '../lib/events';
 
 interface CategoryItem {
   id: string;
@@ -26,6 +26,25 @@ export function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+  const [discoverEvents, setDiscoverEvents] = useState<DiscoverEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDiscoverEvents()
+      .then((events) => {
+        if (!cancelled) setDiscoverEvents(events);
+      })
+      .catch(() => {
+        if (!cancelled) setDiscoverEvents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setEventsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function toggleFavorite(id: string, e: React.MouseEvent) {
     e.preventDefault();
@@ -631,7 +650,13 @@ export function HomePage() {
               })}
             </div>
 
-            {filteredEvents.length === 0 && (
+            {eventsLoading && filteredEvents.length === 0 && (
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 mt-6 shadow-sm">
+                <p className="text-slate-600 font-semibold text-sm">Loading events…</p>
+              </div>
+            )}
+
+            {!eventsLoading && filteredEvents.length === 0 && (
               <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 mt-6 shadow-sm">
                 <p className="text-slate-600 font-semibold text-sm">No events found matching your search.</p>
                 <button

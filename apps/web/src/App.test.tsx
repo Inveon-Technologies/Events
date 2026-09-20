@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
@@ -19,6 +19,42 @@ describe('App routing', () => {
   it('renders the home page hero at /', () => {
     renderApp('/');
     expect(screen.getByText(/Discover\. Book\./i)).toBeInTheDocument();
+  });
+
+  it('shows the real fetched event data, not the mock catalog', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        organizerName: 'Live Real Test Org',
+        counts: { all: 1, draft: 0, published: 1, completed: 0, cancelled: 0 },
+        events: [
+          {
+            id: 'evt-live-1',
+            slug: 'live-real-test-event',
+            name: 'Live Real Test Event',
+            eventDate: '2026-11-01T10:00:00.000Z',
+            venueAddress: 'Pune',
+            bannerUrl: null,
+            organizerName: 'Live Real Test Org',
+            organizerSlug: 'live-real-test-org',
+            minPricePaise: 30000,
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/');
+    // The mock catalog's flagship event is "Rajgad Sunrise Trek" from
+    // rajgadTrek.ts's discoverEvents array — if that's what's showing on
+    // initial render, the real fetch never took over. It only ever
+    // appears now if the real API happens to return an event with that
+    // exact name, which this mock response deliberately doesn't.
+    await waitFor(() => expect(screen.getByText('Live Real Test Event')).toBeInTheDocument());
+    expect(screen.getByText(/live real test org/i)).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
   });
 
   it('links "Host an Event" to organizer login, not the mock organizer profile page', () => {
