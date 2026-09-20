@@ -202,6 +202,7 @@ export interface EventDetails {
     src: string;
     alt: string;
   }[];
+  videoUrl?: string | null;
   about: string;
   aboutExtra?: string;
   highlights: {
@@ -441,6 +442,10 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
     const dateStr = eventDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
     const timeStr = eventDate.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
 
+    const realMedia = Array.isArray(real.media) ? real.media : [];
+    const realPhotos = realMedia.filter((m: { mediaType: string }) => m.mediaType === 'photo');
+    const realVideo = realMedia.find((m: { mediaType: string }) => m.mediaType === 'video');
+
     return {
       ...template,
       id: real.id,
@@ -455,6 +460,14 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
         name: real.organizerName,
       },
       about: real.description || template.about,
+      // Falls back to the mock template's gallery only when the real
+      // event genuinely has no uploaded photos — showing fake stock
+      // photos alongside a real organizer's real event would be
+      // actively misleading, not a harmless placeholder.
+      galleryImages: realPhotos.length > 0
+        ? realPhotos.map((m: { url: string }) => ({ src: m.url, alt: real.name }))
+        : template.galleryImages,
+      videoUrl: realVideo ? realVideo.url : null,
       ticketCategories: real.ticketCategories.map((tc: { id: string; name: string; description: string | null; pricePaise: number; maxPerBooking: number; available: number }) => ({
         id: tc.id,
         name: tc.name,
