@@ -17,6 +17,7 @@ export default function SignUp() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const { signup } = useAuth();
   const { showToast } = useNotifications();
@@ -28,7 +29,47 @@ export default function SignUp() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+    // Clear that one field's error as soon as they start correcting it,
+    // rather than making them resubmit to find out it's fixed.
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({ ...prev, [name]: undefined }));
+    }
   };
+
+  function validate(data) {
+    const errors = {};
+
+    if (!data.fullName.trim()) {
+      errors.fullName = 'Full name is required.';
+    } else if (data.fullName.trim().length < 2) {
+      errors.fullName = 'Full name looks too short.';
+    }
+
+    if (!data.email.trim()) {
+      errors.email = 'Email is required.';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim())) {
+      errors.email = 'Enter a valid email address.';
+    }
+
+    const digitsOnly = data.phone.replace(/[^0-9]/g, '');
+    if (!data.phone.trim()) {
+      errors.phone = 'Phone number is required.';
+    } else if (digitsOnly.length < 10) {
+      errors.phone = 'Enter a valid phone number (at least 10 digits).';
+    }
+
+    if (!data.orgName.trim()) {
+      errors.orgName = 'Organization name is required.';
+    }
+
+    if (!data.password) {
+      errors.password = 'Password is required.';
+    } else if (data.password.length < 8) {
+      errors.password = 'Password must be at least 8 characters.';
+    }
+
+    return errors;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -36,7 +77,15 @@ export default function SignUp() {
       showToast('Please accept terms of service to proceed', 'error');
       return;
     }
+
+    const errors = validate(formData);
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
     setError(null);
+    setFieldErrors({});
     setLoading(true);
     try {
       await signup(formData);
@@ -77,9 +126,10 @@ export default function SignUp() {
                 value={formData.fullName}
                 onChange={handleChange}
                 placeholder="Eeshan Agrawal"
-                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                className={`w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${fieldErrors.fullName ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-brand-500'}`}
               />
             </div>
+            {fieldErrors.fullName && <p className="mt-1 text-[11px] text-red-600">{fieldErrors.fullName}</p>}
           </div>
 
           <div>
@@ -94,9 +144,10 @@ export default function SignUp() {
                 value={formData.phone}
                 onChange={handleChange}
                 placeholder="+91 98765 43210"
-                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                className={`w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${fieldErrors.phone ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-brand-500'}`}
               />
             </div>
+            {fieldErrors.phone && <p className="mt-1 text-[11px] text-red-600">{fieldErrors.phone}</p>}
           </div>
         </div>
 
@@ -112,9 +163,10 @@ export default function SignUp() {
               value={formData.email}
               onChange={handleChange}
               placeholder="eeshan@organization.com"
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              className={`w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${fieldErrors.email ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-brand-500'}`}
             />
           </div>
+          {fieldErrors.email && <p className="mt-1 text-[11px] text-red-600">{fieldErrors.email}</p>}
         </div>
 
         <div>
@@ -129,9 +181,10 @@ export default function SignUp() {
               value={formData.orgName}
               onChange={handleChange}
               placeholder="Sahyadri Wanderers Club"
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              className={`w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${fieldErrors.orgName ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-brand-500'}`}
             />
           </div>
+          {fieldErrors.orgName && <p className="mt-1 text-[11px] text-red-600">{fieldErrors.orgName}</p>}
         </div>
 
         <div>
@@ -146,9 +199,10 @@ export default function SignUp() {
               value={formData.password}
               onChange={handleChange}
               placeholder="At least 8 characters"
-              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+              className={`w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${fieldErrors.password ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-brand-500'}`}
             />
           </div>
+          {fieldErrors.password && <p className="mt-1 text-[11px] text-red-600">{fieldErrors.password}</p>}
         </div>
 
         <div className="pt-1">
