@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { formatINR } from '../lib/format';
 import { fetchDiscoverEvents, DiscoverEvent } from '../lib/events';
+import heroTrekkerImg from '../assets/hero-trekker.jpg';
+import rajgadMiniatureImg from '../assets/rajgad-miniature.jpg';
 
 interface CategoryItem {
   id: string;
@@ -135,7 +137,7 @@ export function HomePage() {
                   <img
                     alt="Trekker overlooking sunrise mountain valley"
                     className="w-full h-full object-cover object-center transform scale-100 transition-transform duration-1000 group-hover:scale-105"
-                    src="https://lh3.googleusercontent.com/aida/AEtjO1Wm9y4FmVc-qsmL4piPLP6nzggIZnai0pwRjCyfRZ970-bWYjbyC_euUslQ3igjUOyA5kEe5ODhdnKxFuYof-m-kquoHJDQCkF8ZJ9w-3lKvb93n4YetuoZ_BVOrKiQGJf9VF0EvWZ7MPUAUEiB-lEy96FVdO9CA1qxwo2DCE-Fgh0r10fZ_4p-CCI02DmJmaJR_kSyydHxn2JPY93nQBPZkRkZvf7QXGSOguPT1N9aj1BZuh8TAbQD01E"
+                    src={heroTrekkerImg}
                   />
                   <div className="absolute inset-0 bg-gradient-to-r from-white/90 via-white/20 to-transparent lg:via-transparent"></div>
                   <div className="absolute inset-0 bg-blue-900/10 mix-blend-multiply"></div>
@@ -175,7 +177,7 @@ export function HomePage() {
                       <img
                         alt="Rajgad trek miniature"
                         className="w-full h-full object-cover"
-                        src="https://lh3.googleusercontent.com/aida/AEtjO1XNDK3DwXLYJHWefZqRpeR_5Fv0VXcsJjgiyCDbMyZcvH-TwAC4IQ4doGg9Dial1m4cDjs4tpxA1Fh2fbsMleD4ugl2w8rdSUITnVbcU_IN3ZtSH1EzA5KgtlhfaTjCwNokv9f7JHHqVumj42I9Q3Srup3bu9LGTasnsWgC4jtRnj3hq16ytNnzzP-6UC1j4-srpAnH2KcZ3HsXqtIAtsZSINTcmKqUY4ilU2ziBDIon2nrOAd_8MgHOXQ"
+                        src={rajgadMiniatureImg}
                       />
                       <span className="absolute top-1 left-1 sm:top-1.5 sm:left-1.5 bg-brand-600/90 text-white text-[9px] sm:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded">
                         Step 1
