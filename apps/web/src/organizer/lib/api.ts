@@ -35,3 +35,36 @@ export async function apiRequest<T>(
 
   return data as T;
 }
+
+// Separate from apiRequest — a file upload is multipart/form-data, not
+// JSON, so it can't share that function's Content-Type header or body
+// serialization (the browser sets the correct multipart boundary itself
+// when given a FormData body and no explicit Content-Type).
+export interface UploadedEventMedia {
+  id: string;
+  mediaType: 'photo' | 'video';
+  url: string;
+}
+
+export async function uploadEventMediaFile(
+  eventId: string,
+  file: File,
+  token: string | null,
+): Promise<UploadedEventMedia> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${API_BASE_URL}/api/organizer/events/${eventId}/media`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed');
+  }
+
+  return data as UploadedEventMedia;
+}

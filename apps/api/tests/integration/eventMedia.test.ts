@@ -216,4 +216,20 @@ describe('event media upload (real DB, real ffprobe)', () => {
     const res = await request(app).get(`/api/events/${event.id}`);
     expect(res.body.media).toEqual([]);
   });
+
+  it('an event with no explicit banner falls back to its first uploaded photo, on both the list and detail endpoints', async () => {
+    const event = await createTestEvent(`Banner Fallback Test ${suffix}`);
+    const uploadRes = await request(app)
+      .post(`/api/organizer/events/${event.id}/media`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', imagePath);
+    expect(uploadRes.status).toBe(201);
+
+    const detailRes = await request(app).get(`/api/events/${event.id}`);
+    expect(detailRes.body.bannerUrl).toBe(uploadRes.body.url);
+
+    const listRes = await request(app).get('/api/events');
+    const found = listRes.body.events.find((e: { id: string }) => e.id === event.id);
+    expect(found.bannerUrl).toBe(uploadRes.body.url);
+  });
 });
