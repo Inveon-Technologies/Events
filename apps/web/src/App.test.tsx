@@ -57,6 +57,54 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('the organizer profile page shows the real fetched organizer, not the old hardcoded "Example Adventures"', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        slug: 'real-verified-org',
+        name: 'Real Verified Org',
+        logoUrl: null,
+        about: 'A genuinely real organizer bio',
+        contactEmail: 'hello@realverifiedorg.example',
+        events: [
+          {
+            id: 'evt-org-1',
+            slug: 'real-org-event',
+            name: 'Real Org Event',
+            tagline: null,
+            eventDate: '2026-11-15T09:00:00.000Z',
+            venueAddress: 'Mumbai',
+            bannerUrl: null,
+            minPricePaise: 40000,
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/organizers/real-verified-org');
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Real Verified Org' })).toBeInTheDocument());
+    // The previous version of this page hardcoded "Example Adventures"
+    // regardless of which organizer's URL was visited — confirming its
+    // absence is the actual regression test here.
+    expect(screen.queryByText(/example adventures/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Real Org Event')).toBeInTheDocument();
+    expect(screen.getAllByText(/hello@realverifiedorg\.example/i).length).toBeGreaterThan(0);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('a nonexistent organizer shows a clean not-found state, not a crash', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({ error: 'Organizer not found' }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/organizers/does-not-exist');
+    await waitFor(() => expect(screen.getByText(/organizer not found/i)).toBeInTheDocument());
+
+    vi.unstubAllGlobals();
+  });
+
   it('links "Host an Event" to organizer login, not the mock organizer profile page', () => {
     renderApp('/');
     const hostLinks = screen.getAllByRole('link', { name: /host an event/i });

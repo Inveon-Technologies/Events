@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { EventsListPage } from './pages/EventsListPage';
+import { OrganizersListPage } from './pages/OrganizersListPage';
 import { EventDetailsPage } from './pages/EventDetailsPage';
 import { EventUnavailablePage } from './pages/EventUnavailablePage';
 import { CheckoutPage } from './pages/CheckoutPage';
@@ -20,6 +21,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/events" element={<EventsListPage />} />
+      <Route path="/organizers" element={<OrganizersListPage />} />
 
       <Route path="/organizers/:organizerSlug" element={<OrganizerProfilePage />} />
 

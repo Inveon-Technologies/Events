@@ -6,6 +6,7 @@ import { Icon } from './Icon';
 const NAV_LINKS = [
   { to: '/', label: 'Explore' },
   { to: '/events', label: 'All Events' },
+  { to: '/organizers', label: 'Organizers' },
   { to: '/#categories', label: 'Categories' },
   { to: '/organizer/login', label: 'Host an Event' },
 ];
@@ -65,6 +66,12 @@ export function Header() {
             className="hover:text-brand-600 transition-colors"
           >
             All Events
+          </Link>
+          <Link
+            to="/organizers"
+            className="hover:text-brand-600 transition-colors"
+          >
+            Organizers
           </Link>
           <a
             href="#explore"
