@@ -1,6 +1,7 @@
 import { Organizer } from './Organizer';
 import { User } from './User';
 import { Event, EventScheduleItem, EventPackingItem, EventFaqItem } from './Event';
+import { EventMedia } from './EventMedia';
 import { TicketCategory } from './TicketCategory';
 import { Booking } from './Booking';
 import { Ticket } from './Ticket';
@@ -17,6 +18,9 @@ User.belongsTo(Organizer, { foreignKey: 'organizerId' });
 
 Organizer.hasMany(Event, { foreignKey: 'organizerId' });
 Event.belongsTo(Organizer, { foreignKey: 'organizerId' });
+
+Event.hasMany(EventMedia, { foreignKey: 'eventId' });
+EventMedia.belongsTo(Event, { foreignKey: 'eventId' });
 
 Event.hasMany(TicketCategory, { foreignKey: 'eventId' });
 TicketCategory.belongsTo(Event, { foreignKey: 'eventId' });
@@ -45,5 +49,5 @@ Cancellation.belongsTo(Booking, { foreignKey: 'bookingId' });
 User.hasMany(Cancellation, { foreignKey: 'processedByUserId', as: 'processedCancellations' });
 Cancellation.belongsTo(User, { foreignKey: 'processedByUserId', as: 'processedBy' });
 
-export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation };
+export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia };
 export type { EventScheduleItem, EventPackingItem, EventFaqItem };

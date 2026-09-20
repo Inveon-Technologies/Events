@@ -2,6 +2,7 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import { authRouter } from './routes/auth';
 import { organizerRouter } from './routes/organizer';
 import { publicBookingsRouter } from './routes/publicBookings';
+import { UPLOAD_DIR } from './services/eventMedia';
 
 export function createApp(): Express {
   const app = express();
@@ -20,6 +21,12 @@ export function createApp(): Express {
   // nginx setups (see docs on the production deployment) only proxy paths
   // under /api/, so external monitoring needs it there too.
   app.get('/api/health', healthHandler);
+
+  // Under /api/uploads, not a bare /uploads — the shared front-door nginx
+  // only proxies /api/* to this container (see the /api/health comment
+  // above), so anything outside that prefix would never actually be
+  // reachable through the public domain without a separate nginx change.
+  app.use('/api/uploads', express.static(UPLOAD_DIR));
 
   app.use('/api/auth', authRouter);
   app.use('/api/organizer', organizerRouter);

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import multer from 'multer';
+import os from 'os';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -6,8 +8,16 @@ import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
 import { getOrganizerEvents, DisplayEventStatus } from '../services/organizerEvents';
 import { createOrganizerEvent, ValidationError, CreateEventTicketTier } from '../services/eventCreation';
+import { uploadEventMedia, deleteEventMedia, MediaValidationError, NotFoundError, ForbiddenError, MAX_FILE_SIZE_BYTES } from '../services/eventMedia';
 
 export const organizerRouter = Router();
+
+// dest: os.tmpdir() — files land in a scratch location first; eventMedia.ts
+// validates (size already capped here via limits.fileSize, type, video
+// duration via ffprobe) before moving anything into the real, permanent
+// upload directory. Nothing half-validated ever reaches where it's served
+// from.
+const mediaUpload = multer({ dest: os.tmpdir(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
 
 organizerRouter.use(authenticate, requireRole('organizer_owner', 'organizer_staff'));
 
@@ -151,6 +161,86 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
   } catch (err) {
     if (err instanceof ValidationError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post(
+  '/events/:eventId/media',
+  // multer invoked manually (not as plain route middleware) so its own
+  // errors — file too large, a malformed multipart body — can be
+  // turned into a clean 400 here, rather than propagating to Express's
+  // default error handling as an unrelated-looking 500.
+  (req, res, next) => {
+    mediaUpload.single('file')(req, res, (err: unknown) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({ error: `File is too large — the limit is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB` });
+          return;
+        }
+        res.status(400).json({ error: 'Upload failed — please try again' });
+        return;
+      }
+      next();
+    });
+  },
+  asyncHandler(async (req, res) => {
+    const organizerId = req.user?.organizerId;
+    if (!organizerId) {
+      res.status(400).json({ error: 'This account has no associated organizer' });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'No file was uploaded' });
+      return;
+    }
+
+    try {
+      const media = await uploadEventMedia({
+        organizerId,
+        eventId: req.params.eventId,
+        mimeType: req.file.mimetype,
+        sizeBytes: req.file.size,
+        tempFilePath: req.file.path,
+      });
+      res.status(201).json(media);
+    } catch (err) {
+      if (err instanceof MediaValidationError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      if (err instanceof NotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      if (err instanceof ForbiddenError) {
+        res.status(403).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }),
+);
+
+organizerRouter.delete('/events/:eventId/media/:mediaId', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    await deleteEventMedia(organizerId, req.params.eventId, req.params.mediaId);
+    res.status(204).send();
+  } catch (err) {
+    if (err instanceof NotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof ForbiddenError) {
+      res.status(403).json({ error: err.message });
       return;
     }
     throw err;

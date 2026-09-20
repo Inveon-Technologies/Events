@@ -81,6 +81,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ffmpeg (for ffprobe — video-duration validation in event media upload tests)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:

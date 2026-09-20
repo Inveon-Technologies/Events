@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Organizer, Event, TicketCategory, EventScheduleItem, EventPackingItem, EventFaqItem } from '../models';
+import { Organizer, Event, TicketCategory, EventMedia, EventScheduleItem, EventPackingItem, EventFaqItem } from '../models';
 
 export interface PublicEventSummary {
   id: string;
@@ -23,6 +23,12 @@ export interface PublicTicketCategory {
   available: number;
 }
 
+export interface PublicEventMedia {
+  id: string;
+  mediaType: 'photo' | 'video';
+  url: string;
+}
+
 export interface PublicEventDetail {
   id: string;
   slug: string;
@@ -38,6 +44,7 @@ export interface PublicEventDetail {
   scheduleItems: EventScheduleItem[] | null;
   packingChecklist: EventPackingItem[] | null;
   faqItems: EventFaqItem[] | null;
+  media: PublicEventMedia[];
   organizerName: string;
   organizerSlug: string;
   ticketCategories: PublicTicketCategory[];
@@ -98,6 +105,10 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     where: { eventId: event.id },
     order: [['pricePaise', 'ASC']],
   });
+  const media = await EventMedia.findAll({
+    where: { eventId: event.id },
+    order: [['createdAt', 'ASC']],
+  });
   const organizer = (event as unknown as { Organizer: Organizer }).Organizer;
 
   return {
@@ -115,6 +126,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
+    media: media.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url })),
     organizerName: organizer.name,
     organizerSlug: organizer.slug,
     ticketCategories: categories.map((c) => ({
