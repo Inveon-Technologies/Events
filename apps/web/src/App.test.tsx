@@ -122,6 +122,91 @@ describe('App routing', () => {
     await waitFor(() => expect(screen.getAllByText(/Rajgad Sunrise Trek/i).length).toBeGreaterThan(0));
   });
 
+  it('event details page shows real uploaded photos and a real video, not the mock gallery', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-real-media-1',
+        slug: 'real-media-test-event',
+        name: 'Real Media Test Event',
+        tagline: 'A real tagline',
+        description: 'A real description',
+        eventDate: '2026-11-20T09:00:00.000Z',
+        venueAddress: 'Real Venue, Pune',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: null,
+        scheduleItems: null,
+        packingChecklist: null,
+        faqItems: null,
+        media: [
+          { id: 'media-photo-1', mediaType: 'photo', url: '/api/uploads/events/evt-real-media-1/real-photo.jpg' },
+          { id: 'media-video-1', mediaType: 'video', url: '/api/uploads/events/evt-real-media-1/real-video.mp4' },
+        ],
+        organizerName: 'Real Media Test Org',
+        organizerSlug: 'real-media-test-org',
+        ticketCategories: [
+          { id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-real-media-1');
+    await waitFor(() => expect(screen.getAllByText('Real Media Test Event').length).toBeGreaterThan(0));
+
+    // The real uploaded photo should be showing as the hero image — not
+    // any of the mock catalog's stock photo URLs.
+    const heroImage = document.querySelector('img[src="/api/uploads/events/evt-real-media-1/real-photo.jpg"]');
+    expect(heroImage).toBeTruthy();
+
+    // A real <video> element with the real uploaded video's URL.
+    const video = document.querySelector('video[src="/api/uploads/events/evt-real-media-1/real-video.mp4"]');
+    expect(video).toBeTruthy();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('event details page falls back to the mock gallery when a real event has no uploaded photos, and shows no video element at all', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-no-media-1',
+        slug: 'no-media-test-event',
+        name: 'No Media Test Event',
+        tagline: null,
+        description: null,
+        eventDate: '2026-11-25T09:00:00.000Z',
+        venueAddress: 'Some Venue',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: null,
+        scheduleItems: null,
+        packingChecklist: null,
+        faqItems: null,
+        media: [],
+        organizerName: 'No Media Test Org',
+        organizerSlug: 'no-media-test-org',
+        ticketCategories: [
+          { id: 'tier-1', name: 'General', description: null, pricePaise: 20000, maxPerBooking: 10, available: 5 },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-no-media-1');
+    await waitFor(() => expect(screen.getAllByText('No Media Test Event').length).toBeGreaterThan(0));
+
+    // No video element should render at all when the event has none.
+    expect(document.querySelector('video')).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
   it('falls back to the catch-all route for an unknown path', () => {
     renderApp('/this-route-does-not-exist');
     expect(document.body).toBeTruthy();

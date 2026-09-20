@@ -189,6 +189,17 @@ export function EventDetailsPage() {
                   <span className="hidden sm:inline">Share Event</span>
                 </button>
               </div>
+
+              {event.videoUrl && (
+                <div className="rounded-2xl overflow-hidden shadow-md bg-black">
+                  <video
+                    src={event.videoUrl}
+                    controls
+                    playsInline
+                    className="w-full aspect-video"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Quick Details Header & Fast Booking Widget (5 Cols) */}

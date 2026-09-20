@@ -44,8 +44,8 @@ describe('CreateEvent: event media picker', () => {
     // component keys thumbnails by this value, so a fixed mock value
     // would create bogus duplicate-key warnings across multiple files.
     let blobUrlCounter = 0;
-    global.URL.createObjectURL = vi.fn(() => `blob:mock-preview-url-${blobUrlCounter++}`);
-    global.URL.revokeObjectURL = vi.fn();
+    globalThis.URL.createObjectURL = vi.fn(() => `blob:mock-preview-url-${blobUrlCounter++}`);
+    globalThis.URL.revokeObjectURL = vi.fn();
   });
 
   afterEach(() => {
