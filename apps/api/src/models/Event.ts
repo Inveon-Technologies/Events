@@ -3,6 +3,22 @@ import { sequelize } from '../db/connection';
 
 export type EventStatus = 'draft' | 'published' | 'closed' | 'cancelled';
 
+export interface EventScheduleItem {
+  time: string;
+  title: string;
+  description?: string;
+}
+
+export interface EventPackingItem {
+  item: string;
+  mandatory: boolean;
+}
+
+export interface EventFaqItem {
+  question: string;
+  answer: string;
+}
+
 export class Event extends Model<InferAttributes<Event>, InferCreationAttributes<Event>> {
   declare id: CreationOptional<string>;
   declare organizerId: string;
@@ -17,6 +33,9 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare bannerUrl: string | null;
   declare termsAndConditions: string | null;
   declare cancellationPolicy: string | null;
+  declare scheduleItems: EventScheduleItem[] | null;
+  declare packingChecklist: EventPackingItem[] | null;
+  declare faqItems: EventFaqItem[] | null;
   declare status: CreationOptional<EventStatus>;
   declare capacity: number;
   declare readonly createdAt: CreationOptional<Date>;
@@ -38,6 +57,9 @@ Event.init(
     bannerUrl: { type: DataTypes.STRING, allowNull: true },
     termsAndConditions: { type: DataTypes.TEXT, allowNull: true },
     cancellationPolicy: { type: DataTypes.TEXT, allowNull: true },
+    scheduleItems: { type: DataTypes.JSONB, allowNull: true },
+    packingChecklist: { type: DataTypes.JSONB, allowNull: true },
+    faqItems: { type: DataTypes.JSONB, allowNull: true },
     status: { type: DataTypes.ENUM('draft', 'published', 'closed', 'cancelled'), allowNull: false, defaultValue: 'draft' },
     capacity: { type: DataTypes.INTEGER, allowNull: false },
     createdAt: DataTypes.DATE,

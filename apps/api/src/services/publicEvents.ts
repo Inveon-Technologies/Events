@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Organizer, Event, TicketCategory } from '../models';
+import { Organizer, Event, TicketCategory, EventScheduleItem, EventPackingItem, EventFaqItem } from '../models';
 
 export interface PublicEventSummary {
   id: string;
@@ -35,6 +35,9 @@ export interface PublicEventDetail {
   bannerUrl: string | null;
   termsAndConditions: string | null;
   cancellationPolicy: string | null;
+  scheduleItems: EventScheduleItem[] | null;
+  packingChecklist: EventPackingItem[] | null;
+  faqItems: EventFaqItem[] | null;
   organizerName: string;
   organizerSlug: string;
   ticketCategories: PublicTicketCategory[];
@@ -109,6 +112,9 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     bannerUrl: event.bannerUrl,
     termsAndConditions: event.termsAndConditions,
     cancellationPolicy: event.cancellationPolicy,
+    scheduleItems: event.scheduleItems,
+    packingChecklist: event.packingChecklist,
+    faqItems: event.faqItems,
     organizerName: organizer.name,
     organizerSlug: organizer.slug,
     ticketCategories: categories.map((c) => ({

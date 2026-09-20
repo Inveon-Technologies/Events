@@ -1,6 +1,6 @@
 import { Organizer } from './Organizer';
 import { User } from './User';
-import { Event } from './Event';
+import { Event, EventScheduleItem, EventPackingItem, EventFaqItem } from './Event';
 import { TicketCategory } from './TicketCategory';
 import { Booking } from './Booking';
 import { Ticket } from './Ticket';
@@ -46,3 +46,4 @@ User.hasMany(Cancellation, { foreignKey: 'processedByUserId', as: 'processedCanc
 Cancellation.belongsTo(User, { foreignKey: 'processedByUserId', as: 'processedBy' });
 
 export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation };
+export type { EventScheduleItem, EventPackingItem, EventFaqItem };
