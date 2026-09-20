@@ -234,6 +234,8 @@ export interface EventDetails {
   // handled by the page rendering nothing rather than a placeholder.
   cancellationPolicyText?: string | null;
   faqItems?: { question: string; answer: string }[] | null;
+  ratingSummary?: { averageRating: number | null; reviewCount: number };
+  isPast?: boolean;
   ticketCategories: TicketCategory[];
 }
 
@@ -494,6 +496,8 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
         : template.packingList,
       cancellationPolicyText: real.cancellationPolicy || null,
       faqItems: Array.isArray(real.faqItems) && real.faqItems.length > 0 ? real.faqItems : null,
+      ratingSummary: real.ratingSummary,
+      isPast: eventDate.getTime() < Date.now(),
       ticketCategories: real.ticketCategories.map((tc: { id: string; name: string; description: string | null; pricePaise: number; maxPerBooking: number; available: number }) => ({
         id: tc.id,
         name: tc.name,

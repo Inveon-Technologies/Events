@@ -9,6 +9,7 @@ export function EventDetailsPage() {
   const navigate = useNavigate();
 
   const [event, setEvent] = useState<EventDetails | null>(null);
+  const [reviews, setReviews] = useState<{ id: string; rating: number; reviewText: string | null; customerName: string; createdAt: string }[]>([]);
 
   const [activeTab, setActiveTab] = useState<'about' | 'details' | 'gear' | 'location' | 'policy'>('about');
   const [galleryIdx, setGalleryIdx] = useState(0);
@@ -24,6 +25,19 @@ export function EventDetailsPage() {
       // previous hardcoded { general: 1, vip: 0 } only made sense for
       // the mock event's fixed tier ids.
       setQuantities(data.ticketCategories[0] ? { [data.ticketCategories[0].id]: 1 } : {});
+
+      // A mock-fallback event's id doesn't correspond to any real
+      // reviews — the fetch below simply returns nothing for it, same
+      // "real data or nothing, never fabricated" handling as everywhere
+      // else on this page.
+      fetch(`/api/events/${data.id}/reviews`)
+        .then((res) => (res.ok ? res.json() : { reviews: [] }))
+        .then((reviewData) => {
+          if (!cancelled) setReviews(reviewData.reviews || []);
+        })
+        .catch(() => {
+          if (!cancelled) setReviews([]);
+        });
     });
     return () => {
       cancelled = true;
@@ -216,10 +230,16 @@ export function EventDetailsPage() {
                     <span className="material-symbols-outlined text-[13px]">landscape</span>
                     {event.subCategory || 'Sahyadri Range'}
                   </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-[13px]">star</span>
-                    {event.rating || '4.9'} ({event.reviewsCount || 184} reviews)
-                  </span>
+                  {event.ratingSummary && event.ratingSummary.reviewCount > 0 ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold uppercase tracking-wider">
+                      <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+                      {event.ratingSummary.averageRating} ({event.ratingSummary.reviewCount} review{event.ratingSummary.reviewCount === 1 ? '' : 's'})
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                      No reviews yet
+                    </span>
+                  )}
                 </div>
 
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0b1c30] tracking-tight mt-1">
@@ -540,6 +560,52 @@ export function EventDetailsPage() {
                   )}
                 </div>
               )}
+
+              {/* Customer Reviews Section — always visible, regardless of active tab */}
+              <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">
+                    Reviews {event.ratingSummary && event.ratingSummary.reviewCount > 0 ? `(${event.ratingSummary.reviewCount})` : ''}
+                  </h3>
+                  {event.isPast && (
+                    <Link
+                      to="/feedback"
+                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">rate_review</span>
+                      Rate this event
+                    </Link>
+                  )}
+                </div>
+
+                {reviews.length === 0 ? (
+                  <p className="text-xs sm:text-sm text-slate-500">No reviews yet — be the first to share your experience.</p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {reviews.map((review) => (
+                      <div key={review.id} className="py-3.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-900 text-sm">{review.customerName}</span>
+                          <div className="flex items-center gap-0.5">
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <span
+                                key={star}
+                                className={`material-symbols-outlined text-[15px] ${star <= review.rating ? 'text-amber-400' : 'text-slate-200'}`}
+                                style={star <= review.rating ? { fontVariationSettings: "'FILL' 1" } : undefined}
+                              >
+                                star
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        {review.reviewText && (
+                          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mt-1.5">{review.reviewText}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
             </div>
 

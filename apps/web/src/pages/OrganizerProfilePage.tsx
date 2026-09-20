@@ -21,6 +21,7 @@ interface OrganizerDetail {
   about: string | null;
   contactEmail: string | null;
   events: OrganizerEvent[];
+  ratingSummary: { averageRating: number | null; reviewCount: number };
 }
 
 const PLACEHOLDER_EVENT_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80';
@@ -151,6 +152,12 @@ export function OrganizerProfilePage() {
                     </span>{' '}
                     Verified Organizer
                   </span>
+                  {organizer.ratingSummary?.reviewCount > 0 && (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
+                      <span className="material-symbols-outlined text-[15px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+                      {organizer.ratingSummary.averageRating} ({organizer.ratingSummary.reviewCount} review{organizer.ratingSummary.reviewCount === 1 ? '' : 's'})
+                    </span>
+                  )}
                 </div>
 
                 {organizer.about && (
