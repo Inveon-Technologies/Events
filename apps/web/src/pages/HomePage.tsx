@@ -136,7 +136,7 @@ export function HomePage() {
                 <div className="absolute inset-0 w-full h-full rounded-2xl sm:rounded-3xl lg:rounded-l-[3.5rem] lg:rounded-r-3xl overflow-hidden shadow-xl sm:shadow-2xl border border-slate-100/60 group">
                   <img
                     alt="Trekker overlooking sunrise mountain valley"
-                    className="w-full h-full object-cover object-center transform scale-100 transition-transform duration-1000 group-hover:scale-105"
+                    className="w-full h-full object-cover object-right transform scale-100 transition-transform duration-1000 group-hover:scale-105"
                     src={heroTrekkerImg}
                   />
                   <div className="absolute inset-0 bg-gradient-to-r from-white/90 via-white/20 to-transparent lg:via-transparent"></div>
@@ -253,7 +253,7 @@ export function HomePage() {
             </div>
 
             {/* FLOATING SEARCH BAR */}
-            <div className="mt-6 sm:mt-8 lg:-mt-6 relative z-30 max-w-4xl mx-auto" data-purpose="search-bar">
+            <div className="mt-8 sm:mt-10 lg:mt-8 relative z-30 max-w-4xl mx-auto" data-purpose="search-bar">
               <form
                 onSubmit={handleSearchSubmit}
                 className="bg-white rounded-2xl shadow-xl border border-slate-200/90 p-2 sm:p-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-3"
@@ -544,11 +544,8 @@ export function HomePage() {
                 <p className="text-sm sm:text-base text-slate-500 mt-1">Discover experiences happening near you and beyond.</p>
               </div>
 
-              <button
-                onClick={() => {
-                  setSelectedCategory(null);
-                  setSearchQuery('');
-                }}
+              <Link
+                to="/events"
                 className="inline-flex items-center gap-1.5 text-sm font-bold text-brand-600 hover:text-brand-700 transition-colors group self-start sm:self-auto"
               >
                 <span>View All Events</span>
@@ -556,7 +553,7 @@ export function HomePage() {
                   <path d="M5 12h14"></path>
                   <path d="m12 5 7 7-7 7"></path>
                 </svg>
-              </button>
+              </Link>
             </div>
 
             {/* 4 Events Grid */}
@@ -566,7 +563,8 @@ export function HomePage() {
                 return (
                   <article
                     key={event.id}
-                    className="bg-white rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1.5 flex flex-col"
+                    onClick={() => navigate(`/events/${event.id}`)}
+                    className="bg-white rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1.5 flex flex-col cursor-pointer group"
                   >
                     <div className="relative h-48 overflow-hidden group bg-slate-900">
                       <img
@@ -651,6 +649,21 @@ export function HomePage() {
                 );
               })}
             </div>
+
+            {filteredEvents.length > 0 && (
+              <div className="mt-10 text-center">
+                <Link
+                  to="/events"
+                  className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 hover:text-slate-900 font-semibold text-sm shadow-sm transition-all hover:border-slate-400 hover:shadow"
+                >
+                  <span>Explore All Events</span>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right w-4 h-4 text-brand-600">
+                    <path d="M5 12h14"></path>
+                    <path d="m12 5 7 7-7 7"></path>
+                  </svg>
+                </Link>
+              </div>
+            )}
 
             {eventsLoading && filteredEvents.length === 0 && (
               <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 mt-6 shadow-sm">
