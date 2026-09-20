@@ -45,6 +45,19 @@ deploy_tag() {
   docker compose --env-file .env --env-file .env.deploy up -d --no-deps events-api events-web
 }
 
+run_migrations() {
+  # Against the compiled output already inside the container just
+  # started — no tsx, no devDependencies, matches exactly how the
+  # container itself runs (node dist/index.js), unlike `npm run migrate`
+  # which needs tsx and the TS source, neither present in this image.
+  # No deploy before this one ever actually ran this — found live when a
+  # freshly-fixed DB connection still hit "relation users does not
+  # exist". Umzug's `up` only applies pending migrations, so this is a
+  # no-op on a deploy with nothing new, and safe during a rollback to an
+  # older tag too — it never runs anything down automatically.
+  docker compose exec -T events-api node dist/db/migrate.js up
+}
+
 health_check() {
   # Inside the events-api container itself, not through the public
   # domain — this is a "did the container we just started come up
@@ -64,13 +77,13 @@ health_check() {
 echo "== Deploying image tag: $NEW_TAG =="
 deploy_tag "$NEW_TAG"
 
-if health_check; then
+if run_migrations && health_check; then
   echo "$NEW_TAG" > "$LAST_GOOD_FILE"
-  echo "== Deploy succeeded, health check passed. =="
+  echo "== Deploy succeeded, migrations applied, health check passed. =="
   exit 0
 fi
 
-echo "== Health check failed after $MAX_ATTEMPTS attempts. Rolling back. =="
+echo "== Migration or health check failed. Rolling back. =="
 
 if [ -f "$LAST_GOOD_FILE" ]; then
   ROLLBACK_TAG="$(cat "$LAST_GOOD_FILE")"
