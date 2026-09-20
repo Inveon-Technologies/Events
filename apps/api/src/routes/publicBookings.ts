@@ -1,10 +1,25 @@
 import { Router } from 'express';
 import { createBooking, SoldOutError, NotFoundError } from '../services/bookingCreation';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
+import { listPublicOrganizers, getPublicOrganizer } from '../services/publicOrganizers';
 import { sendBookingConfirmationEmail } from '../services/bookingEmails';
 import { asyncHandler } from '../middleware/asyncHandler';
 
 export const publicBookingsRouter = Router();
+
+publicBookingsRouter.get('/organizers', asyncHandler(async (_req, res) => {
+  const organizers = await listPublicOrganizers();
+  res.status(200).json({ organizers });
+}));
+
+publicBookingsRouter.get('/organizers/:slug', asyncHandler(async (req, res) => {
+  const organizer = await getPublicOrganizer(req.params.slug);
+  if (!organizer) {
+    res.status(404).json({ error: 'Organizer not found' });
+    return;
+  }
+  res.status(200).json(organizer);
+}));
 
 publicBookingsRouter.get('/events', asyncHandler(async (_req, res) => {
   const events = await listPublicEvents();
