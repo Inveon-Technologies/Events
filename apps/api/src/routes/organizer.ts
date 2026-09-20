@@ -4,11 +4,18 @@ import os from 'os';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { Organizer } from '../models';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
 import { getOrganizerEvents, DisplayEventStatus } from '../services/organizerEvents';
 import { createOrganizerEvent, ValidationError, CreateEventTicketTier } from '../services/eventCreation';
 import { uploadEventMedia, deleteEventMedia, MediaValidationError, NotFoundError, ForbiddenError, MAX_FILE_SIZE_BYTES } from '../services/eventMedia';
+import {
+  submitOrganizerVerification,
+  refreshOrganizerVerificationStatus,
+  ValidationError as VerificationValidationError,
+  NotFoundError as VerificationNotFoundError,
+} from '../services/organizerVerification';
 
 export const organizerRouter = Router();
 
@@ -241,6 +248,88 @@ organizerRouter.delete('/events/:eventId/media/:mediaId', asyncHandler(async (re
     }
     if (err instanceof ForbiddenError) {
       res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.get('/verification', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const organizer = await Organizer.findByPk(organizerId);
+  if (!organizer) {
+    res.status(404).json({ error: 'Organizer not found' });
+    return;
+  }
+
+  res.status(200).json({
+    cashfreeVendorStatus: organizer.cashfreeVendorStatus,
+    panNumber: organizer.panNumber,
+    kycAccountType: organizer.kycAccountType,
+    businessType: organizer.businessType,
+    bankAccountHolderName: organizer.bankAccountHolderName,
+    bankAccountNumberLast4: organizer.bankAccountNumberLast4,
+    bankIfsc: organizer.bankIfsc,
+  });
+}));
+
+organizerRouter.post('/verification', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  const accountType = body.accountType === 'business' ? 'business' : 'individual';
+
+  try {
+    const result = await submitOrganizerVerification({
+      organizerId,
+      panNumber: typeof body.panNumber === 'string' ? body.panNumber : '',
+      accountType,
+      businessType: typeof body.businessType === 'string' ? body.businessType : undefined,
+      contactPhone: typeof body.contactPhone === 'string' ? body.contactPhone : '',
+      bankAccountHolderName: typeof body.bankAccountHolderName === 'string' ? body.bankAccountHolderName : '',
+      bankAccountNumber: typeof body.bankAccountNumber === 'string' ? body.bankAccountNumber : '',
+      bankIfsc: typeof body.bankIfsc === 'string' ? body.bankIfsc : '',
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof VerificationValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof VerificationNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/verification/refresh', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    const result = await refreshOrganizerVerificationStatus(organizerId);
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof VerificationValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof VerificationNotFoundError) {
+      res.status(404).json({ error: err.message });
       return;
     }
     throw err;
