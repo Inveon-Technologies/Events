@@ -4,6 +4,7 @@ import { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cance
 import { hashPassword } from '../auth/password';
 
 const ORGANIZER_SLUG = 'eco-pandhari';
+const EVENT_YEAR = new Date().getFullYear();
 
 function daysFromNow(days: number): Date {
   const d = new Date();
@@ -50,6 +51,7 @@ async function main() {
   const trek = await Event.create({
     organizerId: organizer.id,
     name: 'Rajgad Sunrise Trek',
+    slug: `rajgad-sunrise-trek-${EVENT_YEAR}`,
     tagline: 'Chase the sunrise from the fort of forts',
     eventDate: daysFromNow(20),
     venueAddress: 'Rajgad Fort, Pune',
@@ -68,6 +70,7 @@ async function main() {
   const workshop = await Event.create({
     organizerId: organizer.id,
     name: 'Pune Business Workshop',
+    slug: `pune-business-workshop-${EVENT_YEAR}`,
     tagline: 'A half-day workshop on scaling a small business',
     eventDate: daysFromNow(27),
     venueAddress: 'Pune',
@@ -170,6 +173,7 @@ async function main() {
   await Event.create({
     organizerId: organizer.id,
     name: 'Sandhan Valley Night Trek',
+    slug: `sandhan-valley-night-trek-${EVENT_YEAR}`,
     eventDate: daysFromNow(45),
     capacity: 80,
     status: 'draft',
@@ -177,6 +181,7 @@ async function main() {
   await Event.create({
     organizerId: organizer.id,
     name: 'Pawna Lake Camping',
+    slug: `pawna-lake-camping-${EVENT_YEAR}`,
     eventDate: daysFromNow(-10), // in the past — should derive to 'completed'
     venueAddress: 'Pawna Lake, Lonavala',
     capacity: 100,
@@ -185,6 +190,7 @@ async function main() {
   await Event.create({
     organizerId: organizer.id,
     name: 'Monsoon Trek Challenge',
+    slug: `monsoon-trek-challenge-${EVENT_YEAR}`,
     eventDate: daysFromNow(15),
     capacity: 60,
     status: 'cancelled',

@@ -7,6 +7,7 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare id: CreationOptional<string>;
   declare organizerId: string;
   declare name: string;
+  declare slug: string | null;
   declare tagline: string | null;
   declare description: string | null;
   declare venueAddress: string | null;
@@ -27,6 +28,7 @@ Event.init(
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     organizerId: { type: DataTypes.UUID, allowNull: false },
     name: { type: DataTypes.STRING, allowNull: false },
+    slug: { type: DataTypes.STRING, allowNull: true, unique: true },
     tagline: { type: DataTypes.STRING, allowNull: true },
     description: { type: DataTypes.TEXT, allowNull: true },
     venueAddress: { type: DataTypes.TEXT, allowNull: true },
