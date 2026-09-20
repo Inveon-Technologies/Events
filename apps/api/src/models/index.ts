@@ -7,6 +7,7 @@ import { Booking } from './Booking';
 import { Ticket } from './Ticket';
 import { Payment } from './Payment';
 import { Cancellation } from './Cancellation';
+import { EventReview } from './EventReview';
 
 // event_custom_questions, ticket_custom_answers, event_media, and
 // certificates exist as tables (see the migration) but deliberately have
@@ -49,5 +50,14 @@ Cancellation.belongsTo(Booking, { foreignKey: 'bookingId' });
 User.hasMany(Cancellation, { foreignKey: 'processedByUserId', as: 'processedCancellations' });
 Cancellation.belongsTo(User, { foreignKey: 'processedByUserId', as: 'processedBy' });
 
-export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia };
+Booking.hasOne(EventReview, { foreignKey: 'bookingId' });
+EventReview.belongsTo(Booking, { foreignKey: 'bookingId' });
+
+Event.hasMany(EventReview, { foreignKey: 'eventId' });
+EventReview.belongsTo(Event, { foreignKey: 'eventId' });
+
+Organizer.hasMany(EventReview, { foreignKey: 'organizerId' });
+EventReview.belongsTo(Organizer, { foreignKey: 'organizerId' });
+
+export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview };
 export type { EventScheduleItem, EventPackingItem, EventFaqItem };

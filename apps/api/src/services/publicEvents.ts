@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { Organizer, Event, TicketCategory, EventMedia, EventScheduleItem, EventPackingItem, EventFaqItem } from '../models';
+import { getEventRatingSummary, RatingSummary } from './eventReviews';
 
 export interface PublicEventSummary {
   id: string;
@@ -12,6 +13,7 @@ export interface PublicEventSummary {
   organizerName: string;
   organizerSlug: string;
   minPricePaise: number | null;
+  ratingSummary: RatingSummary;
 }
 
 export interface PublicTicketCategory {
@@ -48,6 +50,7 @@ export interface PublicEventDetail {
   organizerName: string;
   organizerSlug: string;
   ticketCategories: PublicTicketCategory[];
+  ratingSummary: RatingSummary;
 }
 
 // Public — no auth, so only ever returns published events. A draft/
@@ -80,6 +83,7 @@ export async function listPublicEvents(): Promise<PublicEventSummary[]> {
         effectiveBannerUrl = firstPhoto?.url ?? null;
       }
       const organizer = (event as unknown as { Organizer: Organizer }).Organizer;
+      const ratingSummary = await getEventRatingSummary(event.id);
       return {
         id: event.id,
         slug: event.slug ?? event.id,
@@ -91,6 +95,7 @@ export async function listPublicEvents(): Promise<PublicEventSummary[]> {
         organizerName: organizer.name,
         organizerSlug: organizer.slug,
         minPricePaise: cheapest?.pricePaise ?? null,
+        ratingSummary,
       };
     }),
   );
@@ -124,6 +129,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
   });
   const organizer = (event as unknown as { Organizer: Organizer }).Organizer;
   const firstPhoto = media.find((m) => m.mediaType === 'photo');
+  const ratingSummary = await getEventRatingSummary(event.id);
 
   return {
     id: event.id,
@@ -151,5 +157,6 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
       maxPerBooking: c.maxPerBooking,
       available: c.quotaRemaining,
     })),
+    ratingSummary,
   };
 }
