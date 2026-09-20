@@ -135,4 +135,64 @@ describe('organizer event creation (real DB)', () => {
     const res = await request(app).post('/api/organizer/events').send({ title: 'x' });
     expect(res.status).toBe(401);
   });
+
+  it('stores schedule, packing checklist, and FAQ items, sanitizing out incomplete entries', async () => {
+    const createRes = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Rich Content Test Event',
+        startDate: '2026-12-10',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+        scheduleItems: [
+          { time: '06:00 AM', title: 'Assembly', description: 'Meet at base camp' },
+          { time: '07:00 AM', title: 'Trek begins' },
+          { time: '', title: 'Should be dropped (no time)' },
+        ],
+        packingChecklist: [
+          { item: 'Trekking shoes', mandatory: true },
+          { item: 'Sunscreen', mandatory: false },
+          { item: '', mandatory: true },
+        ],
+        faqItems: [
+          { question: 'Is food included?', answer: 'Yes, breakfast and lunch.' },
+          { question: 'No answer here', answer: '' },
+        ],
+      });
+    expect(createRes.status).toBe(201);
+
+    const detailRes = await request(app).get(`/api/events/${createRes.body.slug}`);
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.scheduleItems).toEqual([
+      { time: '06:00 AM', title: 'Assembly', description: 'Meet at base camp' },
+      { time: '07:00 AM', title: 'Trek begins' },
+    ]);
+    expect(detailRes.body.packingChecklist).toEqual([
+      { item: 'Trekking shoes', mandatory: true },
+      { item: 'Sunscreen', mandatory: false },
+    ]);
+    expect(detailRes.body.faqItems).toEqual([{ question: 'Is food included?', answer: 'Yes, breakfast and lunch.' }]);
+  });
+
+  it('an event with no rich content returns null for each field, not an error or empty array', async () => {
+    const createRes = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'No Rich Content Event',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+    expect(createRes.status).toBe(201);
+
+    const detailRes = await request(app).get(`/api/events/${createRes.body.slug}`);
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.scheduleItems).toBeNull();
+    expect(detailRes.body.packingChecklist).toBeNull();
+    expect(detailRes.body.faqItems).toBeNull();
+  });
 });

@@ -32,6 +32,22 @@ export interface CreateEventTicketTier {
   quantity: number;
 }
 
+export interface CreateEventScheduleItem {
+  time: string;
+  title: string;
+  description?: string;
+}
+
+export interface CreateEventPackingItem {
+  item: string;
+  mandatory?: boolean;
+}
+
+export interface CreateEventFaqItem {
+  question: string;
+  answer: string;
+}
+
 export interface CreateEventParams {
   organizerId: string;
   title: string;
@@ -47,10 +63,42 @@ export interface CreateEventParams {
   bannerImage?: string;
   cancellationPolicyDescription?: string;
   ticketTiers: CreateEventTicketTier[];
+  scheduleItems?: CreateEventScheduleItem[];
+  packingChecklist?: CreateEventPackingItem[];
+  faqItems?: CreateEventFaqItem[];
   status: 'draft' | 'published';
 }
 
 export class ValidationError extends Error {}
+
+// Each of these is optional content — an event doesn't need a schedule,
+// packing list, or FAQ — so rather than hard-reject a malformed entry,
+// this quietly drops any row missing what it actually needs (a schedule
+// item with no title, an FAQ pair with no answer) and keeps the rest,
+// storing null instead of an empty array when nothing valid remains.
+function sanitizeScheduleItems(items?: CreateEventScheduleItem[]): CreateEventScheduleItem[] | null {
+  if (!items) return null;
+  const cleaned = items
+    .map((i) => ({ time: i.time?.trim() ?? '', title: i.title?.trim() ?? '', description: i.description?.trim() || undefined }))
+    .filter((i) => i.time && i.title);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function sanitizePackingChecklist(items?: CreateEventPackingItem[]): { item: string; mandatory: boolean }[] | null {
+  if (!items) return null;
+  const cleaned: { item: string; mandatory: boolean }[] = items
+    .map((i) => ({ item: i.item?.trim() ?? '', mandatory: i.mandatory !== false }))
+    .filter((i) => i.item);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function sanitizeFaqItems(items?: CreateEventFaqItem[]): CreateEventFaqItem[] | null {
+  if (!items) return null;
+  const cleaned = items
+    .map((i) => ({ question: i.question?.trim() ?? '', answer: i.answer?.trim() ?? '' }))
+    .filter((i) => i.question && i.answer);
+  return cleaned.length > 0 ? cleaned : null;
+}
 
 // This wizard's UI collects meaningfully more than this schema currently
 // tracks — a category, tags, structured cancellation terms (cutoff days,
@@ -96,6 +144,9 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         eventDate,
         bannerUrl: params.bannerImage?.trim() || null,
         cancellationPolicy: params.cancellationPolicyDescription?.trim() || null,
+        scheduleItems: sanitizeScheduleItems(params.scheduleItems),
+        packingChecklist: sanitizePackingChecklist(params.packingChecklist),
+        faqItems: sanitizeFaqItems(params.faqItems),
         status: params.status,
         capacity: totalCapacity,
       },

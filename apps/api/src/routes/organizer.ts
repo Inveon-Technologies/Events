@@ -95,6 +95,34 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
     };
   });
 
+  const rawSchedule = Array.isArray(body.scheduleItems) ? body.scheduleItems : [];
+  const scheduleItems = rawSchedule.map((s) => {
+    const item = s as Record<string, unknown>;
+    return {
+      time: typeof item.time === 'string' ? item.time : '',
+      title: typeof item.title === 'string' ? item.title : '',
+      description: typeof item.description === 'string' ? item.description : undefined,
+    };
+  });
+
+  const rawPacking = Array.isArray(body.packingChecklist) ? body.packingChecklist : [];
+  const packingChecklist = rawPacking.map((p) => {
+    const item = p as Record<string, unknown>;
+    return {
+      item: typeof item.item === 'string' ? item.item : '',
+      mandatory: item.mandatory !== false,
+    };
+  });
+
+  const rawFaq = Array.isArray(body.faqItems) ? body.faqItems : [];
+  const faqItems = rawFaq.map((f) => {
+    const item = f as Record<string, unknown>;
+    return {
+      question: typeof item.question === 'string' ? item.question : '',
+      answer: typeof item.answer === 'string' ? item.answer : '',
+    };
+  });
+
   try {
     const created = await createOrganizerEvent({
       organizerId,
@@ -114,6 +142,9 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
           ? String((body.cancellationPolicy as Record<string, unknown>).description ?? '')
           : undefined,
       ticketTiers,
+      scheduleItems,
+      packingChecklist,
+      faqItems,
       status,
     });
     res.status(201).json(created);
