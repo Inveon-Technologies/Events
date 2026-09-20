@@ -14,6 +14,7 @@ import { ManageBookingPage } from './pages/ManageBookingPage';
 import { VerificationLookupPage } from './pages/VerificationLookupPage';
 import { BookingNotFoundPage } from './pages/BookingNotFoundPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
+import { FeedbackPage } from './pages/FeedbackPage';
 import { OrganizerApp } from './organizer/OrganizerApp';
 
 export default function App() {
@@ -36,6 +37,8 @@ export default function App() {
       <Route path="/bookings/not-found" element={<BookingNotFoundPage />} />
       <Route path="/bookings/:bookingId/confirmed" element={<BookingConfirmedPage />} />
       <Route path="/bookings/:bookingId/manage" element={<ManageBookingPage />} />
+      <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/bookings/:bookingReference/feedback" element={<FeedbackPage />} />
       <Route path="/bookings/:bookingId" element={<BookingHubPage />} />
 
       {/* Organizer back office — entire nested app, all 44 pages */}

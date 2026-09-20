@@ -8,6 +8,7 @@ interface OrganizerSummary {
   logoUrl: string | null;
   about: string | null;
   publishedEventCount: number;
+  ratingSummary: { averageRating: number | null; reviewCount: number };
 }
 
 export function OrganizersListPage() {
@@ -84,6 +85,12 @@ export function OrganizersListPage() {
                         </span>
                         Verified
                       </span>
+                      {org.ratingSummary?.reviewCount > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 mt-0.5 ml-2">
+                          <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
+                          {org.ratingSummary.averageRating} ({org.ratingSummary.reviewCount})
+                        </span>
+                      )}
                     </div>
                   </div>
 

@@ -80,6 +80,7 @@ describe('App routing', () => {
             minPricePaise: 40000,
           },
         ],
+        ratingSummary: { averageRating: 4.5, reviewCount: 2 },
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -267,6 +268,176 @@ describe('App routing', () => {
     expect(screen.queryByText(/Full 100% Refund:/)).not.toBeInTheDocument();
     expect(screen.getByText('Is food included?')).toBeInTheDocument();
     expect(screen.getByText('Yes, breakfast is included.')).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('event details page shows the real rating summary and real reviews, with a "Rate this event" link only for past events', async () => {
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/reviews')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            reviews: [
+              { id: 'rev-1', rating: 5, reviewText: 'Fantastic trip!', customerName: 'Happy C.', createdAt: '2026-01-05T00:00:00.000Z' },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-past-1',
+          slug: 'past-review-event',
+          name: 'Past Review Event',
+          tagline: null,
+          description: 'A completed event',
+          eventDate: '2026-01-01T09:00:00.000Z', // in the past relative to the fixed test date
+          venueAddress: 'Pune',
+          venueMapUrl: null,
+          bannerUrl: null,
+          termsAndConditions: null,
+          cancellationPolicy: null,
+          scheduleItems: null,
+          packingChecklist: null,
+          faqItems: null,
+          media: [],
+          organizerName: 'Past Event Org',
+          organizerSlug: 'past-event-org',
+          ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+          ratingSummary: { averageRating: 5, reviewCount: 1 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-past-1');
+    await waitFor(() => expect(screen.getAllByText('Past Review Event').length).toBeGreaterThan(0));
+
+    // Real aggregate rating badge near the title, not the old hardcoded "4.9 (184 reviews)".
+    expect(screen.getByText(/5 \(1 review\)/)).toBeInTheDocument();
+    expect(screen.queryByText(/184 reviews/)).not.toBeInTheDocument();
+
+    // Real review content in the always-visible reviews section.
+    expect(screen.getByText('Fantastic trip!')).toBeInTheDocument();
+    expect(screen.getByText('Happy C.')).toBeInTheDocument();
+
+    // The event is in the past, so a "Rate this event" link should show.
+    expect(screen.getByRole('link', { name: /rate this event/i })).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('does not show a "Rate this event" link for an upcoming event', async () => {
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/reviews')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ reviews: [] }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-future-1',
+          slug: 'future-review-event',
+          name: 'Future Review Event',
+          tagline: null,
+          description: null,
+          eventDate: '2026-12-25T09:00:00.000Z', // in the future relative to the fixed test date
+          venueAddress: 'Pune',
+          venueMapUrl: null,
+          bannerUrl: null,
+          termsAndConditions: null,
+          cancellationPolicy: null,
+          scheduleItems: null,
+          packingChecklist: null,
+          faqItems: null,
+          media: [],
+          organizerName: 'Future Event Org',
+          organizerSlug: 'future-event-org',
+          ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+          ratingSummary: { averageRating: null, reviewCount: 0 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-future-1');
+    await waitFor(() => expect(screen.getAllByText('Future Review Event').length).toBeGreaterThan(0));
+
+    expect(screen.getByText('No reviews yet')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /rate this event/i })).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('feedback page submits a real request with the entered rating and shows a success state', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ id: 'review-1', rating: 4, reviewText: 'Great time!' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/feedback');
+
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-99999');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'customer@example.com');
+    await user.click(screen.getAllByRole('radio', { name: '4 stars' })[0]);
+    await user.type(screen.getByPlaceholderText(/tell other travellers/i), 'Great time!');
+    await user.click(screen.getByRole('button', { name: /submit feedback/i }));
+
+    await waitFor(() => expect(screen.getByText(/thanks for your feedback/i)).toBeInTheDocument());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/bookings/INV-BKG-2026-99999/feedback',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'customer@example.com', rating: 4, reviewText: 'Great time!' }),
+      }),
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it('feedback page shows the real server error when the booking/email do not match', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Booking not found' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/feedback');
+
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-00000');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'wrong@example.com');
+    await user.click(screen.getAllByRole('radio', { name: '3 stars' })[0]);
+    await user.click(screen.getByRole('button', { name: /submit feedback/i }));
+
+    await waitFor(() => expect(screen.getByText('Booking not found')).toBeInTheDocument());
+    expect(screen.queryByText(/thanks for your feedback/i)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('feedback page requires a star rating before submitting', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/feedback');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-11111');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'someone@example.com');
+    await user.click(screen.getByRole('button', { name: /submit feedback/i }));
+
+    expect(screen.getByText(/select a star rating/i)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });
