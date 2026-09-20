@@ -26,6 +26,26 @@ jobs:
               echo "Could not find EVENTS_POSTGRES_PASSWORD in ~/inveontechnologies-website/.env"
               exit 1
             fi
+
+            cd ~/inveontechnologies-website
+
+            # POSTGRES_PASSWORD only takes effect the very first time a
+            # fresh volume is initialized — if the .env value was ever
+            # changed afterward, the actual database user's password
+            # silently keeps the old one, which is exactly what the
+            # previous run's logs showed ("password authentication failed
+            # for user events" even with the username now correct). Makes
+            # the actual password match the .env file, not the other way
+            # around. Escapes any embedded single quote by doubling it
+            # (standard SQL string-literal escaping) so this is safe
+            # regardless of what characters the password contains — tested
+            # locally against a password containing a quote, #, and =
+            # before trusting this against production (psql's :'var'
+            # substitution was tried first and, contrary to expectation,
+            # didn't work via -c; this plain-escaping approach did).
+            ESCAPED_PGPASS=$(printf '%s' "$PGPASS" | sed "s/'/''/g")
+            docker compose exec -T events-postgres psql -U events -d events -c "ALTER USER events WITH PASSWORD '${ESCAPED_PGPASS}';"
+
             # Treat the password as pure data, never as part of a sed/regex
             # pattern — a previous attempt built a sed program string with
             # the password embedded in it, which broke (unterminated 's'
@@ -38,7 +58,6 @@ jobs:
             echo "DATABASE_URL now (password masked):"
             grep DATABASE_URL /var/www/Events/apps/api/.env | sed -E 's/(:\/\/[^:]+:)[^@]+(@)/\1***\2/'
 
-            cd ~/inveontechnologies-website
             docker compose restart events-api
             sleep 8
 
