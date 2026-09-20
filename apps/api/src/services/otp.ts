@@ -1,7 +1,7 @@
 import { randomInt } from 'crypto';
 import { redis } from '../db/redis';
 
-const OTP_TTL_SECONDS = 10 * 60; // 10 minutes
+const OTP_TTL_SECONDS = 2 * 60; // 2 minutes
 export const OTP_EXPIRY_MINUTES = OTP_TTL_SECONDS / 60;
 
 export type OtpPurpose = 'signup' | 'reset';
