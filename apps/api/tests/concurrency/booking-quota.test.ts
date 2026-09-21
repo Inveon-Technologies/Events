@@ -56,7 +56,13 @@ describe('booking concurrency: atomic quota reservation (BE-11 / QA-01)', () => 
           primaryContactName: `Concurrent Buyer ${i}`,
           primaryContactWhatsapp: `+91900000${String(i).padStart(4, '0')}`,
           primaryContactEmail: `buyer${i}@example.com`,
-          paymentMethod: 'online',
+          // 'cash', deliberately — this test is about the atomic quota
+          // reservation itself (identical for either payment method),
+          // not the Cashfree order-creation path that now follows an
+          // 'online' booking in production. That path makes a real
+          // network call to Cashfree, which isn't mocked here and isn't
+          // reachable from every environment this suite runs in.
+          paymentMethod: 'cash',
         });
 
     const responses = await Promise.all(

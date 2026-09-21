@@ -29,7 +29,15 @@ describe('event feedback and ratings (real DB)', () => {
   }
 
   beforeAll(async () => {
-    const organizer = await Organizer.create({ name: `Review Test Org ${suffix}`, slug: `review-test-org-${suffix}` });
+    // This suite publishes paid events to book and review, which needs
+    // an organizer that clears eventCreation.ts's publish-time
+    // verification gate to reach what these tests are actually about.
+    const organizer = await Organizer.create({
+      name: `Review Test Org ${suffix}`,
+      slug: `review-test-org-${suffix}`,
+      cashfreeVendorId: `review_test_vendor_${suffix}`,
+      cashfreeVendorStatus: 'active',
+    });
     organizerId = organizer.id;
     const user = await User.create({
       organizerId,

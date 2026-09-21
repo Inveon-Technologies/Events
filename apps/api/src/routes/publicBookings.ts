@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { createBooking, SoldOutError, NotFoundError } from '../services/bookingCreation';
+import { createBooking, SoldOutError, NotFoundError, OrganizerNotVerifiedError } from '../services/bookingCreation';
+import { createCashfreeOrderForBooking, NotFoundError as OrderNotFoundError } from '../services/cashfreeOrders';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
 import { listPublicOrganizers, getPublicOrganizer } from '../services/publicOrganizers';
 import {
@@ -79,6 +80,37 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
       attendeeNames: Array.isArray(attendeeNames) ? attendeeNames.filter((n): n is string => typeof n === 'string') : undefined,
     });
 
+    // Online paid bookings start 'pending' — no confirmation email yet,
+    // since one would misleadingly tell the customer they're booked
+    // before they've actually paid. Instead, create the real Cashfree
+    // order now and hand back a payment_session_id for checkout; the
+    // confirmation email fires later, from the payment webhook, once
+    // money has actually moved (see cashfreeOrders.ts).
+    if (result.totalAmountPaise > 0 && paymentMethod === 'online') {
+      const returnUrl =
+        typeof (req.body as Record<string, unknown>).returnUrl === 'string'
+          ? ((req.body as Record<string, unknown>).returnUrl as string)
+          : `${req.protocol}://${req.get('host')}/bookings/${result.bookingId}/confirmed`;
+
+      const order = await createCashfreeOrderForBooking({
+        bookingId: result.bookingId,
+        bookingReference: result.bookingReference,
+        totalAmountPaise: result.totalAmountPaise,
+        organizerId: result.organizerId,
+        customerName: primaryContactName,
+        customerEmail: primaryContactEmail,
+        customerPhone: primaryContactWhatsapp,
+        returnUrl,
+      });
+
+      res.status(201).json({
+        bookingId: result.bookingId,
+        bookingReference: result.bookingReference,
+        paymentSessionId: order.paymentSessionId,
+      });
+      return;
+    }
+
     // Fire-and-forget: the booking is already committed at this point, and
     // a slow or failed email send must never delay the HTTP response or
     // undo the reservation. sendBookingConfirmationEmail() catches
@@ -92,8 +124,12 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
       res.status(409).json({ error: err.message });
       return;
     }
-    if (err instanceof NotFoundError) {
+    if (err instanceof NotFoundError || err instanceof OrderNotFoundError) {
       res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof OrganizerNotVerifiedError) {
+      res.status(422).json({ error: err.message });
       return;
     }
     throw err;
