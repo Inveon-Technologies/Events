@@ -194,7 +194,6 @@ describe('organizer event management: get/edit/delete (real DB)', () => {
     });
     const getRes = await request(app).get(`/api/organizer/events/${created.id}`).set('Authorization', `Bearer ${token}`);
     const soldTier = getRes.body.ticketTiers.find((t: { name: string }) => t.name === 'Sold Tier');
-    const untouchedTier = getRes.body.ticketTiers.find((t: { name: string }) => t.name === 'Untouched Tier');
 
     await request(app).post(`/api/events/${created.id}/bookings`).send({
       ticketCategoryId: soldTier.id,

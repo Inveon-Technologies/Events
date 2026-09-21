@@ -4,7 +4,7 @@ import { signAccessToken } from '../../src/auth/jwt';
 import { Organizer, User } from '../../src/models';
 import { hashPassword } from '../../src/auth/password';
 import { sequelize } from '../../src/db/connection';
-import { cashfreeCreateVendor, cashfreeGetVendor, CashfreeApiError, CashfreeVendorResponse } from '../../src/services/cashfreeClient';
+import { cashfreeCreateVendor, cashfreeGetVendor, CashfreeApiError, CashfreeVendorResponse, CashfreeNotConfiguredError } from '../../src/services/cashfreeClient';
 import { submitOrganizerVerification, refreshOrganizerVerificationStatus, ValidationError, NotFoundError } from '../../src/services/organizerVerification';
 
 jest.mock('../../src/services/cashfreeClient', () => {
@@ -179,5 +179,16 @@ describe('organizer verification (real DB, Cashfree API mocked)', () => {
     const refreshRes = await request(app).post('/api/organizer/verification/refresh').set('Authorization', `Bearer ${token}`);
     expect(refreshRes.status).toBe(200);
     expect(refreshRes.body.cashfreeVendorStatus).toBe('active');
+  });
+
+  it('a missing Cashfree configuration surfaces as a clear 503, not a generic 500 "something went wrong"', async () => {
+    mockCreateVendor.mockRejectedValue(new CashfreeNotConfiguredError());
+    const res = await request(app)
+      .post('/api/organizer/verification')
+      .set('Authorization', `Bearer ${token}`)
+      .send(validParams());
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/not available right now/i);
+    expect(res.body.error).not.toMatch(/something went wrong/i);
   });
 });

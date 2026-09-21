@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { createBooking, SoldOutError, NotFoundError, OrganizerNotVerifiedError } from '../services/bookingCreation';
 import { createCashfreeOrderForBooking, NotFoundError as OrderNotFoundError } from '../services/cashfreeOrders';
+import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
 import { listPublicOrganizers, getPublicOrganizer } from '../services/publicOrganizers';
 import {
@@ -156,6 +157,10 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
     }
     if (err instanceof OrganizerNotVerifiedError) {
       res.status(422).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CashfreeNotConfiguredError) {
+      res.status(503).json({ error: err.message });
       return;
     }
     throw err;
