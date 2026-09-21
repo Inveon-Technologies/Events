@@ -28,7 +28,15 @@ describe('event media upload (real DB, real ffprobe)', () => {
   let tooBigImagePath: string; // 11MB — over the 10MB limit
 
   beforeAll(async () => {
-    const organizer = await Organizer.create({ name: `Media Test Org ${suffix}`, slug: `media-test-org-${suffix}` });
+    // This suite publishes paid events to attach media to, which needs
+    // an organizer that clears eventCreation.ts's publish-time
+    // verification gate to reach what these tests are actually about.
+    const organizer = await Organizer.create({
+      name: `Media Test Org ${suffix}`,
+      slug: `media-test-org-${suffix}`,
+      cashfreeVendorId: `media_test_vendor_${suffix}`,
+      cashfreeVendorStatus: 'active',
+    });
     organizerId = organizer.id;
     const user = await User.create({
       organizerId,

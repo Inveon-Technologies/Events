@@ -1,5 +1,5 @@
 import { sequelize } from '../db/connection';
-import { Event, TicketCategory } from '../models';
+import { Event, TicketCategory, Organizer } from '../models';
 
 function slugify(input: string): string {
   return input
@@ -117,6 +117,25 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
     if (!tier.name?.trim()) throw new ValidationError('Every ticket tier needs a name');
     if (!(tier.price >= 0)) throw new ValidationError(`Invalid price for tier "${tier.name}"`);
     if (!(tier.quantity > 0)) throw new ValidationError(`Invalid quantity for tier "${tier.name}"`);
+  }
+
+  // A draft can always be saved — an organizer needs to be able to
+  // prepare a paid event while their verification is still in
+  // progress. Publishing it live is the actual point this matters:
+  // accepting a real booking for a paid tier requires a real Cashfree
+  // vendor to pay out to (see bookingCreation.ts's matching check at
+  // booking time — this is the same rule enforced earlier, at publish
+  // time, so an organizer finds out before advertising an event they
+  // can't yet actually take paid bookings for, not after a customer
+  // hits the same wall trying to pay).
+  const hasPaidTier = params.ticketTiers.some((t) => t.price > 0);
+  if (params.status === 'published' && hasPaidTier) {
+    const organizer = await Organizer.findByPk(params.organizerId);
+    if (!organizer || organizer.cashfreeVendorStatus !== 'active') {
+      throw new ValidationError(
+        'Complete payment verification before publishing an event with paid tickets — see Organizer Verification in your account settings.',
+      );
+    }
   }
 
   const eventDate = new Date(`${params.startDate}T${params.startTime}:00`);

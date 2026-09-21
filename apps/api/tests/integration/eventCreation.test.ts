@@ -15,6 +15,14 @@ describe('organizer event creation (real DB)', () => {
     const organizer = await Organizer.create({
       name: `Event Creation Test Org ${Date.now()}`,
       slug: `event-creation-test-${Date.now()}`,
+      // This suite publishes paid events, which createOrganizerEvent()
+      // now refuses unless the organizer has an active Cashfree vendor
+      // (see eventCreation.ts's publish-time verification gate) — most
+      // of these tests are about event creation itself, not that gate
+      // specifically, so they need a verified fixture to actually reach
+      // what they're testing.
+      cashfreeVendorId: `event_creation_test_vendor_${Date.now()}`,
+      cashfreeVendorStatus: 'active',
     });
     organizerId = organizer.id;
     const user = await User.create({
@@ -35,7 +43,13 @@ describe('organizer event creation (real DB)', () => {
     await Event.destroy({ where: { organizerId } });
     await User.destroy({ where: { email: testEmail } });
     await Organizer.destroy({ where: { id: organizerId } });
-    await sequelize.close();
+    // No sequelize.close() here — this file has a second describe block
+    // below that still needs the connection open; only the last block
+    // in the file closes it. Jest runs each describe block's
+    // beforeAll/tests/afterAll fully before the next one starts, so
+    // closing the connection here would break every test after this
+    // point in the same file (found live: exactly that failure, before
+    // this fix).
   });
 
   it('creates a real event with real ticket categories, correctly priced in paise', async () => {
@@ -194,5 +208,103 @@ describe('organizer event creation (real DB)', () => {
     expect(detailRes.body.scheduleItems).toBeNull();
     expect(detailRes.body.packingChecklist).toBeNull();
     expect(detailRes.body.faqItems).toBeNull();
+  });
+});
+
+describe('organizer event creation: publish-time Cashfree verification gate', () => {
+  const app = createApp();
+  let unverifiedToken: string;
+  let verifiedToken: string;
+  const suffix = Date.now();
+
+  beforeAll(async () => {
+    const unverifiedOrg = await Organizer.create({
+      name: `Publish Gate Unverified Org ${suffix}`,
+      slug: `publish-gate-unverified-${suffix}`,
+    });
+    const unverifiedUser = await User.create({
+      organizerId: unverifiedOrg.id,
+      email: `publish-gate-unverified-${suffix}@example.com`,
+      passwordHash: await hashPassword('TestPassword123'),
+      role: 'organizer_owner',
+      emailVerified: true,
+    });
+    unverifiedToken = signAccessToken({ sub: unverifiedUser.id, role: unverifiedUser.role, organizerId: unverifiedOrg.id });
+
+    const verifiedOrg = await Organizer.create({
+      name: `Publish Gate Verified Org ${suffix}`,
+      slug: `publish-gate-verified-${suffix}`,
+      cashfreeVendorId: `publish_gate_vendor_${suffix}`,
+      cashfreeVendorStatus: 'active',
+    });
+    const verifiedUser = await User.create({
+      organizerId: verifiedOrg.id,
+      email: `publish-gate-verified-${suffix}@example.com`,
+      passwordHash: await hashPassword('TestPassword123'),
+      role: 'organizer_owner',
+      emailVerified: true,
+    });
+    verifiedToken = signAccessToken({ sub: verifiedUser.id, role: verifiedUser.role, organizerId: verifiedOrg.id });
+  });
+
+  afterAll(async () => {
+    await sequelize.close();
+  });
+
+  it('refuses to publish an event with a paid ticket tier when the organizer is not verified', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+      .send({
+        title: 'Should Be Blocked Paid Event',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/verification/i);
+  });
+
+  it('still allows saving a paid event as a DRAFT when the organizer is not verified', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+      .send({
+        title: 'Draft Paid Event Should Be Allowed',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'draft',
+      });
+    expect(res.status).toBe(201);
+  });
+
+  it('still allows publishing a genuinely FREE event when the organizer is not verified', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+      .send({
+        title: 'Free Event Should Be Allowed',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 0, quantity: 20 }],
+        status: 'published',
+      });
+    expect(res.status).toBe(201);
+  });
+
+  it('allows publishing a paid event once the organizer is verified', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${verifiedToken}`)
+      .send({
+        title: 'Verified Org Paid Event',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+    expect(res.status).toBe(201);
   });
 });

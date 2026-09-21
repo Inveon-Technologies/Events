@@ -1,6 +1,6 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../db/connection';
-import { Event, TicketCategory, Booking, Ticket, Organizer } from '../models';
+import { Event, TicketCategory, Booking, Ticket, Payment, Organizer } from '../models';
 import { randomUUID } from 'crypto';
 
 export interface CreateBookingParams {
@@ -22,6 +22,17 @@ export class SoldOutError extends Error {
 }
 
 export class NotFoundError extends Error {}
+
+// A paid ticket booked online needs a Cashfree vendor split to actually
+// pay the organizer their share — an organizer who hasn't completed
+// verification has no vendor for that split to go to. Cash bookings are
+// unaffected: the organizer collects that money directly, no Cashfree
+// involvement at all.
+export class OrganizerNotVerifiedError extends Error {
+  constructor() {
+    super('This organizer has not completed payment verification yet — online payment is not available for this event');
+  }
+}
 
 function generateBookingReference(): string {
   const year = new Date().getFullYear();
@@ -50,6 +61,12 @@ function generateBookingReference(): string {
 export interface CreateBookingResult {
   bookingId: string;
   bookingReference: string;
+  paymentId: string;
+  totalAmountPaise: number;
+  organizerId: string;
+  // Everything needed to send the confirmation email, returned here
+  // rather than re-queried by the caller — this transaction already
+  // has all of it loaded.
   email: {
     eventName: string;
     eventDate: Date;
@@ -80,6 +97,13 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     });
     if (!ticketCategory) throw new NotFoundError('Ticket category not found for this event');
 
+    if (params.paymentMethod === 'online' && ticketCategory.pricePaise > 0) {
+      const organizer = await Organizer.findByPk(event.organizerId, { transaction: t });
+      if (!organizer || organizer.cashfreeVendorStatus !== 'active') {
+        throw new OrganizerNotVerifiedError();
+      }
+    }
+
     const updateResult = await sequelize.query<{ quota_remaining: number }>(
       `UPDATE ticket_categories
        SET quota_remaining = quota_remaining - :qty, updated_at = NOW()
@@ -109,13 +133,27 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         primaryContactEmail: params.primaryContactEmail,
         primaryContactCity: params.primaryContactCity ?? null,
         // Reservation happens now, at booking creation, so two people can
-        // never both reach checkout for the last ticket. Actual payment
-        // confirmation (flipping this to 'confirmed', or releasing the
-        // quota back on failure/timeout) is a separate step — not built
-        // yet, since there's no real payment gateway integration.
-        status: 'pending',
+        // never both reach checkout for the last ticket. A genuinely free
+        // ticket (0 paise) is confirmed immediately — there's no payment
+        // to collect at all. A cash booking still starts pending: the
+        // organizer confirms it manually once they've actually collected
+        // the cash (unchanged from before this pass). An online paid
+        // booking stays pending until the Cashfree webhook confirms it
+        // (see cashfreeOrders.ts), or gets cancelled and its quota
+        // released if the payment fails or the customer abandons checkout.
+        status: totalAmountPaise === 0 ? 'confirmed' : 'pending',
         paymentMethod: params.paymentMethod,
         totalAmountPaise,
+      },
+      { transaction: t },
+    );
+
+    const payment = await Payment.create(
+      {
+        bookingId: booking.id,
+        amountPaise: totalAmountPaise,
+        method: params.paymentMethod,
+        status: booking.status === 'confirmed' ? 'paid' : 'pending',
       },
       { transaction: t },
     );
@@ -140,9 +178,9 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     return {
       bookingId: booking.id,
       bookingReference: booking.bookingReference,
-      // Everything needed to send the confirmation email, returned here
-      // rather than re-queried by the caller — this transaction already
-      // has all of it loaded.
+      paymentId: payment.id,
+      totalAmountPaise,
+      organizerId: event.organizerId,
       email: {
         eventName: event.name,
         eventDate: event.eventDate,

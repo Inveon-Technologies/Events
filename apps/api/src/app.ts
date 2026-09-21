@@ -2,10 +2,18 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import { authRouter } from './routes/auth';
 import { organizerRouter } from './routes/organizer';
 import { publicBookingsRouter } from './routes/publicBookings';
+import { webhooksRouter } from './routes/webhooks';
 import { UPLOAD_DIR } from './services/eventMedia';
 
 export function createApp(): Express {
   const app = express();
+
+  // Mounted with express.raw(), and before the global express.json()
+  // below — webhook signature verification needs the exact raw bytes
+  // Cashfree sent (see routes/webhooks.ts), which express.json() would
+  // already have consumed and re-parsed by the time a normal route
+  // handler saw it.
+  app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRouter);
 
   app.use(express.json());
 
