@@ -73,6 +73,21 @@ describe('organizer verification (real DB, Cashfree API mocked)', () => {
     expect(mockCreateVendor).not.toHaveBeenCalled();
   });
 
+  it('a business account sends the entered business type to Cashfree, not the individual default', async () => {
+    mockCreateVendor.mockResolvedValue(fakeVendorResponse({}, organizerId));
+    await submitOrganizerVerification({ ...validParams(), accountType: 'business', businessType: 'Trekking & Outdoor Adventure' });
+    const callArgs = mockCreateVendor.mock.calls[0][0];
+    expect(callArgs.businessType).toBe('Trekking & Outdoor Adventure');
+    expect(callArgs.accountType).toBe('BUSINESS');
+  });
+
+  it('rejects a business account with no business type entered, before ever calling Cashfree', async () => {
+    await expect(
+      submitOrganizerVerification({ ...validParams(), accountType: 'business', businessType: '' }),
+    ).rejects.toThrow(/business type is required/i);
+    expect(mockCreateVendor).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid IFSC format', async () => {
     await expect(submitOrganizerVerification({ ...validParams(), bankIfsc: 'bad-ifsc' })).rejects.toThrow(ValidationError);
     expect(mockCreateVendor).not.toHaveBeenCalled();
@@ -93,6 +108,11 @@ describe('organizer verification (real DB, Cashfree API mocked)', () => {
     expect(callArgs.vendorId).not.toMatch(/-/); // no hyphens — Cashfree rejects them
     expect(callArgs.accountNumber).toBe('123456789012');
     expect(callArgs.accountType).toBe('INDIVIDUAL');
+    // Cashfree rejects a request with no business_type at all (real bug
+    // caught testing against the real sandbox API) — an individual
+    // account gets the fixed platform default rather than sending
+    // nothing.
+    expect(callArgs.businessType).toBe('Events & Entertainment');
 
     const organizer = await Organizer.findByPk(organizerId);
     expect(organizer!.bankAccountNumberLast4).toBe('9012');

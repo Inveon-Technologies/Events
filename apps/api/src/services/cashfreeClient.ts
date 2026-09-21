@@ -75,6 +75,12 @@ export interface CreateVendorParams {
   ifsc: string;
   accountType: 'INDIVIDUAL' | 'BUSINESS';
   pan: string;
+  // Cashfree requires this for every vendor regardless of account_type
+  // — confirmed against their real API, not assumed: their own
+  // documented examples pair account_type "Individual" with a
+  // business_type value too, and a real request missing it is rejected
+  // outright ("kyc_details.business_type is missing in the request").
+  businessType: string;
 }
 
 export interface CashfreeVendorResponse {
@@ -108,6 +114,7 @@ export async function cashfreeCreateVendor(params: CreateVendorParams): Promise<
     },
     kyc_details: {
       account_type: params.accountType,
+      business_type: params.businessType,
       pan: params.pan,
     },
   });
