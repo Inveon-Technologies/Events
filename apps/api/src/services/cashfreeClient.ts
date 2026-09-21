@@ -65,6 +65,53 @@ async function cashfreeRequest<T>(method: string, path: string, body?: unknown):
 
 // ---- Easy Split (vendor) ----
 
+// The exact, fixed enum Cashfree validates kyc_details.business_type
+// against — confirmed directly from a real 400 response ("Invalid
+// business type. Please choose from the accepted business types:
+// [...]"), not documented anywhere in their API reference pages. Any
+// other string is rejected outright, so both the individual default
+// below and the business-account dropdown this list feeds on the
+// frontend have to stay within it exactly.
+export const CASHFREE_BUSINESS_TYPES = [
+  'Grocery',
+  'Jewellery',
+  'Miscellaneous',
+  'Web host/Domain seller',
+  'E-commerce',
+  'Online Gaming',
+  'Society/Trust/Club/Association',
+  'Mutual funds/Broking',
+  'B2B',
+  'Real Estate',
+  'Housing',
+  'Rentals',
+  'Utilities',
+  'Travel and Hospitality',
+  'Education',
+  'Food and Beverages',
+  'NBFCs/Organizations into Lending',
+  'Chit Funds',
+  'Non Profit/NGO',
+  'Financial Services',
+  'Government',
+  'Readymade',
+  'SaaS',
+  'Professional Services (Doctors, Lawyers, Architects, CAs, and other Professionals)',
+  'Open and Semi Open Wallet',
+  'Social Media and Entertainment',
+  'Pan shop',
+  'Telecom',
+  'Digital Goods',
+  'Insurance',
+  'Pharmacy',
+  'Healthcare',
+  'Retail and Shopping',
+  'Gaming',
+  'Logistics',
+] as const;
+
+export type CashfreeBusinessType = (typeof CASHFREE_BUSINESS_TYPES)[number];
+
 export interface CreateVendorParams {
   vendorId: string;
   name: string;
@@ -80,7 +127,7 @@ export interface CreateVendorParams {
   // documented examples pair account_type "Individual" with a
   // business_type value too, and a real request missing it is rejected
   // outright ("kyc_details.business_type is missing in the request").
-  businessType: string;
+  businessType: CashfreeBusinessType;
 }
 
 export interface CashfreeVendorResponse {

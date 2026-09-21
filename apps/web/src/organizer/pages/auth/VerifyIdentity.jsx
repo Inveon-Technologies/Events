@@ -4,6 +4,49 @@ import { Shield, ArrowRight } from 'lucide-react';
 
 const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
+// Cashfree's exact fixed enum for kyc_details.business_type — kept in
+// sync with the same list in the backend's cashfreeClient.ts. A value
+// outside this list is rejected outright by Cashfree's real API
+// ("Invalid business type"), so this has to be a dropdown, not free
+// text.
+const CASHFREE_BUSINESS_TYPES = [
+  'Grocery',
+  'Jewellery',
+  'Miscellaneous',
+  'Web host/Domain seller',
+  'E-commerce',
+  'Online Gaming',
+  'Society/Trust/Club/Association',
+  'Mutual funds/Broking',
+  'B2B',
+  'Real Estate',
+  'Housing',
+  'Rentals',
+  'Utilities',
+  'Travel and Hospitality',
+  'Education',
+  'Food and Beverages',
+  'NBFCs/Organizations into Lending',
+  'Chit Funds',
+  'Non Profit/NGO',
+  'Financial Services',
+  'Government',
+  'Readymade',
+  'SaaS',
+  'Professional Services (Doctors, Lawyers, Architects, CAs, and other Professionals)',
+  'Open and Semi Open Wallet',
+  'Social Media and Entertainment',
+  'Pan shop',
+  'Telecom',
+  'Digital Goods',
+  'Insurance',
+  'Pharmacy',
+  'Healthcare',
+  'Retail and Shopping',
+  'Gaming',
+  'Logistics',
+];
+
 export default function VerifyIdentity() {
   const [panNumber, setPanNumber] = useState('');
   const [accountType, setAccountType] = useState('individual');
@@ -72,13 +115,16 @@ export default function VerifyIdentity() {
         {accountType === 'business' && (
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">Business Type</label>
-            <input
-              type="text"
+            <select
               value={businessType}
               onChange={(e) => setBusinessType(e.target.value)}
-              placeholder="e.g. Proprietorship, Partnership, LLP"
               className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
-            />
+            >
+              <option value="">Select a category…</option>
+              {CASHFREE_BUSINESS_TYPES.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
           </div>
         )}
 

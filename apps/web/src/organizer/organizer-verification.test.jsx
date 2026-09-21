@@ -64,6 +64,28 @@ describe('organizer verification: identity + bank details', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: /complete organization setup/i })).toBeInTheDocument());
   });
 
+  it('VerifyIdentity offers business type only as a real dropdown of Cashfree\'s accepted categories — no free text, since Cashfree rejects any other value', async () => {
+    const user = userEvent.setup();
+    renderAt('/organizer/verify-identity');
+
+    await user.click(screen.getByRole('radio', { name: /business/i }));
+
+    const select = await screen.findByRole('combobox');
+    expect(select).toBeInTheDocument();
+    // Every option must come from Cashfree's real accepted list.
+    expect(screen.getByRole('option', { name: 'Travel and Hospitality' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Society/Trust/Club/Association' })).toBeInTheDocument();
+    // No way to type an arbitrary invalid value — there is no text input for this field.
+    expect(screen.queryByPlaceholderText(/proprietorship, partnership/i)).not.toBeInTheDocument();
+
+    await user.selectOptions(select, 'Travel and Hospitality');
+    await user.type(screen.getByPlaceholderText('ABCDE1234F'), 'abcde1234f');
+    await user.type(screen.getByPlaceholderText('+91 98765 43210'), '9000000001');
+    await user.click(screen.getByRole('button', { name: /continue to bank details/i }));
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: /complete organization setup/i })).toBeInTheDocument());
+  });
+
   it('CompleteSetup redirects back to VerifyIdentity when reached directly with no KYC state', async () => {
     renderAt('/organizer/complete-setup');
     await waitFor(() => expect(screen.getByRole('heading', { name: /organizer identity verification/i })).toBeInTheDocument());
