@@ -7,7 +7,7 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { Organizer } from '../models';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
-import { getOrganizerEvents, DisplayEventStatus } from '../services/organizerEvents';
+import { getOrganizerEvents, getEventFinancials, DisplayEventStatus, NotFoundError as FinancialsNotFoundError, ForbiddenError as FinancialsForbiddenError } from '../services/organizerEvents';
 import { createOrganizerEvent, ValidationError, CreateEventTicketTier } from '../services/eventCreation';
 import { uploadEventMedia, deleteEventMedia, MediaValidationError, NotFoundError, ForbiddenError, MAX_FILE_SIZE_BYTES } from '../services/eventMedia';
 import {
@@ -145,6 +145,29 @@ organizerRouter.get('/events', asyncHandler(async (req, res) => {
 
   const result = await getOrganizerEvents({ organizerId, status: statusParam });
   res.status(200).json(result);
+}));
+
+organizerRouter.get('/events/:eventId/financials', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    const financials = await getEventFinancials(req.params.eventId, organizerId);
+    res.status(200).json(financials);
+  } catch (err) {
+    if (err instanceof FinancialsNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof FinancialsForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 }));
 
 organizerRouter.post('/events', asyncHandler(async (req, res) => {
