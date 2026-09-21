@@ -134,4 +134,94 @@ describe('organizer verification: identity + bank details', () => {
     await waitFor(() => expect(screen.getByText('Enter a valid bank IFSC code')).toBeInTheDocument());
     expect(screen.getByRole('heading', { name: /complete organization setup/i })).toBeInTheDocument();
   });
+
+  it('Settings > Payment Verification shows "Not started" and a real entry point when nothing has been submitted yet — the gap that previously left existing accounts with no way to reach verification at all', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        cashfreeVendorStatus: 'not_started',
+        panNumber: null,
+        kycAccountType: null,
+        businessType: null,
+        bankAccountHolderName: null,
+        bankAccountNumberLast4: null,
+        bankIfsc: null,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderAt('/organizer/settings/verification');
+
+    await waitFor(() => expect(screen.getByText('Not started')).toBeInTheDocument());
+    expect(screen.getByText(/haven't submitted your kyc/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /start verification/i }));
+    await waitFor(() => expect(screen.getByRole('heading', { name: /organizer identity verification/i })).toBeInTheDocument());
+
+    vi.unstubAllGlobals();
+  });
+
+  it('Settings > Payment Verification shows the real submitted details and status once verification has been started', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        cashfreeVendorStatus: 'in_bene_creation',
+        panNumber: 'ABCDE1234F',
+        kycAccountType: 'individual',
+        businessType: null,
+        bankAccountHolderName: 'Real Test Owner',
+        bankAccountNumberLast4: '9012',
+        bankIfsc: 'HDFC0001234',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/settings/verification');
+
+    await waitFor(() => expect(screen.getByText('Verification in progress')).toBeInTheDocument());
+    expect(screen.getByText('ABCDE1234F')).toBeInTheDocument();
+    expect(screen.getByText('Real Test Owner')).toBeInTheDocument();
+    expect(screen.getByText('•••• 9012')).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('Settings > Payment Verification refresh button calls the real refresh endpoint and reloads the status', async () => {
+    let callCount = 0;
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (String(url).endsWith('/verification/refresh')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cashfreeVendorStatus: 'active' }) });
+      }
+      callCount += 1;
+      const status = callCount === 1 ? 'in_bene_creation' : 'active';
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          cashfreeVendorStatus: status,
+          panNumber: 'ABCDE1234F',
+          kycAccountType: 'individual',
+          businessType: null,
+          bankAccountHolderName: 'Real Test Owner',
+          bankAccountNumberLast4: '9012',
+          bankIfsc: 'HDFC0001234',
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderAt('/organizer/settings/verification');
+    await waitFor(() => expect(screen.getByText('Verification in progress')).toBeInTheDocument());
+
+    await user.click(screen.getByRole('button', { name: /refresh status/i }));
+    await waitFor(() => expect(screen.getByText('Verified')).toBeInTheDocument());
+
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/verification/refresh'))).toBe(true);
+
+    vi.unstubAllGlobals();
+  });
 });

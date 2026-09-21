@@ -40,6 +40,7 @@ import Cancellations from './pages/operations/Cancellations';
 
 // Settings
 import AccountSettings from './pages/settings/AccountSettings';
+import PaymentVerificationSettings from './pages/settings/PaymentVerificationSettings';
 import OrganizationSettings from './pages/settings/OrganizationSettings';
 import SecuritySettings from './pages/settings/SecuritySettings';
 import NotificationSettings from './pages/settings/NotificationSettings';
@@ -103,6 +104,7 @@ export default function OrganizerPortalRoutes() {
         {/* Settings */}
         <Route path="settings" element={<Navigate to="/organizer/settings/account" replace />} />
         <Route path="settings/account" element={<AccountSettings />} />
+        <Route path="settings/verification" element={<PaymentVerificationSettings />} />
         <Route path="settings/organization" element={<OrganizationSettings />} />
         <Route path="settings/security" element={<SecuritySettings />} />
         <Route path="settings/notifications" element={<NotificationSettings />} />
