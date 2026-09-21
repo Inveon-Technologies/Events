@@ -76,7 +76,7 @@ export class ValidationError extends Error {}
 // this quietly drops any row missing what it actually needs (a schedule
 // item with no title, an FAQ pair with no answer) and keeps the rest,
 // storing null instead of an empty array when nothing valid remains.
-function sanitizeScheduleItems(items?: CreateEventScheduleItem[]): CreateEventScheduleItem[] | null {
+export function sanitizeScheduleItems(items?: CreateEventScheduleItem[]): CreateEventScheduleItem[] | null {
   if (!items) return null;
   const cleaned = items
     .map((i) => ({ time: i.time?.trim() ?? '', title: i.title?.trim() ?? '', description: i.description?.trim() || undefined }))
@@ -84,7 +84,7 @@ function sanitizeScheduleItems(items?: CreateEventScheduleItem[]): CreateEventSc
   return cleaned.length > 0 ? cleaned : null;
 }
 
-function sanitizePackingChecklist(items?: CreateEventPackingItem[]): { item: string; mandatory: boolean }[] | null {
+export function sanitizePackingChecklist(items?: CreateEventPackingItem[]): { item: string; mandatory: boolean }[] | null {
   if (!items) return null;
   const cleaned: { item: string; mandatory: boolean }[] = items
     .map((i) => ({ item: i.item?.trim() ?? '', mandatory: i.mandatory !== false }))
@@ -92,7 +92,7 @@ function sanitizePackingChecklist(items?: CreateEventPackingItem[]): { item: str
   return cleaned.length > 0 ? cleaned : null;
 }
 
-function sanitizeFaqItems(items?: CreateEventFaqItem[]): CreateEventFaqItem[] | null {
+export function sanitizeFaqItems(items?: CreateEventFaqItem[]): CreateEventFaqItem[] | null {
   if (!items) return null;
   const cleaned = items
     .map((i) => ({ question: i.question?.trim() ?? '', answer: i.answer?.trim() ?? '' }))
