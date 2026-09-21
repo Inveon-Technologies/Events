@@ -25,6 +25,13 @@ import {
   ForbiddenError as CancellationForbiddenError,
 } from '../services/bookingCancellation';
 import {
+  checkInTicket,
+  undoCheckIn,
+  NotFoundError as CheckInNotFoundError,
+  ForbiddenError as CheckInForbiddenError,
+  RejectedError as CheckInRejectedError,
+} from '../services/ticketCheckIn';
+import {
   getOrganizerEvent,
   updateOrganizerEvent,
   deleteOrganizerEvent,
@@ -557,6 +564,66 @@ organizerRouter.post('/events/:eventId/cancel', asyncHandler(async (req, res) =>
     }
     if (err instanceof CancellationValidationError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/events/:eventId/checkin', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  const userId = req.user?.sub;
+  if (!organizerId || !userId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  const { qrToken } = req.body as Record<string, unknown>;
+  if (typeof qrToken !== 'string' || !qrToken.trim()) {
+    res.status(400).json({ error: 'A QR code value is required' });
+    return;
+  }
+
+  try {
+    const result = await checkInTicket({ eventId: req.params.eventId, organizerId, qrToken, checkedInByUserId: userId });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CheckInNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInRejectedError) {
+      res.status(409).json({ error: err.message, reasonCode: err.reasonCode, details: err.details });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/events/:eventId/checkin/:ticketId/undo', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    const result = await undoCheckIn(req.params.eventId, organizerId, req.params.ticketId);
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CheckInNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInRejectedError) {
+      res.status(409).json({ error: err.message });
       return;
     }
     throw err;
