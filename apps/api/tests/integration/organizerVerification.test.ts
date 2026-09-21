@@ -75,10 +75,17 @@ describe('organizer verification (real DB, Cashfree API mocked)', () => {
 
   it('a business account sends the entered business type to Cashfree, not the individual default', async () => {
     mockCreateVendor.mockResolvedValue(fakeVendorResponse({}, organizerId));
-    await submitOrganizerVerification({ ...validParams(), accountType: 'business', businessType: 'Trekking & Outdoor Adventure' });
+    await submitOrganizerVerification({ ...validParams(), accountType: 'business', businessType: 'Travel and Hospitality' });
     const callArgs = mockCreateVendor.mock.calls[0][0];
-    expect(callArgs.businessType).toBe('Trekking & Outdoor Adventure');
+    expect(callArgs.businessType).toBe('Travel and Hospitality');
     expect(callArgs.accountType).toBe('BUSINESS');
+  });
+
+  it('rejects a business type that is not one of Cashfree\'s accepted categories, before ever calling Cashfree', async () => {
+    await expect(
+      submitOrganizerVerification({ ...validParams(), accountType: 'business', businessType: 'Trekking & Outdoor Adventure' }),
+    ).rejects.toThrow(/accepted categories/i);
+    expect(mockCreateVendor).not.toHaveBeenCalled();
   });
 
   it('rejects a business account with no business type entered, before ever calling Cashfree', async () => {
@@ -112,7 +119,7 @@ describe('organizer verification (real DB, Cashfree API mocked)', () => {
     // caught testing against the real sandbox API) — an individual
     // account gets the fixed platform default rather than sending
     // nothing.
-    expect(callArgs.businessType).toBe('Events & Entertainment');
+    expect(callArgs.businessType).toBe('Social Media and Entertainment');
 
     const organizer = await Organizer.findByPk(organizerId);
     expect(organizer!.bankAccountNumberLast4).toBe('9012');
