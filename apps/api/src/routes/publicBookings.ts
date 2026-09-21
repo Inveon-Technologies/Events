@@ -11,8 +11,34 @@ import {
 } from '../services/eventReviews';
 import { sendBookingConfirmationEmail } from '../services/bookingEmails';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { Booking, Event } from '../models';
 
 export const publicBookingsRouter = Router();
+
+// Intentionally minimal, no auth — this exists for exactly one purpose:
+// Cashfree redirects the customer's own browser back here right after
+// they just paid (see cashfreeOrders.ts's returnUrl), and that page
+// needs to know whether the payment actually went through yet (the
+// webhook that confirms it can arrive slightly before or after this
+// redirect). A booking id is a UUID, not meaningfully guessable, but
+// this still returns only what that specific "did it work" check
+// needs — never the customer's name, email, or phone, which a public,
+// unauthenticated endpoint has no business exposing just because
+// someone has (or guesses) a booking id.
+publicBookingsRouter.get('/bookings/:bookingId/status', asyncHandler(async (req, res) => {
+  const booking = await Booking.findByPk(req.params.bookingId);
+  if (!booking) {
+    res.status(404).json({ error: 'Booking not found' });
+    return;
+  }
+  const event = await Event.findByPk(booking.eventId);
+
+  res.status(200).json({
+    status: booking.status,
+    bookingReference: booking.bookingReference,
+    eventName: event?.name ?? null,
+  });
+}));
 
 publicBookingsRouter.get('/organizers', asyncHandler(async (_req, res) => {
   const organizers = await listPublicOrganizers();

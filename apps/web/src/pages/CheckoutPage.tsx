@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useLocation, useParams, Link } from 'react-router-dom';
+import { load as loadCashfree } from '@cashfreepayments/cashfree-js';
 import { fetchEventData, EventDetails } from '../mockData/rajgadTrek';
 import { formatINR } from '../lib/format';
 import { apiRequest, ApiError } from '../organizer/lib/api';
@@ -230,7 +231,7 @@ export function CheckoutPage() {
     setBookingError(null);
 
     try {
-      const result = await apiRequest<{ bookingId: string; bookingReference: string }>(
+      const result = await apiRequest<{ bookingId: string; bookingReference: string; paymentSessionId?: string }>(
         `/events/${event!.id}/bookings`,
         {
           method: 'POST',
@@ -247,7 +248,33 @@ export function CheckoutPage() {
       );
 
       setBookingId(result.bookingReference);
-      showToast('Payment successful! Issuing digital passes...');
+
+      if (result.paymentSessionId) {
+        // A real paid booking: hand off to Cashfree's own hosted checkout
+        // page for the actual payment. This is a full-page redirect —
+        // control leaves this app here, and the browser only comes back
+        // once Cashfree sends it to the return_url the backend already
+        // configured (see cashfreeOrders.ts), landing on
+        // BookingConfirmedPage, which checks the booking's real status
+        // rather than assuming success. Nothing past this point in this
+        // function runs in the normal case.
+        const cashfree = await loadCashfree({
+          mode: (import.meta.env.VITE_CASHFREE_MODE as 'sandbox' | 'production') || 'sandbox',
+        });
+        const checkoutResult = await cashfree?.checkout({
+          paymentSessionId: result.paymentSessionId,
+          redirectTarget: '_self',
+        });
+        if (checkoutResult?.error) {
+          setBookingError(checkoutResult.error.message || 'Payment could not be started. Please try again.');
+          showToast(checkoutResult.error.message || 'Payment could not be started. Please try again.');
+        }
+        return;
+      }
+
+      // No payment session — a genuinely free ticket, confirmed
+      // immediately with nothing to pay.
+      showToast('Booking confirmed!');
       setTimeout(() => goToStep(3), 350);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong creating your booking. Please try again.';
