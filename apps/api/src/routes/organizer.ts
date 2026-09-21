@@ -16,6 +16,7 @@ import {
   ValidationError as VerificationValidationError,
   NotFoundError as VerificationNotFoundError,
 } from '../services/organizerVerification';
+import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
 import {
   getOrganizerEvent,
   updateOrganizerEvent,
@@ -429,6 +430,10 @@ organizerRouter.post('/verification', asyncHandler(async (req, res) => {
       res.status(404).json({ error: err.message });
       return;
     }
+    if (err instanceof CashfreeNotConfiguredError) {
+      res.status(503).json({ error: err.message });
+      return;
+    }
     throw err;
   }
 }));
@@ -450,6 +455,10 @@ organizerRouter.post('/verification/refresh', asyncHandler(async (req, res) => {
     }
     if (err instanceof VerificationNotFoundError) {
       res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CashfreeNotConfiguredError) {
+      res.status(503).json({ error: err.message });
       return;
     }
     throw err;

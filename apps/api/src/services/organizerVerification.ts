@@ -93,6 +93,11 @@ export async function submitOrganizerVerification(params: SubmitVerificationPara
     if (err instanceof CashfreeApiError) {
       throw new ValidationError(err.message);
     }
+    // Deliberately not wrapped into ValidationError — that would read to
+    // the organizer as "something you entered was wrong," when this is
+    // actually the server having no working Cashfree credentials at
+    // all. Left to propagate as-is so the route can return it with its
+    // own distinct status.
     throw err;
   }
 

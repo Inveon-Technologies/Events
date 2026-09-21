@@ -17,7 +17,7 @@ function authHeaders(): Record<string, string> {
   const appId = process.env.CASHFREE_APP_ID;
   const secretKey = process.env.CASHFREE_SECRET_KEY;
   if (!appId || !secretKey) {
-    throw new Error('CASHFREE_APP_ID / CASHFREE_SECRET_KEY are not set (see .env.example)');
+    throw new CashfreeNotConfiguredError();
   }
   return {
     'x-client-id': appId,
@@ -25,6 +25,18 @@ function authHeaders(): Record<string, string> {
     'x-api-version': CASHFREE_API_VERSION,
     'Content-Type': 'application/json',
   };
+}
+
+// Distinct from CashfreeApiError (a real, reachable Cashfree API
+// rejecting a request) — this is a configuration problem on our own
+// side that happens before any request is even sent. Callers need to
+// tell the two apart: an unconfigured server should tell the person
+// "this isn't set up yet, contact support," never a validation-shaped
+// message that reads as if something they entered was wrong.
+export class CashfreeNotConfiguredError extends Error {
+  constructor() {
+    super('Payment verification is not available right now. Please try again later or contact support.');
+  }
 }
 
 export class CashfreeApiError extends Error {
