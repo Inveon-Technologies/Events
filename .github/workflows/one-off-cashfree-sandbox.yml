@@ -29,13 +29,11 @@ jobs:
             # should not leave duplicate/conflicting entries), then
             # append the current values fresh.
             sed -i '/^CASHFREE_APP_ID=/d;/^CASHFREE_SECRET_KEY=/d;/^CASHFREE_ENV=/d;/^API_PUBLIC_URL=/d;/^PLATFORM_FEE_PERCENT=/d' .env
-            cat >> .env << ENVEOF
-CASHFREE_APP_ID=$CASHFREE_APP_ID
-CASHFREE_SECRET_KEY=$CASHFREE_SECRET_KEY
-CASHFREE_ENV=sandbox
-API_PUBLIC_URL=https://events.inveontechnologies.in
-PLATFORM_FEE_PERCENT=5
-ENVEOF
+            echo \"CASHFREE_APP_ID=$CASHFREE_APP_ID\" >> .env
+            echo \"CASHFREE_SECRET_KEY=$CASHFREE_SECRET_KEY\" >> .env
+            echo 'CASHFREE_ENV=sandbox' >> .env
+            echo 'API_PUBLIC_URL=https://events.inveontechnologies.in' >> .env
+            echo 'PLATFORM_FEE_PERCENT=5' >> .env
             cd /home/ubuntu/inveontechnologies-website
             docker compose --env-file .env --env-file .env.deploy restart events-api
             sleep 5
