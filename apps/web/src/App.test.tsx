@@ -5,11 +5,17 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 
-function renderApp(initialPath = '/') {
+const mockCashfreeCheckout = vi.fn();
+vi.mock('@cashfreepayments/cashfree-js', () => ({
+  load: vi.fn(async () => ({ checkout: mockCashfreeCheckout })),
+}));
+
+function renderApp(initialPath = '/', state?: unknown) {
   const queryClient = new QueryClient();
+  const entry = state ? { pathname: initialPath, state } : initialPath;
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialPath]}>
+      <MemoryRouter initialEntries={[entry]}>
         <App />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -457,5 +463,120 @@ describe('App routing', () => {
     renderApp('/organizer/dashboard');
     // AppLayout should have redirected to /organizer/login instead.
     expect(screen.getByRole('heading', { name: /organizer sign in/i })).toBeInTheDocument();
+  });
+
+  it('checkout hands off to real Cashfree checkout for a paid booking, using the real payment_session_id', async () => {
+    const user = userEvent.setup();
+    mockCashfreeCheckout.mockResolvedValue({ redirect: true });
+
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/bookings')) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: async () => ({ bookingId: 'booking-1', bookingReference: 'INV-BKG-2026-11111', paymentSessionId: 'session_real_123' }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-checkout-1',
+          slug: 'checkout-event',
+          name: 'Checkout Test Event',
+          tagline: null,
+          description: null,
+          eventDate: '2026-12-25T09:00:00.000Z',
+          venueAddress: 'Pune',
+          venueMapUrl: null,
+          bannerUrl: null,
+          termsAndConditions: null,
+          cancellationPolicy: null,
+          scheduleItems: null,
+          packingChecklist: null,
+          faqItems: null,
+          media: [],
+          organizerName: 'Checkout Test Org',
+          organizerSlug: 'checkout-test-org',
+          ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+          ratingSummary: { averageRating: null, reviewCount: 0 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-checkout-1/checkout', { quantities: { 'tier-1': 1 } });
+
+    await waitFor(() => expect(screen.getAllByText('Checkout Test Event').length).toBeGreaterThan(0));
+
+    await user.click(screen.getAllByText('CONTINUE TO PARTICIPANTS')[0]);
+
+    await user.type(await screen.findByPlaceholderText('e.g. Rahul Sharma'), 'Test Attendee');
+    await user.type(screen.getByPlaceholderText('name@example.com'), 'attendee@example.com');
+    await user.type(screen.getByPlaceholderText('9876543210'), '9000000001');
+
+    await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+
+    await waitFor(() => expect(mockCashfreeCheckout).toHaveBeenCalledWith({
+      paymentSessionId: 'session_real_123',
+      redirectTarget: '_self',
+    }));
+
+    // Never assumes success just because the booking record was created —
+    // the old behavior here showed "Payment successful" immediately,
+    // which is exactly what this pass fixed.
+    expect(screen.queryByText(/payment successful/i)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('booking confirmation page fetches the real status and shows "Confirmed" only when the server says so', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'confirmed', bookingReference: 'INV-BKG-2026-22222', eventName: 'Confirmed Test Event' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/bookings/booking-confirmed-1/confirmed');
+
+    await waitFor(() => expect(screen.getByText('Booking Confirmed!')).toBeInTheDocument());
+    expect(screen.getByText('Confirmed Test Event')).toBeInTheDocument();
+    expect(screen.getByText('INV-BKG-2026-22222')).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('booking confirmation page shows a real "still confirming" state for a pending payment, not a false success', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'pending', bookingReference: 'INV-BKG-2026-33333', eventName: 'Pending Test Event' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/bookings/booking-pending-1/confirmed');
+
+    await waitFor(() => expect(screen.getByText(/confirming your payment/i)).toBeInTheDocument());
+    expect(screen.queryByText('Booking Confirmed!')).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('booking confirmation page redirects to the payment-failed page for a cancelled/failed payment', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: 'cancelled', bookingReference: 'INV-BKG-2026-44444', eventName: 'Failed Test Event' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/bookings/booking-failed-1/confirmed');
+
+    await waitFor(() => expect(screen.getByText(/payment could not be completed/i)).toBeInTheDocument());
+    expect(screen.queryByText('Booking Confirmed!')).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
   });
 });

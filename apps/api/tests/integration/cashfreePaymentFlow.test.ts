@@ -291,4 +291,37 @@ describe('real payment flow: booking -> order -> webhook (real DB, Cashfree API 
     const booking = await Booking.findByPk(bookingRes.body.bookingId);
     expect(booking!.status).toBe('pending'); // untouched
   });
+
+  it('the public booking status endpoint reflects the real status, and exposes no customer PII', async () => {
+    mockCreateOrder.mockImplementationOnce(async (params) => ({
+      cf_order_id: 'cf_status_test',
+      order_id: params.orderId,
+      order_status: 'ACTIVE',
+      payment_session_id: 'session_status_test',
+      order_expiry_time: '2026-12-31T00:00:00+05:30',
+    }));
+    const bookingRes = await request(app)
+      .post(`/api/events/${verifiedEventId}/bookings`)
+      .send(bookingBody(verifiedTierId, 'online', 'status-endpoint'));
+
+    const pendingRes = await request(app).get(`/api/bookings/${bookingRes.body.bookingId}/status`);
+    expect(pendingRes.status).toBe(200);
+    expect(pendingRes.body.status).toBe('pending');
+    expect(pendingRes.body.bookingReference).toBe(bookingRes.body.bookingReference);
+    expect(pendingRes.body).not.toHaveProperty('primaryContactEmail');
+    expect(pendingRes.body).not.toHaveProperty('primaryContactName');
+
+    await signedWebhookRequest(app, {
+      type: 'PAYMENT_SUCCESS_WEBHOOK',
+      data: { order: { order_id: bookingRes.body.bookingReference } },
+    });
+
+    const confirmedRes = await request(app).get(`/api/bookings/${bookingRes.body.bookingId}/status`);
+    expect(confirmedRes.body.status).toBe('confirmed');
+  });
+
+  it('the public booking status endpoint 404s cleanly for a nonexistent booking', async () => {
+    const res = await request(app).get('/api/bookings/00000000-0000-0000-0000-000000000000/status');
+    expect(res.status).toBe(404);
+  });
 });
