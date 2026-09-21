@@ -33,6 +33,10 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare bannerUrl: string | null;
   declare termsAndConditions: string | null;
   declare cancellationPolicy: string | null;
+  declare allowSelfServiceCancellation: CreationOptional<boolean>;
+  declare refundCutoffDays: number | null;
+  declare refundPercentage: number | null;
+  declare cancellationReason: string | null;
   declare scheduleItems: EventScheduleItem[] | null;
   declare packingChecklist: EventPackingItem[] | null;
   declare faqItems: EventFaqItem[] | null;
@@ -57,6 +61,10 @@ Event.init(
     bannerUrl: { type: DataTypes.STRING, allowNull: true },
     termsAndConditions: { type: DataTypes.TEXT, allowNull: true },
     cancellationPolicy: { type: DataTypes.TEXT, allowNull: true },
+    allowSelfServiceCancellation: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    refundCutoffDays: { type: DataTypes.INTEGER, allowNull: true },
+    refundPercentage: { type: DataTypes.INTEGER, allowNull: true },
+    cancellationReason: { type: DataTypes.TEXT, allowNull: true },
     scheduleItems: { type: DataTypes.JSONB, allowNull: true },
     packingChecklist: { type: DataTypes.JSONB, allowNull: true },
     faqItems: { type: DataTypes.JSONB, allowNull: true },

@@ -217,3 +217,34 @@ export async function cashfreeCreateOrder(params: CreateOrderParams): Promise<Ca
       : {}),
   });
 }
+
+// ---- Refunds ----
+
+export interface CreateRefundParams {
+  orderId: string; // the same order_id used at order creation — this codebase always sets it to the booking reference
+  refundId: string; // must be unique — reusing one for a second refund attempt on the same order is rejected
+  refundAmountRupees: number;
+  refundNote: string;
+}
+
+export interface CashfreeRefundResponse {
+  cf_refund_id: string;
+  refund_id: string;
+  order_id: string;
+  refund_amount: number;
+  refund_status: 'SUCCESS' | 'PENDING' | 'FAILED' | 'ONHOLD' | 'CANCELLED';
+  status_description?: string;
+}
+
+// No explicit refund_splits — left to Cashfree's own default behavior
+// (reversing the vendor's portion proportionally to the original
+// order_splits), rather than this codebase re-deriving what should
+// already be the correct reversal from data Cashfree already has.
+export async function cashfreeCreateRefund(params: CreateRefundParams): Promise<CashfreeRefundResponse> {
+  return cashfreeRequest<CashfreeRefundResponse>('POST', `/orders/${encodeURIComponent(params.orderId)}/refunds`, {
+    refund_amount: Math.round(params.refundAmountRupees * 100) / 100,
+    refund_id: params.refundId,
+    refund_note: params.refundNote,
+    refund_speed: 'STANDARD',
+  });
+}

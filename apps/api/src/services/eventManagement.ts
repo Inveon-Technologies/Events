@@ -26,6 +26,10 @@ export interface OrganizerEventDetail {
   scheduleItems: CreateEventScheduleItem[] | null;
   packingChecklist: CreateEventPackingItem[] | null;
   faqItems: CreateEventFaqItem[] | null;
+  cancellationPolicy: string | null;
+  allowSelfServiceCancellation: boolean;
+  refundCutoffDays: number | null;
+  refundPercentage: number | null;
   ticketTiers: {
     id: string;
     name: string;
@@ -53,6 +57,10 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
+    cancellationPolicy: event.cancellationPolicy,
+    allowSelfServiceCancellation: event.allowSelfServiceCancellation,
+    refundCutoffDays: event.refundCutoffDays,
+    refundPercentage: event.refundPercentage,
     ticketTiers: tiers.map((t) => ({
       id: t.id,
       name: t.name,
@@ -85,6 +93,10 @@ export interface UpdateEventParams {
   scheduleItems?: CreateEventScheduleItem[];
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
+  cancellationPolicy?: string;
+  allowSelfServiceCancellation?: boolean;
+  refundCutoffDays?: number;
+  refundPercentage?: number;
   ticketTiers?: UpdateEventTicketTier[];
   status?: 'draft' | 'published' | 'closed';
 }
@@ -215,6 +227,18 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
       }
     }
 
+    const nextAllowSelfService = params.allowSelfServiceCancellation ?? event.allowSelfServiceCancellation;
+    const nextRefundCutoffDays = params.refundCutoffDays ?? event.refundCutoffDays;
+    const nextRefundPercentage = params.refundPercentage ?? event.refundPercentage;
+    if (nextAllowSelfService) {
+      if (!(Number.isInteger(nextRefundCutoffDays) && nextRefundCutoffDays! >= 0)) {
+        throw new ValidationError('Refund cutoff (days before event) must be a whole number, 0 or more');
+      }
+      if (!(Number.isInteger(nextRefundPercentage) && nextRefundPercentage! >= 0 && nextRefundPercentage! <= 100)) {
+        throw new ValidationError('Refund percentage must be a whole number from 0 to 100');
+      }
+    }
+
     // The slug deliberately never changes here, even when the title
     // does — it's already out in the world in shared links and search
     // results once an event has been published, and silently breaking
@@ -231,6 +255,10 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         scheduleItems: params.scheduleItems !== undefined ? sanitizeScheduleItems(params.scheduleItems) : event.scheduleItems,
         packingChecklist: params.packingChecklist !== undefined ? sanitizePackingChecklist(params.packingChecklist) : event.packingChecklist,
         faqItems: params.faqItems !== undefined ? sanitizeFaqItems(params.faqItems) : event.faqItems,
+        cancellationPolicy: params.cancellationPolicy !== undefined ? params.cancellationPolicy.trim() || null : event.cancellationPolicy,
+        allowSelfServiceCancellation: nextAllowSelfService,
+        refundCutoffDays: nextAllowSelfService ? nextRefundCutoffDays : null,
+        refundPercentage: nextAllowSelfService ? nextRefundPercentage : null,
         status: nextStatus,
         capacity: totalCapacity,
       },
