@@ -16,6 +16,61 @@ import {
   ValidationError as VerificationValidationError,
   NotFoundError as VerificationNotFoundError,
 } from '../services/organizerVerification';
+import {
+  getOrganizerEvent,
+  updateOrganizerEvent,
+  deleteOrganizerEvent,
+  NotFoundError as EventNotFoundError,
+  ForbiddenError as EventForbiddenError,
+} from '../services/eventManagement';
+
+function parseTicketTiers(body: Record<string, unknown>) {
+  const rawTiers = Array.isArray(body.ticketTiers) ? body.ticketTiers : [];
+  return rawTiers.map((t) => {
+    const tier = t as Record<string, unknown>;
+    return {
+      id: typeof tier.id === 'string' ? tier.id : undefined,
+      name: typeof tier.name === 'string' ? tier.name : '',
+      description: typeof tier.description === 'string' ? tier.description : undefined,
+      price: typeof tier.price === 'number' ? tier.price : Number(tier.price) || 0,
+      quantity: typeof tier.quantity === 'number' ? tier.quantity : Number(tier.quantity) || 0,
+    };
+  });
+}
+
+function parseScheduleItems(body: Record<string, unknown>) {
+  const rawSchedule = Array.isArray(body.scheduleItems) ? body.scheduleItems : [];
+  return rawSchedule.map((s) => {
+    const item = s as Record<string, unknown>;
+    return {
+      time: typeof item.time === 'string' ? item.time : '',
+      title: typeof item.title === 'string' ? item.title : '',
+      description: typeof item.description === 'string' ? item.description : undefined,
+    };
+  });
+}
+
+function parsePackingChecklist(body: Record<string, unknown>) {
+  const rawPacking = Array.isArray(body.packingChecklist) ? body.packingChecklist : [];
+  return rawPacking.map((p) => {
+    const item = p as Record<string, unknown>;
+    return {
+      item: typeof item.item === 'string' ? item.item : '',
+      mandatory: item.mandatory !== false,
+    };
+  });
+}
+
+function parseFaqItems(body: Record<string, unknown>) {
+  const rawFaq = Array.isArray(body.faqItems) ? body.faqItems : [];
+  return rawFaq.map((f) => {
+    const item = f as Record<string, unknown>;
+    return {
+      question: typeof item.question === 'string' ? item.question : '',
+      answer: typeof item.answer === 'string' ? item.answer : '',
+    };
+  });
+}
 
 export const organizerRouter = Router();
 
@@ -101,44 +156,11 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
   const body = req.body as Record<string, unknown>;
   const status = body.status === 'draft' ? 'draft' : 'published';
 
-  const rawTiers = Array.isArray(body.ticketTiers) ? body.ticketTiers : [];
-  const ticketTiers: CreateEventTicketTier[] = rawTiers.map((t) => {
-    const tier = t as Record<string, unknown>;
-    return {
-      name: typeof tier.name === 'string' ? tier.name : '',
-      description: typeof tier.description === 'string' ? tier.description : undefined,
-      price: typeof tier.price === 'number' ? tier.price : Number(tier.price) || 0,
-      quantity: typeof tier.quantity === 'number' ? tier.quantity : Number(tier.quantity) || 0,
-    };
-  });
+  const ticketTiers: CreateEventTicketTier[] = parseTicketTiers(body);
 
-  const rawSchedule = Array.isArray(body.scheduleItems) ? body.scheduleItems : [];
-  const scheduleItems = rawSchedule.map((s) => {
-    const item = s as Record<string, unknown>;
-    return {
-      time: typeof item.time === 'string' ? item.time : '',
-      title: typeof item.title === 'string' ? item.title : '',
-      description: typeof item.description === 'string' ? item.description : undefined,
-    };
-  });
-
-  const rawPacking = Array.isArray(body.packingChecklist) ? body.packingChecklist : [];
-  const packingChecklist = rawPacking.map((p) => {
-    const item = p as Record<string, unknown>;
-    return {
-      item: typeof item.item === 'string' ? item.item : '',
-      mandatory: item.mandatory !== false,
-    };
-  });
-
-  const rawFaq = Array.isArray(body.faqItems) ? body.faqItems : [];
-  const faqItems = rawFaq.map((f) => {
-    const item = f as Record<string, unknown>;
-    return {
-      question: typeof item.question === 'string' ? item.question : '',
-      answer: typeof item.answer === 'string' ? item.answer : '',
-    };
-  });
+  const scheduleItems = parseScheduleItems(body);
+  const packingChecklist = parsePackingChecklist(body);
+  const faqItems = parseFaqItems(body);
 
   try {
     const created = await createOrganizerEvent({
@@ -168,6 +190,104 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
   } catch (err) {
     if (err instanceof ValidationError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.get('/events/:eventId', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    const event = await getOrganizerEvent(req.params.eventId, organizerId);
+    res.status(200).json(event);
+  } catch (err) {
+    if (err instanceof EventNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EventForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+
+  try {
+    const updated = await updateOrganizerEvent({
+      eventId: req.params.eventId,
+      organizerId,
+      title: typeof body.title === 'string' ? body.title : undefined,
+      shortDescription: typeof body.shortDescription === 'string' ? body.shortDescription : undefined,
+      description: typeof body.description === 'string' ? body.description : undefined,
+      startDate: typeof body.startDate === 'string' ? body.startDate : undefined,
+      startTime: typeof body.startTime === 'string' ? body.startTime : undefined,
+      venueName: typeof body.venueName === 'string' ? body.venueName : undefined,
+      address: typeof body.address === 'string' ? body.address : undefined,
+      city: typeof body.city === 'string' ? body.city : undefined,
+      state: typeof body.state === 'string' ? body.state : undefined,
+      pincode: typeof body.pincode === 'string' ? body.pincode : undefined,
+      bannerImage: typeof body.bannerImage === 'string' ? body.bannerImage : undefined,
+      ticketTiers: body.ticketTiers !== undefined ? parseTicketTiers(body) : undefined,
+      scheduleItems: body.scheduleItems !== undefined ? parseScheduleItems(body) : undefined,
+      packingChecklist: body.packingChecklist !== undefined ? parsePackingChecklist(body) : undefined,
+      faqItems: body.faqItems !== undefined ? parseFaqItems(body) : undefined,
+      status: body.status === 'draft' || body.status === 'published' || body.status === 'closed' ? body.status : undefined,
+    });
+    res.status(200).json(updated);
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EventNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EventForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.delete('/events/:eventId', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    await deleteOrganizerEvent(req.params.eventId, organizerId);
+    res.status(204).send();
+  } catch (err) {
+    if (err instanceof ValidationError) {
+      res.status(409).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EventNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EventForbiddenError) {
+      res.status(403).json({ error: err.message });
       return;
     }
     throw err;
