@@ -62,6 +62,9 @@ export interface CreateEventParams {
   pincode?: string;
   bannerImage?: string;
   cancellationPolicyDescription?: string;
+  allowSelfServiceCancellation?: boolean;
+  refundCutoffDays?: number;
+  refundPercentage?: number;
   ticketTiers: CreateEventTicketTier[];
   scheduleItems?: CreateEventScheduleItem[];
   packingChecklist?: CreateEventPackingItem[];
@@ -143,6 +146,15 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
     throw new ValidationError('Invalid start date/time');
   }
 
+  if (params.allowSelfServiceCancellation) {
+    if (!(Number.isInteger(params.refundCutoffDays) && params.refundCutoffDays! >= 0)) {
+      throw new ValidationError('Refund cutoff (days before event) must be a whole number, 0 or more');
+    }
+    if (!(Number.isInteger(params.refundPercentage) && params.refundPercentage! >= 0 && params.refundPercentage! <= 100)) {
+      throw new ValidationError('Refund percentage must be a whole number from 0 to 100');
+    }
+  }
+
   const venueAddress = [params.venueName, params.address, params.city, params.state, params.pincode]
     .map((s) => s?.trim())
     .filter(Boolean)
@@ -163,6 +175,9 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         eventDate,
         bannerUrl: params.bannerImage?.trim() || null,
         cancellationPolicy: params.cancellationPolicyDescription?.trim() || null,
+        allowSelfServiceCancellation: params.allowSelfServiceCancellation ?? false,
+        refundCutoffDays: params.allowSelfServiceCancellation ? params.refundCutoffDays ?? null : null,
+        refundPercentage: params.allowSelfServiceCancellation ? params.refundPercentage ?? null : null,
         scheduleItems: sanitizeScheduleItems(params.scheduleItems),
         packingChecklist: sanitizePackingChecklist(params.packingChecklist),
         faqItems: sanitizeFaqItems(params.faqItems),

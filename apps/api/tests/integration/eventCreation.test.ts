@@ -209,6 +209,91 @@ describe('organizer event creation (real DB)', () => {
     expect(detailRes.body.packingChecklist).toBeNull();
     expect(detailRes.body.faqItems).toBeNull();
   });
+
+  it('creates an event with a real, working self-service cancellation policy when enabled', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Event With Real Cancellation Policy',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+        cancellationPolicy: 'Full refund up to 3 days before the event.',
+        allowSelfServiceCancellation: true,
+        refundCutoffDays: 3,
+        refundPercentage: 80,
+      });
+    expect(res.status).toBe(201);
+
+    const getRes = await request(app).get(`/api/organizer/events/${res.body.id}`).set('Authorization', `Bearer ${token}`);
+    expect(getRes.body.cancellationPolicy).toBe('Full refund up to 3 days before the event.');
+    expect(getRes.body.allowSelfServiceCancellation).toBe(true);
+    expect(getRes.body.refundCutoffDays).toBe(3);
+    expect(getRes.body.refundPercentage).toBe(80);
+  });
+
+  it('defaults self-service cancellation to off, with no cutoff/percentage set, when not specified', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Event With Default Cancellation Policy',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+    expect(res.status).toBe(201);
+
+    const getRes = await request(app).get(`/api/organizer/events/${res.body.id}`).set('Authorization', `Bearer ${token}`);
+    expect(getRes.body.allowSelfServiceCancellation).toBe(false);
+    expect(getRes.body.refundCutoffDays).toBeNull();
+    expect(getRes.body.refundPercentage).toBeNull();
+  });
+
+  it('rejects enabling self-service cancellation with a refund percentage outside 0-100', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Event With Invalid Refund Percentage',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+        allowSelfServiceCancellation: true,
+        refundCutoffDays: 3,
+        refundPercentage: 150,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/refund percentage/i);
+  });
+
+  it('PATCH can toggle self-service cancellation on for an already-created event', async () => {
+    const created = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Event To Enable Cancellation Later',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+
+    const patchRes = await request(app)
+      .patch(`/api/organizer/events/${created.body.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ allowSelfServiceCancellation: true, refundCutoffDays: 5, refundPercentage: 100 });
+    expect(patchRes.status).toBe(200);
+
+    const getRes = await request(app).get(`/api/organizer/events/${created.body.id}`).set('Authorization', `Bearer ${token}`);
+    expect(getRes.body.allowSelfServiceCancellation).toBe(true);
+    expect(getRes.body.refundCutoffDays).toBe(5);
+    expect(getRes.body.refundPercentage).toBe(100);
+  });
 });
 
 describe('organizer event creation: publish-time Cashfree verification gate', () => {

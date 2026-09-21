@@ -18,6 +18,13 @@ import {
 } from '../services/organizerVerification';
 import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
 import {
+  organizerCancelBooking,
+  organizerCancelEvent,
+  ValidationError as CancellationValidationError,
+  NotFoundError as CancellationNotFoundError,
+  ForbiddenError as CancellationForbiddenError,
+} from '../services/bookingCancellation';
+import {
   getOrganizerEvent,
   updateOrganizerEvent,
   deleteOrganizerEvent,
@@ -200,10 +207,10 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       state: typeof body.state === 'string' ? body.state : undefined,
       pincode: typeof body.pincode === 'string' ? body.pincode : undefined,
       bannerImage: typeof body.bannerImage === 'string' ? body.bannerImage : undefined,
-      cancellationPolicyDescription:
-        typeof body.cancellationPolicy === 'object' && body.cancellationPolicy !== null
-          ? String((body.cancellationPolicy as Record<string, unknown>).description ?? '')
-          : undefined,
+      cancellationPolicyDescription: typeof body.cancellationPolicy === 'string' ? body.cancellationPolicy : undefined,
+      allowSelfServiceCancellation: typeof body.allowSelfServiceCancellation === 'boolean' ? body.allowSelfServiceCancellation : undefined,
+      refundCutoffDays: typeof body.refundCutoffDays === 'number' ? body.refundCutoffDays : undefined,
+      refundPercentage: typeof body.refundPercentage === 'number' ? body.refundPercentage : undefined,
       ticketTiers,
       scheduleItems,
       packingChecklist,
@@ -267,6 +274,10 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       state: typeof body.state === 'string' ? body.state : undefined,
       pincode: typeof body.pincode === 'string' ? body.pincode : undefined,
       bannerImage: typeof body.bannerImage === 'string' ? body.bannerImage : undefined,
+      cancellationPolicy: typeof body.cancellationPolicy === 'string' ? body.cancellationPolicy : undefined,
+      allowSelfServiceCancellation: typeof body.allowSelfServiceCancellation === 'boolean' ? body.allowSelfServiceCancellation : undefined,
+      refundCutoffDays: typeof body.refundCutoffDays === 'number' ? body.refundCutoffDays : undefined,
+      refundPercentage: typeof body.refundPercentage === 'number' ? body.refundPercentage : undefined,
       ticketTiers: body.ticketTiers !== undefined ? parseTicketTiers(body) : undefined,
       scheduleItems: body.scheduleItems !== undefined ? parseScheduleItems(body) : undefined,
       packingChecklist: body.packingChecklist !== undefined ? parsePackingChecklist(body) : undefined,
@@ -482,6 +493,70 @@ organizerRouter.post('/verification/refresh', asyncHandler(async (req, res) => {
     }
     if (err instanceof CashfreeNotConfiguredError) {
       res.status(503).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/bookings/:bookingId/cancel', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  const { reason } = req.body as Record<string, unknown>;
+  if (typeof reason !== 'string') {
+    res.status(400).json({ error: 'A cancellation reason is required' });
+    return;
+  }
+
+  try {
+    const result = await organizerCancelBooking(req.params.bookingId, organizerId, reason);
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CancellationNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CancellationForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CancellationValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/events/:eventId/cancel', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  const { reason } = req.body as Record<string, unknown>;
+  if (typeof reason !== 'string') {
+    res.status(400).json({ error: 'A cancellation reason is required' });
+    return;
+  }
+
+  try {
+    const result = await organizerCancelEvent(req.params.eventId, organizerId, reason);
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CancellationNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CancellationForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CancellationValidationError) {
+      res.status(400).json({ error: err.message });
       return;
     }
     throw err;

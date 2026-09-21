@@ -11,6 +11,11 @@ import {
   ValidationError as ReviewValidationError,
 } from '../services/eventReviews';
 import { sendBookingConfirmationEmail } from '../services/bookingEmails';
+import {
+  customerCancelBooking,
+  ValidationError as CancellationValidationError,
+  NotFoundError as CancellationNotFoundError,
+} from '../services/bookingCancellation';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { Booking, Event } from '../models';
 
@@ -198,6 +203,30 @@ publicBookingsRouter.post('/bookings/:bookingReference/feedback', asyncHandler(a
       return;
     }
     if (err instanceof ReviewValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+publicBookingsRouter.post('/bookings/:bookingReference/cancel', asyncHandler(async (req, res) => {
+  const { email, reason } = req.body as Record<string, unknown>;
+
+  if (typeof email !== 'string' || typeof reason !== 'string') {
+    res.status(400).json({ error: 'Email and a cancellation reason are required' });
+    return;
+  }
+
+  try {
+    const result = await customerCancelBooking(req.params.bookingReference, email, reason);
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CancellationNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CancellationValidationError) {
       res.status(400).json({ error: err.message });
       return;
     }
