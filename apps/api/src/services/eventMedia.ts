@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import { Event, EventMedia } from '../models';
+import { isS3Configured, uploadFileToS3, deleteFileFromS3, s3KeyFromUrl } from './s3Storage';
 
 const execFileAsync = promisify(execFile);
 
@@ -109,13 +110,29 @@ export async function uploadEventMedia(params: UploadEventMediaParams): Promise<
     }
   }
 
-  const eventDir = path.join(UPLOAD_DIR, 'events', params.eventId);
-  await fs.mkdir(eventDir, { recursive: true });
   const filename = `${crypto.randomUUID()}${extensionForMimeType(params.mimeType)}`;
-  const destPath = path.join(eventDir, filename);
-  await fs.rename(params.tempFilePath, destPath);
+  let url: string;
 
-  const url = `${UPLOAD_URL_PREFIX}/events/${params.eventId}/${filename}`;
+  if (isS3Configured()) {
+    // Persistent, CDN-friendly storage that survives every deploy
+    // without needing a mounted volume — the object key mirrors the
+    // same events/{eventId}/{filename} layout the local-disk path
+    // below uses, so the two storage backends stay easy to reason
+    // about side by side.
+    const key = `events/${params.eventId}/${filename}`;
+    url = await uploadFileToS3(params.tempFilePath, key, params.mimeType);
+    await fs.unlink(params.tempFilePath).catch(() => {
+      // Uploaded successfully — a leftover temp file is just disk
+      // clutter, not a reason to fail the request.
+    });
+  } else {
+    const eventDir = path.join(UPLOAD_DIR, 'events', params.eventId);
+    await fs.mkdir(eventDir, { recursive: true });
+    const destPath = path.join(eventDir, filename);
+    await fs.rename(params.tempFilePath, destPath);
+    url = `${UPLOAD_URL_PREFIX}/events/${params.eventId}/${filename}`;
+  }
+
   const media = await EventMedia.create({ eventId: params.eventId, mediaType, url });
 
   return { id: media.id, mediaType: media.mediaType, url: media.url };
@@ -129,11 +146,18 @@ export async function deleteEventMedia(organizerId: string, eventId: string, med
   const media = await EventMedia.findOne({ where: { id: mediaId, eventId } });
   if (!media) throw new NotFoundError('Media not found');
 
-  const relativePath = media.url.replace(`${UPLOAD_URL_PREFIX}/`, '');
-  const filePath = path.join(UPLOAD_DIR, relativePath);
-  await fs.unlink(filePath).catch(() => {
-    // File already gone from disk somehow — still remove the DB row
-    // below rather than leave a dangling reference to a missing file.
-  });
+  const s3Key = s3KeyFromUrl(media.url);
+  if (s3Key) {
+    await deleteFileFromS3(s3Key).catch(() => {
+      // Already gone from S3 somehow — still remove the DB row below
+      // rather than leave a dangling reference to a missing object.
+    });
+  } else {
+    const relativePath = media.url.replace(`${UPLOAD_URL_PREFIX}/`, '');
+    const filePath = path.join(UPLOAD_DIR, relativePath);
+    await fs.unlink(filePath).catch(() => {
+      // File already gone from disk somehow — same reasoning as above.
+    });
+  }
   await media.destroy();
 }
