@@ -8,6 +8,14 @@ export class NotFoundError extends Error {}
 const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
+// Cashfree requires a business_type value for every vendor regardless
+// of account type (confirmed against their real API — see
+// cashfreeClient.ts). For an individual organizer there's no
+// meaningful business category to ask them for, and this platform is
+// specifically event ticketing, so that's the sensible fixed default
+// rather than a confusing extra question on the KYC form.
+const DEFAULT_INDIVIDUAL_BUSINESS_TYPE = 'Events & Entertainment';
+
 function mapCashfreeStatus(status: CashfreeVendorResponse['status']): CashfreeVendorStatus {
   switch (status) {
     case 'ACTIVE':
@@ -66,6 +74,14 @@ export async function submitOrganizerVerification(params: SubmitVerificationPara
   if (!params.contactPhone.trim()) {
     throw new ValidationError('Contact phone is required');
   }
+  if (params.accountType === 'business' && !params.businessType?.trim()) {
+    throw new ValidationError('Business type is required for a business account');
+  }
+  // Cashfree requires business_type for every vendor, individual or
+  // business — an individual gets the fixed platform-category default
+  // above; a business account uses what they actually entered (just
+  // validated above as present).
+  const businessTypeForCashfree = params.accountType === 'business' ? params.businessType!.trim() : DEFAULT_INDIVIDUAL_BUSINESS_TYPE;
 
   // The organizer's own owner account's real login email — a Cashfree
   // vendor record needs a real contact email, and Organizer.contactEmail
@@ -88,6 +104,7 @@ export async function submitOrganizerVerification(params: SubmitVerificationPara
       ifsc,
       accountType: params.accountType === 'business' ? 'BUSINESS' : 'INDIVIDUAL',
       pan,
+      businessType: businessTypeForCashfree,
     });
   } catch (err) {
     if (err instanceof CashfreeApiError) {
