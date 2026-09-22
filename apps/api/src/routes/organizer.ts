@@ -31,6 +31,8 @@ import {
   ForbiddenError as CheckInForbiddenError,
   RejectedError as CheckInRejectedError,
 } from '../services/ticketCheckIn';
+import { getOrganizerTickets } from '../services/organizerTickets';
+import { getOrganizerPayments } from '../services/organizerPayments';
 import {
   getOrganizerEvent,
   updateOrganizerEvent,
@@ -628,4 +630,32 @@ organizerRouter.post('/events/:eventId/checkin/:ticketId/undo', asyncHandler(asy
     }
     throw err;
   }
+}));
+
+organizerRouter.get('/tickets', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const { eventId, status, search } = req.query;
+  const result = await getOrganizerTickets({
+    organizerId,
+    eventId: typeof eventId === 'string' ? eventId : undefined,
+    status: typeof status === 'string' && ['all', 'valid', 'checked_in', 'cancelled'].includes(status) ? (status as 'all' | 'valid' | 'checked_in' | 'cancelled') : undefined,
+    search: typeof search === 'string' ? search : undefined,
+  });
+  res.status(200).json(result);
+}));
+
+organizerRouter.get('/payments', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const result = await getOrganizerPayments(organizerId);
+  res.status(200).json(result);
 }));
