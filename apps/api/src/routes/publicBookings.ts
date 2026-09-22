@@ -16,6 +16,7 @@ import {
   ValidationError as CancellationValidationError,
   NotFoundError as CancellationNotFoundError,
 } from '../services/bookingCancellation';
+import { getBookingDetail, getTicketQrImage, NotFoundError as TicketsNotFoundError } from '../services/customerTickets';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { Booking, Event } from '../models';
 
@@ -228,6 +229,44 @@ publicBookingsRouter.post('/bookings/:bookingReference/cancel', asyncHandler(asy
     }
     if (err instanceof CancellationValidationError) {
       res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+publicBookingsRouter.get('/bookings/:bookingReference/tickets', asyncHandler(async (req, res) => {
+  const { email } = req.query;
+  if (typeof email !== 'string') {
+    res.status(400).json({ error: 'Email is required' });
+    return;
+  }
+
+  try {
+    const detail = await getBookingDetail(req.params.bookingReference, email);
+    res.status(200).json(detail);
+  } catch (err) {
+    if (err instanceof TicketsNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+publicBookingsRouter.get('/bookings/:bookingReference/tickets/:ticketId/qr', asyncHandler(async (req, res) => {
+  const { email } = req.query;
+  if (typeof email !== 'string') {
+    res.status(400).json({ error: 'Email is required' });
+    return;
+  }
+
+  try {
+    const png = await getTicketQrImage(req.params.bookingReference, email, req.params.ticketId);
+    res.status(200).set('Content-Type', 'image/png').send(png);
+  } catch (err) {
+    if (err instanceof TicketsNotFoundError) {
+      res.status(404).json({ error: err.message });
       return;
     }
     throw err;
