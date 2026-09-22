@@ -579,4 +579,92 @@ describe('App routing', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('ManageBookingPage requires booking reference + email before showing anything real', async () => {
+    renderApp('/bookings/some-id/manage');
+    expect(screen.getByRole('heading', { name: /manage your booking/i })).toBeInTheDocument();
+    expect(screen.queryByText(/issued attendee/i)).not.toBeInTheDocument();
+  });
+
+  it('ManageBookingPage shows real tickets with real QR image URLs once verified, and no cancel option when the event does not allow self-service cancellation', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        bookingReference: 'INV-BKG-2026-77777',
+        bookingStatus: 'confirmed',
+        eventName: 'Manage Test Event',
+        eventDate: '2026-12-25T09:00:00.000Z',
+        totalAmountPaise: 50000,
+        refundAmountPaise: null,
+        refundStatus: null,
+        allowSelfServiceCancellation: false,
+        refundCutoffPassed: false,
+        tickets: [{ id: 'ticket-manage-1', attendeeName: 'Real Manage Attendee', tierName: 'General', status: 'valid' }],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/bookings/some-id/manage');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-77777');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'attendee@example.com');
+    await user.click(screen.getByRole('button', { name: /view my booking/i }));
+
+    await waitFor(() => expect(screen.getByText('Manage Test Event')).toBeInTheDocument());
+    expect(screen.getByText('Real Manage Attendee')).toBeInTheDocument();
+    expect(screen.getByAltText(/qr code for real manage attendee/i)).toHaveAttribute(
+      'src',
+      '/api/bookings/INV-BKG-2026-77777/tickets/ticket-manage-1/qr?email=attendee%40example.com',
+    );
+    expect(screen.queryByRole('button', { name: /cancel this booking/i })).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('ManageBookingPage shows a real cancel option when the event allows self-service cancellation and is within cutoff, and submits a real cancellation', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'POST' && String(url).includes('/cancel')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ bookingId: 'b1', refundAmountPaise: 40000, refundStatus: 'SUCCESS' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          bookingReference: 'INV-BKG-2026-88888',
+          bookingStatus: 'confirmed',
+          eventName: 'Cancellable Event',
+          eventDate: '2026-12-25T09:00:00.000Z',
+          totalAmountPaise: 50000,
+          refundAmountPaise: null,
+          refundStatus: null,
+          allowSelfServiceCancellation: true,
+          refundCutoffPassed: false,
+          tickets: [{ id: 'ticket-cancel-1', attendeeName: 'Cancel Test Attendee', tierName: 'General', status: 'valid' }],
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/bookings/some-id/manage');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-88888');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'canceller@example.com');
+    await user.click(screen.getByRole('button', { name: /view my booking/i }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /cancel this booking/i })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /cancel this booking/i }));
+    await user.type(screen.getByRole('textbox'), 'Change of plans');
+    await user.click(screen.getByRole('button', { name: /confirm cancellation/i }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/cancel'));
+      expect(call).toBeTruthy();
+    });
+    const [, cancelOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/cancel'));
+    const body = JSON.parse(cancelOpts.body);
+    expect(body).toEqual({ email: 'canceller@example.com', reason: 'Change of plans' });
+
+    vi.unstubAllGlobals();
+  });
 });

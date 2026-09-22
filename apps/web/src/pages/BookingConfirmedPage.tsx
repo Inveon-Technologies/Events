@@ -175,12 +175,12 @@ export function BookingConfirmedPage() {
                       <Badge tone="success">Confirmed</Badge>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline">
-                    <Icon name="qr_code_2" className="text-[16px]" /> View QR Pass
-                  </Button>
                 </li>
               ))}
             </ul>
+            <p className="text-xs text-ink-muted mt-3">
+              Your QR passes are on their way by email — or view them anytime under Manage Reservation below.
+            </p>
           </div>
         )}
 
@@ -188,7 +188,13 @@ export function BookingConfirmedPage() {
           <Button variant="outline" onClick={() => navigate('/')}>
             ← Book Another Event
           </Button>
-          <Button onClick={() => navigate(`/bookings/${bookingId}/manage`)}>
+          <Button
+            onClick={() =>
+              navigate(`/bookings/${bookingId}/manage`, {
+                state: { bookingReference: bookingReference ?? undefined },
+              })
+            }
+          >
             <Icon name="settings" className="text-[18px]" /> Manage Reservation
           </Button>
         </div>
