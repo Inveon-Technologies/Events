@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { INITIAL_EVENTS } from '../data/mockEvents';
 import { INITIAL_BOOKINGS } from '../data/mockBookings';
 import { INITIAL_PARTICIPANTS } from '../data/mockParticipants';
@@ -56,6 +56,11 @@ function apiBookingToMockShape(b) {
   const d = new Date(b.createdAt);
   return {
     id: b.bookingReference,
+    // The real booking UUID, kept separately from the display-facing
+    // `id` above (which every existing page already treats as the
+    // human-readable reference) — real mutation endpoints (cancel,
+    // etc.) need the actual primary key, not the reference string.
+    bookingId: b.id,
     bookingDate: `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`,
     eventId: b.eventId,
     eventName: b.eventName,
@@ -124,6 +129,18 @@ export function EventsProvider({ children }) {
   // owns). Participants/payments/settings stay on the mock/localStorage
   // layer above — those need their own backend domains this project
   // doesn't have yet.
+  const refreshEvents = useCallback(() => {
+    if (!user?.isLoggedIn || !user?.token) return Promise.resolve();
+    return apiRequest('/organizer/events', { token: user.token })
+      .then((data) => {
+        setEvents(data.events.map(apiEventToMockShape));
+        setEventsLoadError(null);
+      })
+      .catch((err) => {
+        setEventsLoadError(err.message ?? 'Failed to load events');
+      });
+  }, [user?.isLoggedIn, user?.token]);
+
   useEffect(() => {
     if (!user?.isLoggedIn || !user?.token) return;
     let cancelled = false;
@@ -239,33 +256,66 @@ export function EventsProvider({ children }) {
     showToast('Event updated successfully!', 'success');
   };
 
-  const duplicateEvent = (id) => {
-    const original = events.find((e) => e.id === id);
-    if (!original) return;
-    const duplicated = {
-      ...original,
-      id: `${original.id}-copy-${Date.now()}`,
-      title: `${original.title} (Copy)`,
-      status: 'draft',
-      ticketsSold: 0,
-      checkedInCount: 0,
-      grossRevenue: 0
-    };
-    setEvents((prev) => [duplicated, ...prev]);
-    showToast(`Duplicated "${original.title}" as a draft`, 'info');
+  const duplicateEvent = async (id) => {
+    try {
+      const original = await apiRequest(`/organizer/events/${id}`, { token: user?.token });
+      const created = await apiRequest('/organizer/events', {
+        method: 'POST',
+        token: user?.token,
+        body: {
+          title: `${original.title} (Copy)`,
+          shortDescription: original.shortDescription || undefined,
+          description: original.description || undefined,
+          startDate: original.eventDate.slice(0, 10),
+          startTime: original.eventDate.slice(11, 16),
+          bannerImage: original.bannerImage || undefined,
+          scheduleItems: original.scheduleItems || undefined,
+          packingChecklist: original.packingChecklist || undefined,
+          faqItems: original.faqItems || undefined,
+          ticketTiers: original.ticketTiers.map((t) => ({ name: t.name, description: t.description, price: t.price, quantity: t.quantity })),
+          status: 'draft',
+        },
+      });
+      showToast(`Duplicated "${original.title}" as a draft`, 'info');
+      await refreshEvents();
+      return created;
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not duplicate this event.', 'error');
+      return null;
+    }
   };
 
-  const deleteEvent = (id) => {
+  const deleteEvent = async (id) => {
     const event = events.find((e) => e.id === id);
-    setEvents((prev) => prev.filter((e) => e.id !== id));
-    showToast(`Event "${event?.title || id}" deleted`, 'info');
+    try {
+      await apiRequest(`/organizer/events/${id}`, { method: 'DELETE', token: user?.token });
+      showToast(`Event "${event?.title || id}" deleted`, 'info');
+      await refreshEvents();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not delete this event.', 'error');
+    }
   };
 
-  const toggleEventStatus = (id, newStatus) => {
-    setEvents((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, status: newStatus } : e))
-    );
-    showToast(`Event status updated to ${newStatus}`, 'success');
+  const toggleEventStatus = async (id, newStatus) => {
+    try {
+      await apiRequest(`/organizer/events/${id}`, { method: 'PATCH', token: user?.token, body: { status: newStatus } });
+      showToast(`Event status updated to ${newStatus}`, 'success');
+      await refreshEvents();
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not update this event\u2019s status.', 'error');
+    }
+  };
+
+  const cancelEvent = async (id, reason) => {
+    try {
+      const result = await apiRequest(`/organizer/events/${id}/cancel`, { method: 'POST', token: user?.token, body: { reason } });
+      showToast(`Event cancelled — ${result.cancelledBookings.length} booking(s) refunded`, 'info');
+      await refreshEvents();
+      return result;
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not cancel this event.', 'error');
+      return null;
+    }
   };
 
   // Participant actions & Real-time Check-In with Unpaid / Cancelled Validation
@@ -410,44 +460,20 @@ export function EventsProvider({ children }) {
     showToast(`Booking ${bookingId} updated to ${newStatus}`, 'success');
   };
 
-  const processRefund = (bookingId, amount) => {
-    const booking = bookings.find((b) => b.id === bookingId);
-    if (!booking) return;
-
-    updateBookingStatus(bookingId, 'cancelled', 'refunded');
-
-    // Mark participants cancelled
-    setParticipants((prev) =>
-      prev.map((p) =>
-        p.bookingId === bookingId ? { ...p, checkInStatus: 'cancelled' } : p
-      )
-    );
-
-    // Add refund transaction
-    const newTxn = {
-      id: `TXN-${Date.now().toString().slice(-6)}`,
-      date: new Date().toLocaleString(),
-      bookingId: bookingId,
-      customerName: booking.customerName,
-      eventName: booking.eventName,
-      amount: -Math.abs(amount || booking.amount),
-      gatewayFee: 0,
-      platformFee: 0,
-      netAmount: -Math.abs(amount || booking.amount),
-      paymentMethod: 'Refund to Source',
-      status: 'refunded'
-    };
-
-    setPayments((prev) => ({
-      ...prev,
-      transactions: [newTxn, ...prev.transactions],
-      summary: {
-        ...prev.summary,
-        refundedAmount: prev.summary.refundedAmount + Math.abs(amount || booking.amount)
-      }
-    }));
-
-    showToast(`Refund of ₹${amount || booking.amount} processed for ${booking.customerName}`, 'success');
+  const cancelBooking = async (bookingId, reason) => {
+    try {
+      const result = await apiRequest(`/organizer/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        token: user?.token,
+        body: { reason },
+      });
+      showToast(`Booking cancelled — ₹${Math.round(result.refundAmountPaise / 100)} refund ${result.refundStatus ? `(${result.refundStatus})` : 'processed'}`, 'success');
+      await refreshEvents();
+      return result;
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not cancel this booking.', 'error');
+      return null;
+    }
   };
 
   // Settings actions
@@ -486,10 +512,11 @@ export function EventsProvider({ children }) {
         duplicateEvent,
         deleteEvent,
         toggleEventStatus,
+        cancelEvent,
         checkInParticipant,
         undoCheckIn,
         updateBookingStatus,
-        processRefund,
+        cancelBooking,
         updateAccountSettings,
         updateOrgSettings,
         updateSecuritySettings,

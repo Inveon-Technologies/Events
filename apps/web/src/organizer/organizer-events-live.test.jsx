@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -105,6 +106,97 @@ describe('organizer portal: real events data through EventsContext', () => {
       expect.stringContaining('/api/organizer/events'),
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer fake-token' }) }),
     );
+  });
+
+  it('"Publish Live" on a draft event calls the real PATCH endpoint, not a local state toggle', async () => {
+    const user = userEvent.setup();
+    const draftEventsResponse = {
+      organizerName: 'Eco Pandhari Club',
+      counts: { all: 1, draft: 1, published: 0, completed: 0, cancelled: 0 },
+      events: [
+        {
+          id: 'evt-draft-1',
+          eventCode: 'EVT-DRAFT1',
+          name: 'Draft Event To Publish',
+          eventDate: '2026-11-01T09:00:00.000Z',
+          venueAddress: 'Pune',
+          bannerUrl: null,
+          capacity: 20,
+          ticketsSold: 0,
+          revenuePaise: 0,
+          displayStatus: 'draft',
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'PATCH') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ id: 'evt-draft-1', slug: 'draft-event' }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => draftEventsResponse });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/events');
+    await waitFor(() => expect(screen.getByText('Draft Event To Publish')).toBeInTheDocument());
+
+    const card = screen.getByText('Draft Event To Publish').closest('div.group') ?? document.body;
+    const menuButton = within(card).getAllByRole('button')[0];
+    await user.click(menuButton);
+    await user.click(screen.getByText('Publish Live'));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u, o]) => o?.method === 'PATCH' && String(u).includes('evt-draft-1'));
+      expect(call).toBeTruthy();
+    });
+    const [, patchOpts] = fetchMock.mock.calls.find(([u, o]) => o?.method === 'PATCH');
+    expect(JSON.parse(patchOpts.body)).toEqual({ status: 'published' });
+  });
+
+  it('"Cancel Event" prompts for a reason and calls the real cancel endpoint with it', async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Venue became unavailable');
+    const publishedEventsResponse = {
+      organizerName: 'Eco Pandhari Club',
+      counts: { all: 1, draft: 0, published: 1, completed: 0, cancelled: 0 },
+      events: [
+        {
+          id: 'evt-to-cancel-1',
+          eventCode: 'EVT-CANCEL1',
+          name: 'Event To Cancel',
+          eventDate: '2026-11-01T09:00:00.000Z',
+          venueAddress: 'Pune',
+          bannerUrl: null,
+          capacity: 20,
+          ticketsSold: 2,
+          revenuePaise: 100000,
+          displayStatus: 'published',
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'POST' && String(url).includes('/cancel')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ cancelledBookings: [{ bookingId: 'b1' }] }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => publishedEventsResponse });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/events');
+    await waitFor(() => expect(screen.getByText('Event To Cancel')).toBeInTheDocument());
+
+    const card = screen.getByText('Event To Cancel').closest('div.group') ?? document.body;
+    const menuButton = within(card).getAllByRole('button')[0];
+    await user.click(menuButton);
+    await user.click(screen.getByText('Cancel Event'));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/cancel'));
+      expect(call).toBeTruthy();
+    });
+    const [, cancelOpts] = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/cancel'));
+    expect(JSON.parse(cancelOpts.body)).toEqual({ reason: 'Venue became unavailable' });
+
+    promptSpy.mockRestore();
   });
 });
 
