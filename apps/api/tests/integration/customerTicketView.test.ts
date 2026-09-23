@@ -60,13 +60,16 @@ describe('real customer ticket viewing (real DB)', () => {
   });
 
   afterAll(async () => {
-    const bookings = await Booking.findAll({ where: { eventId } });
-    for (const booking of bookings) {
-      await Payment.destroy({ where: { bookingId: booking.id } });
-      await Ticket.destroy({ where: { bookingId: booking.id } });
+    const events = await Event.findAll({ where: { organizerId } });
+    for (const evt of events) {
+      const bookings = await Booking.findAll({ where: { eventId: evt.id } });
+      for (const booking of bookings) {
+        await Payment.destroy({ where: { bookingId: booking.id } });
+        await Ticket.destroy({ where: { bookingId: booking.id } });
+      }
+      await Booking.destroy({ where: { eventId: evt.id } });
+      await TicketCategory.destroy({ where: { eventId: evt.id } });
     }
-    await Booking.destroy({ where: { eventId } });
-    await TicketCategory.destroy({ where: { eventId } });
     await Event.destroy({ where: { organizerId } });
     await User.destroy({ where: { organizerId } });
     await Organizer.destroy({ where: { id: organizerId } });
@@ -117,5 +120,67 @@ describe('real customer ticket viewing (real DB)', () => {
     // This event was created with default policy (self-service off).
     const res = await request(app).get(`/api/bookings/${bookingReference}/tickets`).query({ email: customerEmail });
     expect(res.body.allowSelfServiceCancellation).toBe(false);
+  });
+
+  it('returns the real organizer name, venue, real Maps link, and real payment reference — not fabricated fields', async () => {
+    const res = await request(app).get(`/api/bookings/${bookingReference}/tickets`).query({ email: customerEmail });
+    expect(res.status).toBe(200);
+    expect(res.body.organizerName).toBe(`Ticket View Test Org ${suffix}`);
+    expect(res.body.bookedAt).toBeTruthy();
+    // No venue was set on this event, so no fabricated address or map
+    // link should appear — both stay genuinely null rather than some
+    // placeholder value.
+    expect(res.body.venueAddress).toBeNull();
+    expect(res.body.venueMapUrl).toBeNull();
+    // Cash payment — a real gateway reference genuinely doesn't exist
+    // for this method, so it must stay null, not an invented one.
+    expect(res.body.paymentMethod).toBe('cash');
+    expect(res.body.paymentReference).toBeNull();
+  });
+
+  it('returns a real per-tier price breakdown computed from real ticket tier prices, and a real per-ticket reference derived from the real booking reference', async () => {
+    const res = await request(app).get(`/api/bookings/${bookingReference}/tickets`).query({ email: customerEmail });
+    expect(res.body.tierBreakdown).toEqual([{ tierName: 'General', quantity: 1, unitPricePaise: 50000, subtotalPaise: 50000 }]);
+    expect(res.body.tickets[0].ticketReference).toBe(`${bookingReference}-1`);
+  });
+
+  it('a real venue address produces a real, working Google Maps link', async () => {
+    const eventRes = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: `Ticket View Venue Event ${suffix}`,
+        startDate: '2026-12-25',
+        startTime: '09:00',
+        venueName: 'Real Test Venue',
+        city: 'Pune',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+    const venueTierId = (await TicketCategory.findOne({ where: { eventId: eventRes.body.id } }))!.id;
+    const bookingRes = await request(app).post(`/api/events/${eventRes.body.id}/bookings`).send({
+      ticketCategoryId: venueTierId, quantity: 1, primaryContactName: 'Venue Customer',
+      primaryContactWhatsapp: '+919000000002', primaryContactEmail: `venue-${suffix}@example.com`, paymentMethod: 'cash',
+    });
+
+    const detail = await request(app).get(`/api/bookings/${bookingRes.body.bookingReference}/tickets`).query({ email: `venue-${suffix}@example.com` });
+    expect(detail.body.venueAddress).toBe('Real Test Venue, Pune');
+    expect(detail.body.venueMapUrl).toBe('https://www.google.com/maps/search/?api=1&query=Real%20Test%20Venue%2C%20Pune');
+  });
+
+  it('a multi-attendee booking gets a real breakdown across attendee count and a distinct ticket reference per attendee', async () => {
+    const bookingRes = await request(app).post(`/api/events/${eventId}/bookings`).send({
+      ticketCategoryId: tierId, quantity: 2, primaryContactName: 'Multi Ticket Customer',
+      primaryContactWhatsapp: '+919000000003', primaryContactEmail: `multi-ticket-${suffix}@example.com`, paymentMethod: 'cash',
+      attendeeNames: ['First Attendee', 'Second Attendee'],
+    });
+
+    const detail = await request(app).get(`/api/bookings/${bookingRes.body.bookingReference}/tickets`).query({ email: `multi-ticket-${suffix}@example.com` });
+    expect(detail.body.tickets).toHaveLength(2);
+    expect(detail.body.tickets.map((t: { ticketReference: string }) => t.ticketReference)).toEqual([
+      `${bookingRes.body.bookingReference}-1`,
+      `${bookingRes.body.bookingReference}-2`,
+    ]);
+    expect(detail.body.tierBreakdown).toEqual([{ tierName: 'General', quantity: 2, unitPricePaise: 50000, subtotalPaise: 100000 }]);
   });
 });
