@@ -59,18 +59,21 @@ describe('real organizer profile + logo upload (real DB)', () => {
     expect(res.body.logoUrl).toBeNull();
   });
 
-  it('PATCH /organizer/profile actually persists real changes', async () => {
+  it('PATCH /organizer/profile actually persists real changes, including the genuinely new GSTIN/website fields', async () => {
     const res = await request(app)
       .patch('/api/organizer/profile')
       .set('Authorization', `Bearer ${token}`)
-      .send({ name: `Updated Profile Org ${suffix}`, about: 'Updated bio text' });
+      .send({ name: `Updated Profile Org ${suffix}`, about: 'Updated bio text', gstNumber: '27AAAAA0000A1Z5', website: 'https://example.org' });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe(`Updated Profile Org ${suffix}`);
     expect(res.body.about).toBe('Updated bio text');
+    expect(res.body.gstNumber).toBe('27AAAAA0000A1Z5');
+    expect(res.body.website).toBe('https://example.org');
 
     const getRes = await request(app).get('/api/organizer/profile').set('Authorization', `Bearer ${token}`);
     expect(getRes.body.name).toBe(`Updated Profile Org ${suffix}`);
     expect(getRes.body.about).toBe('Updated bio text');
+    expect(getRes.body.gstNumber).toBe('27AAAAA0000A1Z5');
     expect(getRes.body.contactPhone).toBe('+919000000000');
   });
 
@@ -117,5 +120,19 @@ describe('real organizer profile + logo upload (real DB)', () => {
     const getRes = await request(app).get('/api/organizer/profile').set('Authorization', `Bearer ${otherToken}`);
     expect(getRes.body.name).toBe(`Other Profile Org ${suffix}`);
     expect(getRes.body.name).not.toContain('Profile Test Org');
+  });
+
+  it('GET /organizer/team returns the real users actually tied to this organizer, not an invented roster', async () => {
+    const res = await request(app).get('/api/organizer/team').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.team).toHaveLength(1);
+    expect(res.body.team[0].email).toBe(`profile-owner-${suffix}@example.com`);
+    expect(res.body.team[0].role).toBe('organizer_owner');
+  });
+
+  it('does not leak another organizer\'s team members', async () => {
+    const res = await request(app).get('/api/organizer/team').set('Authorization', `Bearer ${otherToken}`);
+    expect(res.body.team).toHaveLength(1);
+    expect(res.body.team[0].email).toBe(`other-profile-${suffix}@example.com`);
   });
 });

@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import { Organizer } from '../models';
+import { Organizer, User } from '../models';
 import { isS3Configured, uploadFileToS3, deleteFileFromS3, s3KeyFromUrl } from './s3Storage';
 import { UPLOAD_DIR, UPLOAD_URL_PREFIX, MAX_FILE_SIZE_BYTES } from './eventMedia';
 
@@ -14,6 +14,8 @@ export interface OrganizerProfile {
   contactPhone: string | null;
   about: string | null;
   logoUrl: string | null;
+  gstNumber: string | null;
+  website: string | null;
 }
 
 export async function getOrganizerProfile(organizerId: string): Promise<OrganizerProfile> {
@@ -25,6 +27,8 @@ export async function getOrganizerProfile(organizerId: string): Promise<Organize
     contactPhone: organizer.contactPhone,
     about: organizer.about,
     logoUrl: organizer.logoUrl,
+    gstNumber: organizer.gstNumber,
+    website: organizer.website,
   };
 }
 
@@ -34,6 +38,8 @@ export interface UpdateOrganizerProfileParams {
   contactEmail?: string;
   contactPhone?: string;
   about?: string;
+  gstNumber?: string;
+  website?: string;
 }
 
 export async function updateOrganizerProfile(params: UpdateOrganizerProfileParams): Promise<OrganizerProfile> {
@@ -49,6 +55,8 @@ export async function updateOrganizerProfile(params: UpdateOrganizerProfileParam
     contactEmail: params.contactEmail !== undefined ? params.contactEmail.trim() || null : organizer.contactEmail,
     contactPhone: params.contactPhone !== undefined ? params.contactPhone.trim() || null : organizer.contactPhone,
     about: params.about !== undefined ? params.about.trim() || null : organizer.about,
+    gstNumber: params.gstNumber !== undefined ? params.gstNumber.trim() || null : organizer.gstNumber,
+    website: params.website !== undefined ? params.website.trim() || null : organizer.website,
   });
 
   return {
@@ -57,6 +65,8 @@ export async function updateOrganizerProfile(params: UpdateOrganizerProfileParam
     contactPhone: organizer.contactPhone,
     about: organizer.about,
     logoUrl: organizer.logoUrl,
+    gstNumber: organizer.gstNumber,
+    website: organizer.website,
   };
 }
 
@@ -118,4 +128,23 @@ export async function uploadOrganizerLogo(params: UploadLogoParams): Promise<{ l
   }
 
   return { logoUrl: url };
+}
+
+export interface OrganizerTeamMember {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  createdAt: string;
+}
+
+// Read-only for now — every user actually tied to this organizer via
+// User.organizerId. There is no invitation system in this codebase
+// (no invite tokens, no accept-invite flow, no email delivery for
+// this purpose) — building one is a real, separate feature, not a
+// mock-to-real wiring fix, so this deliberately doesn't pretend to
+// support inviting or removing anyone.
+export async function getOrganizerTeam(organizerId: string): Promise<OrganizerTeamMember[]> {
+  const users = await User.findAll({ where: { organizerId }, order: [['createdAt', 'ASC']] });
+  return users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, createdAt: u.createdAt.toISOString() }));
 }

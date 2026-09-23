@@ -1,26 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Bell, Mail, MessageSquare, Smartphone, Save } from 'lucide-react';
-import { useEvents } from '../../context/EventsContext';
-import { useNotifications } from '../../context/NotificationContext';
+import { Bell } from 'lucide-react';
 
 export default function NotificationSettings() {
-  const { settings, updateNotificationSettings } = useEvents();
-  const { showToast } = useNotifications();
-  const [formData, setFormData] = useState(settings.notifications);
-
-  const handleToggle = (key) => {
-    const updated = { ...formData, [key]: !formData[key] };
-    setFormData(updated);
-    updateNotificationSettings(updated);
-  };
-
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Notification Channels & Alerts</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Configure how you and your team receive instant updates on bookings, payouts, and cancellations.
+          Configure how you and your team receive updates on bookings, payouts, and cancellations.
         </p>
       </div>
 
@@ -32,59 +20,15 @@ export default function NotificationSettings() {
         <NavLink to="/organizer/settings/notifications" className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Notification Alerts</NavLink>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-5">
-        <div className="space-y-4 divide-y divide-slate-100">
-          <div className="flex items-center justify-between pt-2">
-            <div>
-              <p className="text-xs font-bold text-slate-900">Email on New Booking</p>
-              <p className="text-[11px] text-slate-500">Receive order confirmation copy whenever an attendee buys tickets.</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={formData.emailOnNewBooking}
-              onChange={() => handleToggle('emailOnNewBooking')}
-              className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pt-4">
-            <div>
-              <p className="text-xs font-bold text-slate-900">Email on Cancellation & Refund Request</p>
-              <p className="text-[11px] text-slate-500">Immediate alert when an attendee asks for order cancellation.</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={formData.emailOnCancellation}
-              onChange={() => handleToggle('emailOnCancellation')}
-              className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pt-4">
-            <div>
-              <p className="text-xs font-bold text-slate-900">WhatsApp Instant Ticket Alerts</p>
-              <p className="text-[11px] text-slate-500">Receive WhatsApp notifications for sold-out tiers and gate check-in milestones.</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={formData.whatsappTicketAlerts}
-              onChange={() => handleToggle('whatsappTicketAlerts')}
-              className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pt-4">
-            <div>
-              <p className="text-xs font-bold text-slate-900">Payout & Bank Settlement Updates</p>
-              <p className="text-[11px] text-slate-500">Notifications when bank UTR references and payouts are dispatched.</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={formData.payoutAlerts}
-              onChange={() => handleToggle('payoutAlerts')}
-              className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500"
-            />
-          </div>
+      <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-xs flex flex-col items-center text-center gap-3">
+        <div className="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center">
+          <Bell className="w-6 h-6" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">Notification preferences aren't available yet</h3>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm">
+            You'll still receive a real email for booking confirmations and account-related messages — configurable alert channels are coming later.
+          </p>
         </div>
       </div>
     </div>

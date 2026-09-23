@@ -1,55 +1,76 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Building2, Users, Plus, Trash2, Save, CheckCircle2, Shield } from 'lucide-react';
-import { useEvents } from '../../context/EventsContext';
+import { Save } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { apiRequest, ApiError } from '../../lib/api';
 
 export default function OrganizationSettings() {
-  const { settings, updateOrgSettings } = useEvents();
+  const { user } = useAuth();
   const { showToast } = useNotifications();
-  const [formData, setFormData] = useState(settings.organization);
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [newMemberRole, setNewMemberRole] = useState('Check-in Agent');
+  const [profile, setProfile] = useState(null);
+  const [team, setTeam] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    updateOrgSettings(formData);
-  };
-
-  const handleAddMember = (e) => {
-    e.preventDefault();
-    if (!newMemberEmail) return;
-
-    const newMember = {
-      id: `tm-${Date.now()}`,
-      name: newMemberEmail.split('@')[0],
-      email: newMemberEmail,
-      role: newMemberRole,
-      status: 'invited'
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      apiRequest('/organizer/profile', { token: user?.token }),
+      apiRequest('/organizer/team', { token: user?.token }),
+    ])
+      .then(([profileData, teamData]) => {
+        if (!cancelled) {
+          setProfile(profileData);
+          setTeam(teamData.team);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) showToast(err instanceof ApiError ? err.message : 'Could not load organization settings.', 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.token]);
 
-    setFormData({
-      ...formData,
-      team: [...formData.team, newMember]
-    });
-    setNewMemberEmail('');
-    showToast(`Invitation sent to ${newMemberEmail}`, 'success');
-  };
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const updated = await apiRequest('/organizer/profile', {
+        method: 'PATCH',
+        token: user?.token,
+        body: {
+          name: profile.name,
+          contactEmail: profile.contactEmail || '',
+          contactPhone: profile.contactPhone || '',
+          gstNumber: profile.gstNumber || '',
+          website: profile.website || '',
+        },
+      });
+      setProfile(updated);
+      showToast('Organization settings saved successfully!', 'success');
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not save organization settings.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  const removeMember = (id) => {
-    setFormData({
-      ...formData,
-      team: formData.team.filter(m => m.id !== id)
-    });
-    showToast('Team member removed', 'info');
-  };
+  if (loading || !profile) {
+    return <p className="text-xs text-slate-500">Loading…</p>;
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Organization Profile & Team</h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          Manage legal entity registration, team members, staff roles, and GST tax information.
+          Manage legal entity registration, tax information, and your team roster.
         </p>
       </div>
 
@@ -68,18 +89,19 @@ export default function OrganizationSettings() {
             <input
               type="text"
               required
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              value={profile.name}
+              onChange={(e) => setProfile({ ...profile, name: e.target.value })}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">GSTIN Number (Tax Exemption / Credit)</label>
+            <label htmlFor="org-gst-number" className="block text-xs font-bold text-slate-700 mb-1">GSTIN Number (Tax Exemption / Credit)</label>
             <input
+              id="org-gst-number"
               type="text"
-              value={formData.gstNumber}
-              onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value })}
+              value={profile.gstNumber || ''}
+              onChange={(e) => setProfile({ ...profile, gstNumber: e.target.value })}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500 font-mono uppercase"
             />
           </div>
@@ -90,8 +112,8 @@ export default function OrganizationSettings() {
             <label className="block text-xs font-bold text-slate-700 mb-1">Support Email</label>
             <input
               type="email"
-              value={formData.supportEmail}
-              onChange={(e) => setFormData({ ...formData, supportEmail: e.target.value })}
+              value={profile.contactEmail || ''}
+              onChange={(e) => setProfile({ ...profile, contactEmail: e.target.value })}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
             />
           </div>
@@ -99,8 +121,8 @@ export default function OrganizationSettings() {
             <label className="block text-xs font-bold text-slate-700 mb-1">Support Phone</label>
             <input
               type="tel"
-              value={formData.supportPhone}
-              onChange={(e) => setFormData({ ...formData, supportPhone: e.target.value })}
+              value={profile.contactPhone || ''}
+              onChange={(e) => setProfile({ ...profile, contactPhone: e.target.value })}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
             />
           </div>
@@ -108,82 +130,45 @@ export default function OrganizationSettings() {
             <label className="block text-xs font-bold text-slate-700 mb-1">Official Website</label>
             <input
               type="url"
-              value={formData.website}
-              onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+              value={profile.website || ''}
+              onChange={(e) => setProfile({ ...profile, website: e.target.value })}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
             />
           </div>
         </div>
 
-        {/* Team Members Management */}
         <div className="pt-4 border-t border-slate-100 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Staff & Check-in Team Roles</h3>
-              <p className="text-xs text-slate-500">Invite colleagues and gate staff with granular permission levels.</p>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <input
-              type="email"
-              placeholder="colleague@domain.com"
-              value={newMemberEmail}
-              onChange={(e) => setNewMemberEmail(e.target.value)}
-              className="flex-1 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
-            />
-            <select
-              value={newMemberRole}
-              onChange={(e) => setNewMemberRole(e.target.value)}
-              className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
-            >
-              <option value="Check-in Agent">Check-in Agent</option>
-              <option value="Finance Manager">Finance Manager</option>
-              <option value="Event Co-Host">Event Co-Host</option>
-              <option value="Admin">Admin</option>
-            </select>
-            <button
-              type="button"
-              onClick={handleAddMember}
-              className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg shadow-xs shrink-0"
-            >
-              Invite Member
-            </button>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Team</h3>
+            <p className="text-xs text-slate-500">
+              Everyone with access to this organizer account. Team invitations aren't available yet.
+            </p>
           </div>
 
           <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
-            {formData.team.map((m) => (
-              <div key={m.id} className="p-3.5 flex items-center justify-between text-xs">
-                <div>
-                  <p className="font-bold text-slate-900">{m.name} <span className="text-[10px] font-normal text-slate-400">({m.email})</span></p>
-                  <span className="text-[11px] text-brand-600 font-semibold">{m.role}</span>
+            {(team ?? []).length === 0 ? (
+              <p className="p-4 text-xs text-slate-400 text-center">No team members found.</p>
+            ) : (
+              team.map((m) => (
+                <div key={m.id} className="p-3.5 flex items-center justify-between text-xs">
+                  <div>
+                    <p className="font-bold text-slate-900">{m.name || m.email} <span className="text-[10px] font-normal text-slate-400">({m.email})</span></p>
+                    <span className="text-[11px] text-brand-600 font-semibold capitalize">{m.role.replace(/_/g, ' ')}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${m.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                    {m.status}
-                  </span>
-                  {m.role !== 'Owner' && (
-                    <button
-                      type="button"
-                      onClick={() => removeMember(m.id)}
-                      className="p-1 text-slate-400 hover:text-rose-600"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
         <div className="flex justify-end pt-4 border-t border-slate-100">
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg shadow-sm"
+            disabled={saving}
+            className="flex items-center gap-1.5 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-lg shadow-sm disabled:opacity-60"
           >
             <Save className="w-4 h-4" />
-            <span>Save Organization Settings</span>
+            <span>{saving ? 'Saving…' : 'Save Organization Settings'}</span>
           </button>
         </div>
       </form>
