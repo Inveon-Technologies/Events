@@ -1,6 +1,8 @@
 import { sequelize } from '../db/connection';
-import { Event, Booking, Payment, Ticket } from '../models';
+import { Event, Booking, Payment, Ticket, User } from '../models';
 import { cashfreeCreateRefund } from './cashfreeClient';
+import { sendEmail, isEmailConfigured } from './email';
+import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '../emails/templates';
 
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
@@ -24,11 +26,13 @@ export interface CancellationResult {
 // silently lost.
 async function performCancellation(params: {
   booking: Booking;
+  event: Event;
   reason: string;
   cancelledBy: 'customer' | 'organizer';
+  isEventCancellation: boolean;
   refundPercentage: number;
 }): Promise<CancellationResult> {
-  const { booking } = params;
+  const { booking, event } = params;
   const refundAmountPaise = Math.round(booking.totalAmountPaise * (params.refundPercentage / 100));
 
   await sequelize.transaction(async (t) => {
@@ -56,39 +60,69 @@ async function performCancellation(params: {
     }
   });
 
-  if (refundAmountPaise === 0) {
-    return { bookingId: booking.id, refundAmountPaise: 0, refundStatus: null };
+  let refundStatus: string | null = null;
+
+  if (refundAmountPaise > 0) {
+    const payment = await Payment.findOne({ where: { bookingId: booking.id } });
+    // A cash booking, or an online booking with no recorded gateway
+    // order (shouldn't happen for a real confirmed online booking, but
+    // defends against it anyway) — nothing to call Cashfree about; the
+    // organizer handles that refund manually outside this system.
+    if (payment && payment.method === 'online' && payment.gatewayReference) {
+      try {
+        const refund = await cashfreeCreateRefund({
+          orderId: payment.gatewayReference,
+          refundId: `${booking.bookingReference}-refund`,
+          refundAmountRupees: refundAmountPaise / 100,
+          refundNote: params.reason,
+        });
+        refundStatus = refund.refund_status;
+      } catch {
+        // The booking stays cancelled regardless — only the refund's own
+        // tracked status reflects that it needs manual follow-up, whether
+        // the failure was Cashfree rejecting the request or the server
+        // having no working credentials at all.
+        refundStatus = 'failed';
+      }
+
+      await booking.update({ refundStatus });
+      if (refundStatus === 'SUCCESS' || refundStatus === 'success') {
+        await payment.update({ status: 'refunded' });
+      }
+    }
   }
 
-  const payment = await Payment.findOne({ where: { bookingId: booking.id } });
-  // A cash booking, or an online booking with no recorded gateway
-  // order (shouldn't happen for a real confirmed online booking, but
-  // defends against it anyway) — nothing to call Cashfree about; the
-  // organizer handles that refund manually outside this system.
-  if (!payment || payment.method !== 'online' || !payment.gatewayReference) {
-    return { bookingId: booking.id, refundAmountPaise, refundStatus: null };
-  }
-
-  let refundStatus: string;
-  try {
-    const refund = await cashfreeCreateRefund({
-      orderId: payment.gatewayReference,
-      refundId: `${booking.bookingReference}-refund`,
-      refundAmountRupees: refundAmountPaise / 100,
-      refundNote: params.reason,
-    });
-    refundStatus = refund.refund_status;
-  } catch {
-    // The booking stays cancelled regardless — only the refund's own
-    // tracked status reflects that it needs manual follow-up, whether
-    // the failure was Cashfree rejecting the request or the server
-    // having no working credentials at all.
-    refundStatus = 'failed';
-  }
-
-  await booking.update({ refundStatus });
-  if (refundStatus === 'SUCCESS' || refundStatus === 'success') {
-    await payment.update({ status: 'refunded' });
+  // Best-effort, deliberately never throws — matches the same pattern
+  // as sendBookingConfirmationEmail: a failed or unconfigured email
+  // send must never undo or block a cancellation that's already been
+  // committed to the database.
+  if (isEmailConfigured()) {
+    try {
+      const html = bookingCancellationEmail({
+        customerName: booking.primaryContactName,
+        eventName: event.name,
+        eventDateLabel: event.eventDate.toLocaleDateString('en-IN', {
+          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit',
+        }),
+        bookingReference: booking.bookingReference,
+        reason: params.reason,
+        cancelledByEventCancellation: params.isEventCancellation,
+        cancelledByOrganizer: params.cancelledBy === 'organizer',
+        totalPaise: booking.totalAmountPaise,
+        refundAmountPaise,
+        refundStatus,
+      });
+      await sendEmail({
+        to: booking.primaryContactEmail,
+        subject: params.isEventCancellation
+          ? `Event cancelled: ${event.name} (${booking.bookingReference})`
+          : `Booking cancelled: ${event.name} (${booking.bookingReference})`,
+        html,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to send cancellation email for ${booking.bookingReference}:`, err);
+    }
   }
 
   return { bookingId: booking.id, refundAmountPaise, refundStatus };
@@ -127,8 +161,10 @@ export async function customerCancelBooking(bookingReference: string, email: str
 
   return performCancellation({
     booking,
+    event,
     reason: reason.trim(),
     cancelledBy: 'customer',
+    isEventCancellation: false,
     refundPercentage: event.refundPercentage ?? 0,
   });
 }
@@ -152,7 +188,7 @@ export async function organizerCancelBooking(bookingId: string, organizerId: str
   // that policy governs what a customer gets by cancelling themselves,
   // not what an organizer chooses to do when they cancel a booking on
   // someone's behalf.
-  return performCancellation({ booking, reason: reason.trim(), cancelledBy: 'organizer', refundPercentage: 100 });
+  return performCancellation({ booking, event, reason: reason.trim(), cancelledBy: 'organizer', isEventCancellation: false, refundPercentage: 100 });
 }
 
 export interface EventCancellationResult {
@@ -178,11 +214,44 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
     // eslint-disable-next-line no-await-in-loop
     const result = await performCancellation({
       booking,
+      event,
       reason: `Event cancelled by organizer: ${reason.trim()}`,
       cancelledBy: 'organizer',
+      isEventCancellation: true,
       refundPercentage: 100,
     });
     cancelledBookings.push(result);
+  }
+
+  // Best-effort summary to the organizer confirming what just happened —
+  // same never-throws pattern as the per-customer email above, since a
+  // failed notification here must never make the cancellation itself
+  // look like it failed.
+  if (isEmailConfigured()) {
+    try {
+      const owner = await User.findOne({ where: { organizerId, role: 'organizer_owner' } });
+      if (owner) {
+        const totalRefundedPaise = cancelledBookings.reduce((sum, r) => sum + r.refundAmountPaise, 0);
+        const html = eventCancelledOrganizerSummaryEmail({
+          organizerContactName: owner.name ?? 'there',
+          eventName: event.name,
+          eventDateLabel: event.eventDate.toLocaleDateString('en-IN', {
+            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit',
+          }),
+          reason: reason.trim(),
+          cancelledBookingsCount: cancelledBookings.length,
+          totalRefundedPaise,
+        });
+        await sendEmail({
+          to: owner.email,
+          subject: `You cancelled ${event.name} — ${cancelledBookings.length} booking(s) refunded`,
+          html,
+        });
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to send organizer cancellation summary for event ${eventId}:`, err);
+    }
   }
 
   return { cancelledBookings };
