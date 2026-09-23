@@ -4,6 +4,11 @@
 // layout. Every style is inline for the same reason: external/embedded
 // stylesheets are stripped or ignored by a large share of clients.
 
+// Real support inbox — same account the app actually sends transactional
+// email from (see SMTP_USER in email.ts), so "reply to this email" and
+// this address are never different destinations.
+const SUPPORT_EMAIL = 'office.inveontech@gmail.com';
+
 export function emailShell(bodyHtml: string, preheader = ''): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -34,8 +39,7 @@ export function emailShell(bodyHtml: string, preheader = ''): string {
           <tr>
             <td style="padding:20px 32px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
               <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
-                Inveon Events &middot; This is an automated message, please don't reply directly to this email.<br/>
-                Need help? Reach out to your event organizer.
+                Inveon Events &middot; Need help? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563eb;text-decoration:none;">${SUPPORT_EMAIL}</a> or reach out to your event organizer.
               </p>
             </td>
           </tr>
@@ -145,6 +149,135 @@ export function bookingConfirmationEmail(params: {
     <p style="margin:24px 0 0;font-size:13px;color:#94a3b8;line-height:1.6;">
       A detailed invoice and your ticket QR code${params.ticketCount > 1 ? 's are' : ' is'} attached to this email. See you there!
     </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-radius:12px;margin:20px 0 0;">
+      <tr>
+        <td style="padding:14px 18px;font-size:12px;color:#1e3a8a;line-height:1.6;">
+          Need help or want to change something about your booking? Email <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563eb;font-weight:600;text-decoration:none;">${SUPPORT_EMAIL}</a>.
+        </td>
+      </tr>
+    </table>
   `;
   return emailShell(body, `Your booking for ${params.eventName} is confirmed`);
+}
+
+export function bookingCancellationEmail(params: {
+  customerName: string;
+  eventName: string;
+  eventDateLabel: string;
+  bookingReference: string;
+  reason: string;
+  cancelledByEventCancellation: boolean; // true when the whole event was cancelled by the organizer, not just this one booking
+  cancelledByOrganizer: boolean; // true for any organizer-initiated cancellation (event or single booking), false for the customer's own self-service cancellation
+  totalPaise: number;
+  refundAmountPaise: number;
+  refundStatus: string | null;
+}): string {
+  const formatINR = (paise: number) => `\u20b9${(paise / 100).toLocaleString('en-IN')}`;
+  const isNoRefund = params.refundAmountPaise === 0;
+
+  const headline = params.cancelledByEventCancellation
+    ? 'This event has been cancelled'
+    : params.cancelledByOrganizer
+      ? 'Your booking has been cancelled by the organizer'
+      : 'Your booking has been cancelled';
+
+  const intro = params.cancelledByEventCancellation
+    ? `Hi ${params.customerName}, we're sorry to let you know that <strong>${params.eventName}</strong> has been cancelled by the organizer. Your booking has been cancelled as a result.`
+    : params.cancelledByOrganizer
+      ? `Hi ${params.customerName}, the organizer has cancelled your booking for <strong>${params.eventName}</strong>.`
+      : `Hi ${params.customerName}, this confirms your booking for <strong>${params.eventName}</strong> has been cancelled, as you requested.`;
+
+  const refundBlock = isNoRefund
+    ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 2px;font-size:12px;font-weight:700;letter-spacing:0.05em;color:#b91c1c;text-transform:uppercase;">No Refund</p>
+          <p style="margin:0;font-size:13px;color:#7f1d1d;line-height:1.6;">This booking is not eligible for a refund under this event's cancellation policy.</p>
+        </td>
+      </tr>
+    </table>`
+    : `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;">
+          <p style="margin:0 0 2px;font-size:12px;font-weight:700;letter-spacing:0.05em;color:#15803d;text-transform:uppercase;">Refund ${params.refundAmountPaise >= params.totalPaise ? '(Full)' : '(Partial)'}</p>
+          <p style="margin:0 0 4px;font-size:18px;font-weight:700;color:#0f172a;">${formatINR(params.refundAmountPaise)}</p>
+          <p style="margin:0;font-size:12px;color:#166534;line-height:1.6;">
+            Status: ${params.refundStatus ?? 'Processing'} — refunds typically appear on your original payment method within a few business days.
+          </p>
+        </td>
+      </tr>
+    </table>`;
+
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:20px;color:#0f172a;font-weight:700;">${headline}</h1>
+    <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">${intro}</p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:20px 24px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Booking Reference</p>
+          <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#2563eb;font-family:monospace;">${params.bookingReference}</p>
+
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Event</p>
+          <p style="margin:0 0 2px;font-size:14px;color:#0f172a;">${params.eventName}</p>
+          <p style="margin:0 0 16px;font-size:14px;color:#0f172a;">${params.eventDateLabel}</p>
+
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Reason</p>
+          <p style="margin:0;font-size:14px;color:#0f172a;line-height:1.5;">${params.reason}</p>
+        </td>
+      </tr>
+    </table>
+
+    ${refundBlock}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-radius:12px;">
+      <tr>
+        <td style="padding:14px 18px;font-size:12px;color:#1e3a8a;line-height:1.6;">
+          Questions about this cancellation${isNoRefund ? ' or its refund policy' : ' or refund'}? Email <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563eb;font-weight:600;text-decoration:none;">${SUPPORT_EMAIL}</a>.
+        </td>
+      </tr>
+    </table>
+  `;
+  return emailShell(body, `${headline}: ${params.eventName}`);
+}
+
+export function eventCancelledOrganizerSummaryEmail(params: {
+  organizerContactName: string;
+  eventName: string;
+  eventDateLabel: string;
+  reason: string;
+  cancelledBookingsCount: number;
+  totalRefundedPaise: number;
+}): string {
+  const formatINR = (paise: number) => `\u20b9${(paise / 100).toLocaleString('en-IN')}`;
+
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:20px;color:#0f172a;font-weight:700;">Event cancelled: ${params.eventName}</h1>
+    <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
+      Hi ${params.organizerContactName}, this confirms you cancelled <strong>${params.eventName}</strong> (${params.eventDateLabel}). Every confirmed booking for this event has been cancelled and refunded in full, and every attendee has been emailed directly.
+    </p>
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:20px 24px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Bookings Cancelled</p>
+          <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#0f172a;">${params.cancelledBookingsCount}</p>
+
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Total Refunded</p>
+          <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#0f172a;">${formatINR(params.totalRefundedPaise)}</p>
+
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Reason You Gave</p>
+          <p style="margin:0;font-size:14px;color:#0f172a;line-height:1.5;">${params.reason}</p>
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">
+      Refund settlement to attendees' original payment methods may take a few business days depending on their bank. If anything looks off, email <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563eb;text-decoration:none;">${SUPPORT_EMAIL}</a>.
+    </p>
+  `;
+  return emailShell(body, `You cancelled ${params.eventName}`);
 }
