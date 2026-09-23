@@ -85,6 +85,11 @@ export default function OrganizerPortalRoutes() {
         <Route path="create-event/registration" element={<CreateEvent />} />
         <Route path="create-event/cancellation" element={<CreateEvent />} />
         <Route path="create-event/preview" element={<CreateEvent />} />
+        <Route path="events/:eventId/edit/basic" element={<CreateEvent />} />
+        <Route path="events/:eventId/edit/date-location" element={<CreateEvent />} />
+        <Route path="events/:eventId/edit/tickets" element={<CreateEvent />} />
+        <Route path="events/:eventId/edit/cancellation" element={<CreateEvent />} />
+        <Route path="events/:eventId/edit/preview" element={<CreateEvent />} />
 
         {/* Event Specific Management */}
         <Route path="events/:id/dashboard" element={<EventDashboard />} />

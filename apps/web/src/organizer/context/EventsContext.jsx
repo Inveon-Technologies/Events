@@ -252,11 +252,63 @@ export function EventsProvider({ children }) {
     return eventWithId;
   };
 
-  const updateEvent = (id, updatedFields) => {
-    setEvents((prev) =>
-      prev.map((evt) => (evt.id === id ? { ...evt, ...updatedFields } : evt))
-    );
-    showToast('Event updated successfully!', 'success');
+  const updateEvent = async (id, updatedFields) => {
+    try {
+      await apiRequest(`/organizer/events/${id}`, { method: 'PATCH', token: user?.token, body: updatedFields });
+      showToast('Event updated successfully!', 'success');
+      await refreshEvents();
+      return true;
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not update this event.', 'error');
+      return false;
+    }
+  };
+
+  // Same shape addEvent sends, but as a real PATCH to an existing
+  // event — including each tier's real id, so an edited tier is
+  // actually updated in place rather than read as a brand new one
+  // (see UpdateEventTicketTier: an id present means "this tier",
+  // absent means "add a new tier").
+  const updateEventFull = async (id, formData) => {
+    try {
+      const result = await apiRequest(`/organizer/events/${id}`, {
+        method: 'PATCH',
+        token: user?.token,
+        body: {
+          title: formData.title,
+          shortDescription: formData.shortDescription,
+          description: formData.description,
+          startDate: formData.startDate,
+          startTime: formData.startTime,
+          venueName: formData.venueName,
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          pincode: formData.pincode,
+          bannerImage: formData.bannerImage,
+          cancellationPolicy: formData.cancellationPolicy?.description || undefined,
+          allowSelfServiceCancellation: Boolean(formData.cancellationPolicy?.refundable),
+          refundCutoffDays: formData.cancellationPolicy?.cutoffDays,
+          refundPercentage: formData.cancellationPolicy?.refundPercentage,
+          ticketTiers: (formData.ticketTiers || []).map((tier) => ({
+            id: typeof tier.id === 'string' && !tier.id.startsWith('tier-') ? tier.id : undefined,
+            name: tier.name,
+            description: tier.description,
+            price: tier.price,
+            quantity: tier.quantity,
+          })),
+          scheduleItems: (formData.scheduleItems || []).map((s) => ({ time: s.time, title: s.title, description: s.description })),
+          packingChecklist: (formData.packingChecklist || []).map((p) => ({ item: p.item, mandatory: p.mandatory })),
+          faqItems: (formData.faqItems || []).map((f) => ({ question: f.question, answer: f.answer })),
+          status: formData.status,
+        },
+      });
+      await refreshEvents();
+      return result;
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not save changes to this event.', 'error');
+      return null;
+    }
   };
 
   const duplicateEvent = async (id) => {
@@ -499,6 +551,7 @@ export function EventsProvider({ children }) {
         deleteEvent,
         toggleEventStatus,
         cancelEvent,
+        updateEventFull,
         checkInParticipant,
         undoCheckIn,
         updateBookingStatus,

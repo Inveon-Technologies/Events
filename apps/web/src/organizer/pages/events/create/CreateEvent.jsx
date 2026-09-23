@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
   Info,
   Calendar,
@@ -32,7 +32,7 @@ import {
 import { useEvents } from '../../../context/EventsContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
-import { ApiError, uploadEventMediaFile } from '../../../lib/api';
+import { ApiError, apiRequest, uploadEventMediaFile } from '../../../lib/api';
 
 const MAX_IMAGES = 5;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -59,11 +59,14 @@ function readVideoDuration(file) {
 }
 
 export default function CreateEvent() {
-  const { addEvent } = useEvents();
+  const { addEvent, updateEventFull } = useEvents();
   const { showToast } = useNotifications();
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { eventId } = useParams();
+  const isEditMode = Boolean(eventId);
+  const [loadingExisting, setLoadingExisting] = useState(isEditMode);
 
   // Determine current step from path or default to step 1
   let currentStep = 1;
@@ -116,6 +119,56 @@ export default function CreateEvent() {
     packingChecklist: [],
     faqItems: []
   });
+
+  // Edit mode: load the real existing event and populate the form with
+  // it. venueName here intentionally receives the whole combined
+  // venueAddress string rather than trying to split it back into its
+  // original venueName/address/city/state/pincode parts (the backend
+  // only ever stores the combined string, so those parts aren't
+  // recoverable) — leaving the other venue fields blank and touching
+  // only venueName if edited keeps the real address intact either way,
+  // since updateOrganizerEvent only recombines venueAddress when at
+  // least one of these fields is actually sent.
+  useEffect(() => {
+    if (!isEditMode) return;
+    let cancelled = false;
+    apiRequest(`/organizer/events/${eventId}`, { token: user?.token })
+      .then((data) => {
+        if (cancelled) return;
+        setFormData((prev) => ({
+          ...prev,
+          title: data.title,
+          shortDescription: data.shortDescription || '',
+          description: data.description || '',
+          startDate: data.eventDate.slice(0, 10),
+          startTime: data.eventDate.slice(11, 16),
+          venueName: data.venueAddress || '',
+          bannerImage: data.bannerImage || '',
+          ticketTiers: data.ticketTiers.length
+            ? data.ticketTiers.map((t) => ({ id: t.id, name: t.name, price: t.price, quantity: t.quantity, sold: t.sold, description: t.description || '' }))
+            : prev.ticketTiers,
+          cancellationPolicy: {
+            refundable: Boolean(data.allowSelfServiceCancellation),
+            cutoffDays: data.refundCutoffDays ?? 3,
+            refundPercentage: data.refundPercentage ?? 80,
+            description: data.cancellationPolicy || '',
+          },
+          scheduleItems: data.scheduleItems || [],
+          packingChecklist: data.packingChecklist || [],
+          faqItems: data.faqItems || [],
+        }));
+      })
+      .catch((err) => {
+        if (!cancelled) showToast(err instanceof ApiError ? err.message : 'Could not load this event.', 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId]);
 
   const [mapSearchQuery, setMapSearchQuery] = useState('');
   const [mapAutoFilled, setMapAutoFilled] = useState(true);
@@ -379,17 +432,24 @@ export default function CreateEvent() {
     }
   };
 
+  const basePath = isEditMode ? `/organizer/events/${eventId}/edit` : '/organizer/create-event';
   const steps = [
-    { num: 1, label: 'Basic Information', path: '/organizer/create-event/basic', icon: Info },
-    { num: 2, label: 'Date & Location', path: '/organizer/create-event/date-location', icon: Calendar },
-    { num: 3, label: 'Tickets & Pricing', path: '/organizer/create-event/tickets', icon: Ticket },
-    { num: 4, label: 'Policy & FAQ', path: '/organizer/create-event/cancellation', icon: ShieldAlert },
-    { num: 5, label: 'Preview & Publish', path: '/organizer/create-event/preview', icon: Eye },
+    { num: 1, label: 'Basic Information', path: `${basePath}/basic`, icon: Info },
+    { num: 2, label: 'Date & Location', path: `${basePath}/date-location`, icon: Calendar },
+    { num: 3, label: 'Tickets & Pricing', path: `${basePath}/tickets`, icon: Ticket },
+    { num: 4, label: 'Policy & FAQ', path: `${basePath}/cancellation`, icon: ShieldAlert },
+    { num: 5, label: isEditMode ? 'Review & Save' : 'Preview & Publish', path: `${basePath}/preview`, icon: Eye },
   ];
 
   const handleNext = async () => {
     if (currentStep < 5) {
       navigate(steps[currentStep].path);
+    } else if (isEditMode) {
+      const result = await updateEventFull(eventId, { ...formData, status: 'published' });
+      if (result) {
+        showToast('Event updated successfully!', 'success');
+        navigate(`/organizer/events/${eventId}/dashboard`);
+      }
     } else {
       try {
         const created = await addEvent({ ...formData, status: 'published' });
@@ -402,6 +462,14 @@ export default function CreateEvent() {
   };
 
   const handleSaveDraft = async () => {
+    if (isEditMode) {
+      const result = await updateEventFull(eventId, formData);
+      if (result) {
+        showToast('Changes saved', 'info');
+        navigate(`/organizer/events/${eventId}/dashboard`);
+      }
+      return;
+    }
     try {
       const created = await addEvent({ ...formData, status: 'draft' });
       await uploadStagedMedia(created.id);
@@ -497,12 +565,16 @@ export default function CreateEvent() {
     setFormData((prev) => ({ ...prev, faqItems: prev.faqItems.filter((f) => f.id !== id) }));
   };
 
+  if (loadingExisting) {
+    return <p className="text-xs text-slate-500 max-w-4xl mx-auto">Loading event…</p>;
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Create New Experience</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{isEditMode ? 'Edit Event' : 'Create New Experience'}</h1>
           <p className="text-xs text-slate-500 mt-0.5">
             Step {currentStep} of 5 — {steps[currentStep - 1]?.label}
           </p>
@@ -515,7 +587,7 @@ export default function CreateEvent() {
           className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <Save className="w-3.5 h-3.5 text-slate-500" />
-          <span>{uploadingMedia ? 'Uploading media…' : 'Save as Draft'}</span>
+          <span>{uploadingMedia ? 'Uploading media…' : isEditMode ? 'Save Changes' : 'Save as Draft'}</span>
         </button>
       </div>
 
@@ -1281,7 +1353,7 @@ export default function CreateEvent() {
             disabled={uploadingMedia}
             className="flex items-center gap-1.5 px-5 py-2.5 rounded-lg text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white shadow-md transition-all disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <span>{uploadingMedia ? 'Uploading media…' : currentStep === 5 ? '🚀 Publish Event Live' : 'Next Step'}</span>
+            <span>{uploadingMedia ? 'Uploading media…' : currentStep === 5 ? (isEditMode ? '✓ Save & Publish Changes' : '🚀 Publish Event Live') : 'Next Step'}</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

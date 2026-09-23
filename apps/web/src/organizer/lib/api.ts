@@ -77,6 +77,17 @@ export async function uploadEventMediaFile(
   return data as UploadedEventMedia;
 }
 
+export async function deleteEventMediaFile(eventId: string, mediaId: string, token: string | null): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/api/organizer/events/${eventId}/media/${mediaId}`, {
+    method: 'DELETE',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Could not remove this file', data);
+  }
+}
+
 export async function uploadOrganizerLogoFile(file: File, token: string | null): Promise<{ logoUrl: string }> {
   const formData = new FormData();
   formData.append('file', file);
