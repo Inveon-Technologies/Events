@@ -17,6 +17,14 @@ import {
   NotFoundError as CancellationNotFoundError,
 } from '../services/bookingCancellation';
 import { getBookingDetail, getTicketQrImage, NotFoundError as TicketsNotFoundError } from '../services/customerTickets';
+import {
+  initiateCustomerLogin,
+  verifyCustomerLoginOtp,
+  getCustomerBookings,
+  NotFoundError as CustomerAuthNotFoundError,
+  InvalidOtpError,
+} from '../services/customerAuth';
+import { verifyCustomerSessionToken } from '../auth/jwt';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { Booking, Event } from '../models';
 
@@ -270,5 +278,64 @@ publicBookingsRouter.get('/bookings/:bookingReference/tickets/:ticketId/qr', asy
       return;
     }
     throw err;
+  }
+}));
+
+publicBookingsRouter.post('/bookings/login/initiate', asyncHandler(async (req, res) => {
+  const { bookingReference, email } = req.body as Record<string, unknown>;
+  if (typeof bookingReference !== 'string' || typeof email !== 'string') {
+    res.status(400).json({ error: 'Booking reference and email are required' });
+    return;
+  }
+
+  try {
+    await initiateCustomerLogin(bookingReference, email);
+    // Always 200, even on a real not-found — telling the caller whether
+    // the combination matched would let someone confirm a real booking
+    // reference exists by guessing, the same enumeration-safety
+    // reasoning used throughout this codebase's other customer-facing
+    // verification endpoints, just applied one layer earlier here.
+    res.status(200).json({ success: true });
+  } catch (err) {
+    if (err instanceof CustomerAuthNotFoundError) {
+      res.status(200).json({ success: true });
+      return;
+    }
+    throw err;
+  }
+}));
+
+publicBookingsRouter.post('/bookings/login/verify', asyncHandler(async (req, res) => {
+  const { email, code } = req.body as Record<string, unknown>;
+  if (typeof email !== 'string' || typeof code !== 'string') {
+    res.status(400).json({ error: 'Email and code are required' });
+    return;
+  }
+
+  try {
+    const result = await verifyCustomerLoginOtp(email, code);
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof InvalidOtpError) {
+      res.status(401).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+publicBookingsRouter.get('/bookings/my', asyncHandler(async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  try {
+    const { email } = verifyCustomerSessionToken(authHeader.slice('Bearer '.length));
+    const bookings = await getCustomerBookings(email);
+    res.status(200).json({ bookings });
+  } catch {
+    res.status(401).json({ error: 'Your session has expired — please log in again' });
   }
 }));

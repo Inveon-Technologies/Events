@@ -4,7 +4,7 @@ import { redis } from '../db/redis';
 const OTP_TTL_SECONDS = 2 * 60; // 2 minutes
 export const OTP_EXPIRY_MINUTES = OTP_TTL_SECONDS / 60;
 
-export type OtpPurpose = 'signup' | 'reset';
+export type OtpPurpose = 'signup' | 'reset' | 'customer_login';
 
 function generateCode(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
