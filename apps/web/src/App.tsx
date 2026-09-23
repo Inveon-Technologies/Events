@@ -12,6 +12,7 @@ import { BookingConfirmedPage } from './pages/BookingConfirmedPage';
 import { BookingHubPage } from './pages/BookingHubPage';
 import { ManageBookingPage } from './pages/ManageBookingPage';
 import { VerificationLookupPage } from './pages/VerificationLookupPage';
+import { MyBookingsPage } from './pages/MyBookingsPage';
 import { BookingNotFoundPage } from './pages/BookingNotFoundPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
 import { FeedbackPage } from './pages/FeedbackPage';
@@ -34,6 +35,7 @@ export default function App() {
       <Route path="/checkout/failed" element={<PaymentFailedPage />} />
 
       <Route path="/bookings/lookup" element={<VerificationLookupPage />} />
+      <Route path="/bookings/my" element={<MyBookingsPage />} />
       <Route path="/bookings/not-found" element={<BookingNotFoundPage />} />
       <Route path="/bookings/:bookingId/confirmed" element={<BookingConfirmedPage />} />
       <Route path="/bookings/:bookingId/manage" element={<ManageBookingPage />} />

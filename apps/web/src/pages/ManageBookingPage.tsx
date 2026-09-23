@@ -1,9 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
-import { formatINR } from '../lib/format';
+
+function formatINR(paise: number) {
+  return `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;
+}
 
 interface BookingDetail {
   bookingReference: string;
@@ -20,8 +23,10 @@ interface BookingDetail {
 
 export function ManageBookingPage() {
   const location = useLocation();
-  const [bookingReference, setBookingReference] = useState((location.state as { bookingReference?: string } | null)?.bookingReference ?? '');
-  const [email, setEmail] = useState('');
+  const stateBookingRef = (location.state as { bookingReference?: string; email?: string } | null)?.bookingReference ?? '';
+  const stateEmail = (location.state as { bookingReference?: string; email?: string } | null)?.email ?? '';
+  const [bookingReference, setBookingReference] = useState(stateBookingRef);
+  const [email, setEmail] = useState(stateEmail);
   const [verified, setVerified] = useState(false);
   const [detail, setDetail] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +60,18 @@ export function ManageBookingPage() {
     }
   }
 
+  // Coming from the real logged-in "My Bookings" hub already carries a
+  // verified booking reference + email via router state — skip asking
+  // the person to type in what the app already knows, and load
+  // straight into the real booking detail instead of showing the
+  // manual verification form first.
+  useEffect(() => {
+    if (stateBookingRef && stateEmail) {
+      loadBooking();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handleCancel() {
     if (!cancelReason.trim()) {
       setError('Please tell us why you\u2019re cancelling.');
@@ -80,6 +97,16 @@ export function ManageBookingPage() {
     } finally {
       setCancelling(false);
     }
+  }
+
+  if (loading && !verified) {
+    return (
+      <Layout>
+        <div className="max-w-md mx-auto px-4 sm:px-6 py-16">
+          <p className="text-xs text-ink-muted text-center">Loading your booking…</p>
+        </div>
+      </Layout>
+    );
   }
 
   if (!verified) {
