@@ -14,7 +14,8 @@ import {
   ShieldCheck,
   Share2,
   Edit,
-  CheckCircle2
+  CheckCircle2,
+  XCircle
 } from 'lucide-react';
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -22,7 +23,7 @@ import { useEvents } from '../../context/EventsContext';
 
 export default function EventDashboard() {
   const { id } = useParams();
-  const { events, participants, bookings } = useEvents();
+  const { events, participants, bookings, cancelEvent } = useEvents();
   const navigate = useNavigate();
 
   const eventId = id || 'rajgad-sunrise-trek';
@@ -78,6 +79,30 @@ export default function EventDashboard() {
             <ExternalLink className="w-3.5 h-3.5" />
             <span>Public Preview</span>
           </NavLink>
+          {event.status !== 'cancelled' && (
+            <NavLink
+              to={`/organizer/events/${event.id}/edit/basic`}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200"
+            >
+              <Edit className="w-3.5 h-3.5" />
+              <span>Edit Event</span>
+            </NavLink>
+          )}
+          {event.status !== 'cancelled' && (
+            <button
+              type="button"
+              onClick={() => {
+                const reason = window.prompt(`Why are you cancelling "${event.title}"? This will refund every confirmed booking in full.`);
+                if (reason && reason.trim()) {
+                  cancelEvent(event.id, reason.trim());
+                }
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              <span>Cancel Event</span>
+            </button>
+          )}
         </div>
       </div>
 

@@ -73,6 +73,8 @@ export interface CreateEventParams {
 }
 
 export class ValidationError extends Error {}
+export class NotFoundError extends Error {}
+export class ForbiddenError extends Error {}
 
 // Each of these is optional content — an event doesn't need a schedule,
 // packing list, or FAQ — so rather than hard-reject a malformed entry,
@@ -204,4 +206,74 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
 
     return { id: event.id, slug: event.slug! };
   });
+}
+
+export interface DuplicateEventResult {
+  id: string;
+  slug: string;
+}
+
+// A real, atomic, server-side duplication — deliberately not left to
+// the frontend to orchestrate field-by-field (fetch the original,
+// copy each field into a new create request), the exact pattern that
+// silently dropped fields more than once earlier in this project (the
+// refund policy fields, then the media gallery). Copying the Event and
+// TicketCategory rows directly here means every field that exists is
+// copied, not just the ones a caller remembered to list.
+export async function duplicateEvent(eventId: string, organizerId: string): Promise<DuplicateEventResult> {
+  const source = await Event.findByPk(eventId);
+  if (!source) throw new NotFoundError('Event not found');
+  if (source.organizerId !== organizerId) throw new ForbiddenError('This event does not belong to your organization');
+
+  const sourceTiers = await TicketCategory.findAll({ where: { eventId } });
+
+  const slug = await uniqueEventSlug(source.name, source.eventDate);
+
+  const created = await sequelize.transaction(async (t) => {
+    const event = await Event.create(
+      {
+        organizerId,
+        name: `${source.name} (Copy)`,
+        slug,
+        tagline: source.tagline,
+        description: source.description,
+        venueAddress: source.venueAddress,
+        venueMapUrl: source.venueMapUrl,
+        eventDate: source.eventDate,
+        gateOpenTime: source.gateOpenTime,
+        bannerUrl: source.bannerUrl,
+        termsAndConditions: source.termsAndConditions,
+        cancellationPolicy: source.cancellationPolicy,
+        allowSelfServiceCancellation: source.allowSelfServiceCancellation,
+        refundCutoffDays: source.refundCutoffDays,
+        refundPercentage: source.refundPercentage,
+        scheduleItems: source.scheduleItems,
+        packingChecklist: source.packingChecklist,
+        faqItems: source.faqItems,
+        status: 'draft',
+        capacity: source.capacity,
+      },
+      { transaction: t },
+    );
+
+    for (const tier of sourceTiers) {
+      // eslint-disable-next-line no-await-in-loop
+      await TicketCategory.create(
+        {
+          eventId: event.id,
+          name: tier.name,
+          description: tier.description,
+          pricePaise: tier.pricePaise,
+          maxPerBooking: tier.maxPerBooking,
+          quotaTotal: tier.quotaTotal,
+          quotaRemaining: tier.quotaTotal, // a fresh copy starts fully available — no bookings exist against it yet
+        },
+        { transaction: t },
+      );
+    }
+
+    return event;
+  });
+
+  return { id: created.id, slug: created.slug! };
 }

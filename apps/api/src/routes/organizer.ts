@@ -8,8 +8,15 @@ import { Organizer } from '../models';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
 import { getOrganizerEvents, getEventFinancials, DisplayEventStatus, NotFoundError as FinancialsNotFoundError, ForbiddenError as FinancialsForbiddenError } from '../services/organizerEvents';
-import { createOrganizerEvent, ValidationError, CreateEventTicketTier } from '../services/eventCreation';
-import { uploadEventMedia, deleteEventMedia, MediaValidationError, NotFoundError, ForbiddenError, MAX_FILE_SIZE_BYTES } from '../services/eventMedia';
+import {
+  createOrganizerEvent,
+  duplicateEvent,
+  ValidationError,
+  NotFoundError as EventCreationNotFoundError,
+  ForbiddenError as EventCreationForbiddenError,
+  CreateEventTicketTier,
+} from '../services/eventCreation';
+import { uploadEventMedia, deleteEventMedia, duplicateEventMedia, MediaValidationError, NotFoundError, ForbiddenError, MAX_FILE_SIZE_BYTES } from '../services/eventMedia';
 import {
   submitOrganizerVerification,
   refreshOrganizerVerificationStatus,
@@ -806,6 +813,38 @@ organizerRouter.post('/change-password', asyncHandler(async (req, res) => {
     }
     if (err instanceof IncorrectPasswordError) {
       res.status(401).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/events/:eventId/duplicate', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  try {
+    const result = await duplicateEvent(req.params.eventId, organizerId);
+    // Media duplication is a separate, best-effort follow-up step —
+    // the new event record itself (already committed) is the part
+    // that must never be left half-created if this second step fails.
+    try {
+      await duplicateEventMedia(req.params.eventId, result.id, organizerId);
+    } catch (mediaErr) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to duplicate media for event ${req.params.eventId} -> ${result.id}:`, mediaErr);
+    }
+    res.status(201).json(result);
+  } catch (err) {
+    if (err instanceof EventCreationNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof EventCreationForbiddenError) {
+      res.status(403).json({ error: err.message });
       return;
     }
     throw err;

@@ -138,6 +138,27 @@ export async function uploadEventMedia(params: UploadEventMediaParams): Promise<
   return { id: media.id, mediaType: media.mediaType, url: media.url };
 }
 
+// Duplicating an event's media copies the database rows only, never
+// the underlying files — the same photo/video content is still valid
+// for the new event, so there's no reason to download and re-upload
+// identical bytes to a new S3 key or disk path. Each new row still
+// gets its own id, so deleting one event's media never touches the
+// other's.
+export async function duplicateEventMedia(sourceEventId: string, targetEventId: string, organizerId: string): Promise<EventMediaResult[]> {
+  const [sourceEvent, targetEvent] = await Promise.all([Event.findByPk(sourceEventId), Event.findByPk(targetEventId)]);
+  if (!sourceEvent || !targetEvent) throw new NotFoundError('Event not found');
+  if (sourceEvent.organizerId !== organizerId || targetEvent.organizerId !== organizerId) {
+    throw new ForbiddenError('These events do not belong to your organization');
+  }
+
+  const sourceMedia = await EventMedia.findAll({ where: { eventId: sourceEventId }, order: [['createdAt', 'ASC']] });
+  const created = await Promise.all(
+    sourceMedia.map((m) => EventMedia.create({ eventId: targetEventId, mediaType: m.mediaType, url: m.url })),
+  );
+
+  return created.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url }));
+}
+
 export async function deleteEventMedia(organizerId: string, eventId: string, mediaId: string): Promise<void> {
   const event = await Event.findByPk(eventId);
   if (!event) throw new NotFoundError('Event not found');
