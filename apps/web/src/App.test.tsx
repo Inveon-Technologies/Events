@@ -806,4 +806,78 @@ describe('App routing', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('real customer login: sending the code calls the real initiate endpoint, then real OTP verification stores a real session and lands on the real My Bookings hub', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      const urlStr = String(url);
+      if (urlStr.includes('/bookings/login/initiate')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true }) });
+      }
+      if (urlStr.includes('/bookings/login/verify')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ token: 'real-session-token' }) });
+      }
+      if (urlStr.includes('/bookings/my')) {
+        return Promise.resolve({
+          ok: true, status: 200,
+          json: async () => ({
+            bookings: [
+              { bookingReference: 'INV-BKG-2026-11111', bookingStatus: 'confirmed', eventId: 'evt-1', eventName: 'Real Hub Event One', eventDate: '2099-12-25T09:00:00.000Z', bannerUrl: null, totalAmountPaise: 50000, ticketCount: 1 },
+              { bookingReference: 'INV-BKG-2026-22222', bookingStatus: 'cancelled', eventId: 'evt-2', eventName: 'Real Hub Event Two', eventDate: '2020-01-01T09:00:00.000Z', bannerUrl: null, totalAmountPaise: 100000, ticketCount: 2 },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.removeItem('inveon_customer_session');
+
+    renderApp('/bookings/lookup');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-11111');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'real-customer@example.com');
+    await user.click(screen.getByRole('button', { name: /send login code/i }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'));
+      expect(call).toBeTruthy();
+    });
+    const [, initiateOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'));
+    expect(JSON.parse(initiateOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', email: 'real-customer@example.com' });
+
+    // Real 6-box OTP entry, auto-advancing.
+    await waitFor(() => expect(screen.getByText(/Verify Your Identity/i)).toBeInTheDocument());
+    const otpInputs = screen.getAllByRole('textbox').filter((el) => el.getAttribute('maxlength') === '1');
+    expect(otpInputs).toHaveLength(6);
+    for (let i = 0; i < 6; i += 1) {
+      await user.type(otpInputs[i], String(i + 1));
+    }
+    await user.click(screen.getByRole('button', { name: /verify.*continue/i }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'));
+      expect(call).toBeTruthy();
+    });
+    const [, verifyOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'));
+    expect(JSON.parse(verifyOpts.body)).toEqual({ email: 'real-customer@example.com', code: '123456' });
+
+    // Real navigation to the real hub, real session stored, real bookings shown.
+    await waitFor(() => expect(screen.getByText('Real Hub Event One')).toBeInTheDocument());
+    expect(screen.getByText('Real Hub Event Two')).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('inveon_customer_session')!)).toEqual({ token: 'real-session-token', email: 'real-customer@example.com' });
+
+    // Real status filtering.
+    await user.click(screen.getByRole('button', { name: /cancelled/i }));
+    expect(screen.queryByText('Real Hub Event One')).not.toBeInTheDocument();
+    expect(screen.getByText('Real Hub Event Two')).toBeInTheDocument();
+
+    localStorage.removeItem('inveon_customer_session');
+    vi.unstubAllGlobals();
+  });
+
+  it('visiting /bookings/my with no real session redirects to the real login page, not a broken/empty hub', async () => {
+    localStorage.removeItem('inveon_customer_session');
+    renderApp('/bookings/my');
+    await waitFor(() => expect(screen.getByText(/Manage Your Booking/i)).toBeInTheDocument());
+  });
 });
