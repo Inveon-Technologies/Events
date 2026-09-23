@@ -25,3 +25,24 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
   // they all use this exact shape.
   return jwt.verify(token, getSecret()) as unknown as AccessTokenPayload;
 }
+
+// A customer session is a genuinely different kind of principal from an
+// organizer User — no id, no role, just a real OTP-verified email — so
+// it gets its own payload shape and its own sign/verify pair rather than
+// overloading AccessTokenPayload with an optional/nullable customer case.
+export interface CustomerSessionPayload {
+  email: string;
+  purpose: 'customer_session';
+}
+
+export function signCustomerSessionToken(email: string): string {
+  return jwt.sign({ email, purpose: 'customer_session' } satisfies CustomerSessionPayload, getSecret(), { expiresIn: '24h' });
+}
+
+export function verifyCustomerSessionToken(token: string): CustomerSessionPayload {
+  const payload = jwt.verify(token, getSecret()) as unknown as CustomerSessionPayload;
+  if (payload.purpose !== 'customer_session') {
+    throw new Error('Not a valid customer session token');
+  }
+  return payload;
+}
