@@ -8,9 +8,17 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // The full parsed response body, when the server sent one — lets a
+  // caller read a field beyond just the top-level error message (e.g.
+  // ticketCheckIn.ts's reasonCode on a 409, used to distinguish a
+  // cancelled ticket from an already-checked-in one). Optional and
+  // additive: every existing caller that only reads .message/.status
+  // is unaffected.
+  body?: unknown;
+  constructor(status: number, message: string, body?: unknown) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -30,7 +38,7 @@ export async function apiRequest<T>(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Something went wrong');
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Something went wrong', data);
   }
 
   return data as T;
@@ -63,7 +71,7 @@ export async function uploadEventMediaFile(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed');
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed', data);
   }
 
   return data as UploadedEventMedia;
