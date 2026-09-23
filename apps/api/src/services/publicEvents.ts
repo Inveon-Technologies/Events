@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import { Organizer, Event, TicketCategory, EventMedia, EventScheduleItem, EventPackingItem, EventFaqItem } from '../models';
 import { getEventRatingSummary, RatingSummary } from './eventReviews';
+import { buildVenueMapUrl } from './mapsUrl';
 
 export interface PublicEventSummary {
   id: string;
@@ -43,6 +44,9 @@ export interface PublicEventDetail {
   bannerUrl: string | null;
   termsAndConditions: string | null;
   cancellationPolicy: string | null;
+  allowSelfServiceCancellation: boolean;
+  refundCutoffDays: number | null;
+  refundPercentage: number | null;
   scheduleItems: EventScheduleItem[] | null;
   packingChecklist: EventPackingItem[] | null;
   faqItems: EventFaqItem[] | null;
@@ -139,10 +143,13 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     description: event.description,
     eventDate: event.eventDate.toISOString(),
     venueAddress: event.venueAddress,
-    venueMapUrl: event.venueMapUrl,
+    venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl),
     bannerUrl: event.bannerUrl ?? firstPhoto?.url ?? null,
     termsAndConditions: event.termsAndConditions,
     cancellationPolicy: event.cancellationPolicy,
+    allowSelfServiceCancellation: event.allowSelfServiceCancellation,
+    refundCutoffDays: event.refundCutoffDays,
+    refundPercentage: event.refundPercentage,
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,

@@ -505,7 +505,7 @@ export function EventDetailsPage() {
                       <span className="text-xs text-slate-500">{event.drivingInfo || 'Approx. 1h 45m via NH48 and Nasrapur - Velhe Road.'}</span>
                     </div>
                     <a
-                      href="https://maps.google.com"
+                      href={event.venueMapUrl || 'https://maps.google.com'}
                       target="_blank"
                       rel="noreferrer"
                       className="px-4 py-2 bg-white hover:bg-slate-100 text-primary font-semibold text-xs rounded-lg shadow-sm transition flex items-center gap-1 shrink-0 border border-slate-200"
@@ -522,23 +522,32 @@ export function EventDetailsPage() {
                 <div className="flex flex-col gap-6 animate-in fade-in duration-200">
                   <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
                     <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Cancellation &amp; Refund Policy</h3>
-                    {event.cancellationPolicyText ? (
-                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">{event.cancellationPolicyText}</p>
-                    ) : (
+                    {event.allowSelfServiceCancellation ? (
                       <ul className="space-y-3 text-xs sm:text-sm text-slate-700">
                         <li className="flex items-start gap-2">
                           <span className="material-symbols-outlined text-emerald-600 text-[18px] shrink-0 mt-0.5">info</span>
-                          <span><strong>Full 100% Refund:</strong> Cancel up to 48 hours before the event start time with zero cancellation fee.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="material-symbols-outlined text-slate-400 text-[18px] shrink-0 mt-0.5">info</span>
-                          <span><strong>50% Refund:</strong> Cancellations between 24 and 48 hours prior to start.</span>
+                          <span>
+                            <strong>{event.refundPercentage}% Refund:</strong> Cancel up to {event.refundCutoffDays} day{event.refundCutoffDays === 1 ? '' : 's'} before the event from your booking confirmation.
+                          </span>
                         </li>
                         <li className="flex items-start gap-2">
                           <span className="material-symbols-outlined text-red-500 text-[18px] shrink-0 mt-0.5">info</span>
-                          <span><strong>No Refund:</strong> Cancellations within 24 hours of reporting time or no-shows.</span>
+                          <span><strong>No Refund:</strong> Cancellations after that window, or no-shows.</span>
                         </li>
                       </ul>
+                    ) : (
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200">
+                        <span className="material-symbols-outlined text-red-600 text-[20px] shrink-0 mt-0.5">block</span>
+                        <div>
+                          <p className="text-sm font-bold text-red-800">No Refund Policy</p>
+                          <p className="text-xs sm:text-sm text-red-700 mt-0.5 leading-relaxed">
+                            This event does not offer self-service cancellations or refunds once booked.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    {event.cancellationPolicyText && (
+                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line pt-1 border-t border-slate-100">{event.cancellationPolicyText}</p>
                     )}
                   </div>
 
@@ -692,6 +701,13 @@ export function EventDetailsPage() {
                     <span className="text-base font-extrabold text-slate-900">{formatINR(totalAmount)}</span>
                   </div>
                 </div>
+
+                {!event.allowSelfServiceCancellation && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">
+                    <span className="material-symbols-outlined text-[16px] shrink-0">block</span>
+                    <span className="text-[11px] font-bold">No Refund Policy — this event does not offer cancellations or refunds.</span>
+                  </div>
+                )}
 
                 {/* Primary Book CTA */}
                 <div className="space-y-2 pt-1">
