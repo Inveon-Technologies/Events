@@ -278,6 +278,98 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('a "No Refund" event shows a clear real notice near the Book Now button and in the Policy tab, never the old fake refund tiers', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-norefund-1',
+        slug: 'no-refund-event',
+        name: 'No Refund Test Event',
+        tagline: null,
+        description: 'An event with no refund policy',
+        eventDate: '2026-12-25T09:00:00.000Z',
+        venueAddress: 'Pune',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: null,
+        allowSelfServiceCancellation: false,
+        refundCutoffDays: null,
+        refundPercentage: null,
+        scheduleItems: null,
+        packingChecklist: null,
+        faqItems: null,
+        media: [],
+        organizerName: 'No Refund Org',
+        organizerSlug: 'no-refund-org',
+        ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-norefund-1');
+    await waitFor(() => expect(screen.getAllByText('No Refund Test Event').length).toBeGreaterThan(0));
+
+    // Prominent notice near the booking CTA, not buried in a tab.
+    expect(screen.getByText(/No Refund Policy — this event does not offer cancellations or refunds\./)).toBeInTheDocument();
+
+    // Policy tab shows the real, accurate "No Refund" state, never the
+    // old fake hardcoded "Full 100% Refund... 50% Refund..." tiers that
+    // used to show for any event with no free-text policy written.
+    await user.click(screen.getByRole('button', { name: 'Policy & FAQ' }));
+    expect(screen.getByText('No Refund Policy')).toBeInTheDocument();
+    expect(screen.getByText(/does not offer self-service cancellations or refunds/)).toBeInTheDocument();
+    expect(screen.queryByText(/Full 100% Refund:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/50% Refund:/)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('an event with real self-service cancellation enabled shows its real percentage and cutoff, not a fake fixed policy', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-refundable-1',
+        slug: 'refundable-event',
+        name: 'Refundable Test Event',
+        tagline: null,
+        description: 'An event with a real refund policy',
+        eventDate: '2026-12-25T09:00:00.000Z',
+        venueAddress: 'Pune',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: null,
+        allowSelfServiceCancellation: true,
+        refundCutoffDays: 5,
+        refundPercentage: 75,
+        scheduleItems: null,
+        packingChecklist: null,
+        faqItems: null,
+        media: [],
+        organizerName: 'Refundable Org',
+        organizerSlug: 'refundable-org',
+        ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-refundable-1');
+    await waitFor(() => expect(screen.getAllByText('Refundable Test Event').length).toBeGreaterThan(0));
+
+    expect(screen.queryByText(/No Refund Policy/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Policy & FAQ' }));
+    expect(screen.getByText(/75% Refund:/)).toBeInTheDocument();
+    expect(screen.getByText(/up to 5 days before the event/)).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
   it('event details page shows the real rating summary and real reviews, with a "Rate this event" link only for past events', async () => {
     const fetchMock = vi.fn().mockImplementation((url) => {
       const urlStr = String(url);
@@ -527,6 +619,53 @@ describe('App routing', () => {
     // the old behavior here showed "Payment successful" immediately,
     // which is exactly what this pass fixed.
     expect(screen.queryByText(/payment successful/i)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('checkout shows a real, accurate refund policy trust line — "No Refund" for a non-cancellable event, never the old fake "Free cancellation up to 48 hours"', async () => {
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/bookings')) {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ bookingId: 'booking-1', bookingReference: 'INV-BKG-2026-22222' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-checkout-norefund-1',
+          slug: 'checkout-norefund-event',
+          name: 'Checkout No Refund Event',
+          tagline: null,
+          description: null,
+          eventDate: '2026-12-25T09:00:00.000Z',
+          venueAddress: 'Pune',
+          venueMapUrl: null,
+          bannerUrl: null,
+          termsAndConditions: null,
+          cancellationPolicy: null,
+          allowSelfServiceCancellation: false,
+          refundCutoffDays: null,
+          refundPercentage: null,
+          scheduleItems: null,
+          packingChecklist: null,
+          faqItems: null,
+          media: [],
+          organizerName: 'Checkout No Refund Org',
+          organizerSlug: 'checkout-no-refund-org',
+          ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+          ratingSummary: { averageRating: null, reviewCount: 0 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-checkout-norefund-1/checkout', { quantities: { 'tier-1': 1 } });
+    await waitFor(() => expect(screen.getAllByText('Checkout No Refund Event').length).toBeGreaterThan(0));
+
+    expect(screen.getByText(/No Refund Policy — this booking cannot be cancelled/)).toBeInTheDocument();
+    expect(screen.queryByText(/Free cancellation up to 48 hours/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/SMS and WhatsApp ticket dispatched/)).not.toBeInTheDocument();
 
     vi.unstubAllGlobals();
   });

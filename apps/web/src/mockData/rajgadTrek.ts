@@ -233,6 +233,10 @@ export interface EventDetails {
   // template to fall back to. null/undefined means "nothing to show",
   // handled by the page rendering nothing rather than a placeholder.
   cancellationPolicyText?: string | null;
+  allowSelfServiceCancellation?: boolean;
+  refundCutoffDays?: number | null;
+  refundPercentage?: number | null;
+  venueMapUrl?: string | null;
   faqItems?: { question: string; answer: string }[] | null;
   ratingSummary?: { averageRating: number | null; reviewCount: number };
   isPast?: boolean;
@@ -495,6 +499,10 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
           }))
         : template.packingList,
       cancellationPolicyText: real.cancellationPolicy || null,
+      allowSelfServiceCancellation: Boolean(real.allowSelfServiceCancellation),
+      refundCutoffDays: real.refundCutoffDays ?? null,
+      refundPercentage: real.refundPercentage ?? null,
+      venueMapUrl: real.venueMapUrl || null,
       faqItems: Array.isArray(real.faqItems) && real.faqItems.length > 0 ? real.faqItems : null,
       ratingSummary: real.ratingSummary,
       isPast: eventDate.getTime() < Date.now(),

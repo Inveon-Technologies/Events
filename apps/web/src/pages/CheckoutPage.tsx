@@ -920,17 +920,24 @@ export function CheckoutPage() {
                       </span>
                       <span>Instant confirmation with dynamic QR code</span>
                     </div>
+                    {event?.allowSelfServiceCancellation ? (
+                      <div className="flex items-center space-x-2">
+                        <span className="material-symbols-outlined text-tertiary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+                          check_circle
+                        </span>
+                        <span>{event.refundPercentage}% refund up to {event.refundCutoffDays} day{event.refundCutoffDays === 1 ? '' : 's'} before the event</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2 text-red-600">
+                        <span className="material-symbols-outlined text-red-600 text-sm">block</span>
+                        <span className="font-semibold">No Refund Policy — this booking cannot be cancelled</span>
+                      </div>
+                    )}
                     <div className="flex items-center space-x-2">
                       <span className="material-symbols-outlined text-tertiary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
                         check_circle
                       </span>
-                      <span>Free cancellation up to 48 hours prior</span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="material-symbols-outlined text-tertiary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        check_circle
-                      </span>
-                      <span>SMS and WhatsApp ticket dispatched on payment</span>
+                      <span>Ticket &amp; QR code emailed on payment</span>
                     </div>
                   </div>
 

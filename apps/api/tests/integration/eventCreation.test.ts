@@ -234,6 +234,55 @@ describe('organizer event creation (real DB)', () => {
     expect(getRes.body.refundPercentage).toBe(80);
   });
 
+  it('exposes the real refund policy and a real, working Google Maps link on the public event page', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'Public Policy Test Event',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        venueName: 'Real Venue',
+        city: 'Pune',
+        state: 'Maharashtra',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+        allowSelfServiceCancellation: true,
+        refundCutoffDays: 5,
+        refundPercentage: 50,
+      });
+    expect(res.status).toBe(201);
+
+    const publicRes = await request(app).get(`/api/events/${res.body.slug}`);
+    expect(publicRes.status).toBe(200);
+    expect(publicRes.body.allowSelfServiceCancellation).toBe(true);
+    expect(publicRes.body.refundCutoffDays).toBe(5);
+    expect(publicRes.body.refundPercentage).toBe(50);
+    // No venueMapUrl was set explicitly, so a real, working Maps search
+    // URL is auto-built from the real address — never left null just
+    // because the organizer didn't paste a link themselves.
+    expect(publicRes.body.venueMapUrl).toBe('https://www.google.com/maps/search/?api=1&query=Real%20Venue%2C%20Pune%2C%20Maharashtra');
+  });
+
+  it('a "No Refund" event (self-service cancellation off) is exposed clearly on the public event page, not just silently absent', async () => {
+    const res = await request(app)
+      .post('/api/organizer/events')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        title: 'No Refund Public Event',
+        startDate: '2026-12-12',
+        startTime: '07:00',
+        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+        status: 'published',
+      });
+    expect(res.status).toBe(201);
+
+    const publicRes = await request(app).get(`/api/events/${res.body.slug}`);
+    expect(publicRes.body.allowSelfServiceCancellation).toBe(false);
+    expect(publicRes.body.refundCutoffDays).toBeNull();
+    expect(publicRes.body.refundPercentage).toBeNull();
+  });
+
   it('defaults self-service cancellation to off, with no cutoff/percentage set, when not specified', async () => {
     const res = await request(app)
       .post('/api/organizer/events')

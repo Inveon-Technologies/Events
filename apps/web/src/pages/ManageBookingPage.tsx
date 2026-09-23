@@ -160,6 +160,20 @@ export function ManageBookingPage() {
           ))}
         </div>
 
+        {detail.bookingStatus === 'confirmed' && !detail.allowSelfServiceCancellation && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-red-700">
+            <Icon name="block" className="text-[18px] shrink-0" />
+            <p className="text-sm font-semibold">No Refund Policy — this event does not offer cancellations or refunds.</p>
+          </div>
+        )}
+
+        {detail.bookingStatus === 'confirmed' && detail.allowSelfServiceCancellation && detail.refundCutoffPassed && (
+          <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-amber-800">
+            <Icon name="schedule" className="text-[18px] shrink-0" />
+            <p className="text-sm font-semibold">The cancellation window for this event has closed.</p>
+          </div>
+        )}
+
         {canCancel && (
           <div className="bg-white rounded-2xl shadow-card p-5">
             {!showCancelForm ? (
