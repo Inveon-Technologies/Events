@@ -12,6 +12,8 @@ export class Organizer extends Model<InferAttributes<Organizer>, InferCreationAt
   declare contactPhone: string | null;
   declare logoUrl: string | null;
   declare about: string | null;
+  declare gstNumber: string | null;
+  declare website: string | null;
   declare panNumber: string | null;
   declare kycAccountType: KycAccountType | null;
   declare businessType: string | null;
@@ -33,6 +35,8 @@ Organizer.init(
     contactPhone: { type: DataTypes.STRING, allowNull: true },
     logoUrl: { type: DataTypes.STRING, allowNull: true },
     about: { type: DataTypes.TEXT, allowNull: true },
+    gstNumber: { type: DataTypes.STRING, allowNull: true },
+    website: { type: DataTypes.STRING, allowNull: true },
     panNumber: { type: DataTypes.STRING, allowNull: true },
     kycAccountType: { type: DataTypes.STRING, allowNull: true },
     businessType: { type: DataTypes.STRING, allowNull: true },

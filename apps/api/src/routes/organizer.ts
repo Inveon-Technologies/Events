@@ -37,9 +37,16 @@ import {
   getOrganizerProfile,
   updateOrganizerProfile,
   uploadOrganizerLogo,
+  getOrganizerTeam,
   NotFoundError as ProfileNotFoundError,
   ValidationError as ProfileValidationError,
 } from '../services/organizerProfile';
+import {
+  changePassword,
+  NotFoundError as ChangePasswordNotFoundError,
+  ValidationError as ChangePasswordValidationError,
+  IncorrectPasswordError,
+} from '../services/accountSecurity';
 import {
   getOrganizerEvent,
   updateOrganizerEvent,
@@ -699,6 +706,8 @@ organizerRouter.patch('/profile', asyncHandler(async (req, res) => {
       contactEmail: typeof body.contactEmail === 'string' ? body.contactEmail : undefined,
       contactPhone: typeof body.contactPhone === 'string' ? body.contactPhone : undefined,
       about: typeof body.about === 'string' ? body.about : undefined,
+      gstNumber: typeof body.gstNumber === 'string' ? body.gstNumber : undefined,
+      website: typeof body.website === 'string' ? body.website : undefined,
     });
     res.status(200).json(profile);
   } catch (err) {
@@ -760,3 +769,45 @@ organizerRouter.post(
     }
   }),
 );
+
+organizerRouter.get('/team', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  const team = await getOrganizerTeam(organizerId);
+  res.status(200).json({ team });
+}));
+
+organizerRouter.post('/change-password', asyncHandler(async (req, res) => {
+  const userId = req.user?.sub;
+  if (!userId) {
+    res.status(400).json({ error: 'Not authenticated' });
+    return;
+  }
+  const { currentPassword, newPassword } = req.body as Record<string, unknown>;
+  if (typeof currentPassword !== 'string' || typeof newPassword !== 'string') {
+    res.status(400).json({ error: 'Current and new password are required' });
+    return;
+  }
+
+  try {
+    await changePassword(userId, currentPassword, newPassword);
+    res.status(200).json({ success: true });
+  } catch (err) {
+    if (err instanceof ChangePasswordNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof ChangePasswordValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof IncorrectPasswordError) {
+      res.status(401).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
