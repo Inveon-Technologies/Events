@@ -261,29 +261,8 @@ export function EventsProvider({ children }) {
 
   const duplicateEvent = async (id) => {
     try {
-      const original = await apiRequest(`/organizer/events/${id}`, { token: user?.token });
-      const created = await apiRequest('/organizer/events', {
-        method: 'POST',
-        token: user?.token,
-        body: {
-          title: `${original.title} (Copy)`,
-          shortDescription: original.shortDescription || undefined,
-          description: original.description || undefined,
-          startDate: original.eventDate.slice(0, 10),
-          startTime: original.eventDate.slice(11, 16),
-          bannerImage: original.bannerImage || undefined,
-          cancellationPolicy: original.cancellationPolicy || undefined,
-          allowSelfServiceCancellation: original.allowSelfServiceCancellation,
-          refundCutoffDays: original.refundCutoffDays ?? undefined,
-          refundPercentage: original.refundPercentage ?? undefined,
-          scheduleItems: original.scheduleItems || undefined,
-          packingChecklist: original.packingChecklist || undefined,
-          faqItems: original.faqItems || undefined,
-          ticketTiers: original.ticketTiers.map((t) => ({ name: t.name, description: t.description, price: t.price, quantity: t.quantity })),
-          status: 'draft',
-        },
-      });
-      showToast(`Duplicated "${original.title}" as a draft`, 'info');
+      const created = await apiRequest(`/organizer/events/${id}/duplicate`, { method: 'POST', token: user?.token });
+      showToast('Duplicated as a draft — including its images, video, and policy', 'info');
       await refreshEvents();
       return created;
     } catch (err) {

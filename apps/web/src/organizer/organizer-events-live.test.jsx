@@ -198,6 +198,50 @@ describe('organizer portal: real events data through EventsContext', () => {
 
     promptSpy.mockRestore();
   });
+
+  it('"Duplicate" calls the real atomic duplicate endpoint — one request, no separate GET-then-POST that could silently drop a field', async () => {
+    const user = userEvent.setup();
+    const publishedEventsResponse = {
+      organizerName: 'Eco Pandhari Club',
+      counts: { all: 1, draft: 0, published: 1, completed: 0, cancelled: 0 },
+      events: [
+        {
+          id: 'evt-to-duplicate-1',
+          eventCode: 'EVT-DUP1',
+          name: 'Event To Duplicate',
+          eventDate: '2026-11-01T09:00:00.000Z',
+          venueAddress: 'Pune',
+          bannerUrl: null,
+          capacity: 20,
+          ticketsSold: 2,
+          revenuePaise: 100000,
+          displayStatus: 'published',
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'POST' && String(url).includes('/duplicate')) {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 'evt-dup-new', slug: 'event-to-duplicate-copy' }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => publishedEventsResponse });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/events');
+    await waitFor(() => expect(screen.getByText('Event To Duplicate')).toBeInTheDocument());
+
+    const card = screen.getByText('Event To Duplicate').closest('div.group') ?? document.body;
+    const menuButton = within(card).getAllByRole('button')[0];
+    await user.click(menuButton);
+    await user.click(screen.getByText('Duplicate Event'));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/duplicate'));
+      expect(call).toBeTruthy();
+    });
+    const [dupUrl] = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/duplicate'));
+    expect(dupUrl).toBe('/api/organizer/events/evt-to-duplicate-1/duplicate');
+  });
 });
 
 describe('organizer portal: real bookings data through EventsContext', () => {
