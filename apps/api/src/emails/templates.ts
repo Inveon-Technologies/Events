@@ -281,3 +281,55 @@ export function eventCancelledOrganizerSummaryEmail(params: {
   `;
   return emailShell(body, `You cancelled ${params.eventName}`);
 }
+
+export function eventReminderEmail(params: {
+  attendeeName: string;
+  eventName: string;
+  bookingReference: string;
+  eventTimeLabel: string;
+  venueAddress: string | null;
+  mapUrl: string | null;
+}): string {
+  const locationBlock = params.venueAddress
+    ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:20px 24px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Venue</p>
+          <p style="margin:0 0 16px;font-size:14px;color:#0f172a;line-height:1.5;">${params.venueAddress}</p>
+          ${
+            params.mapUrl
+              ? `<a href="${params.mapUrl}" style="display:inline-block;padding:10px 20px;background-color:#2563eb;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">Get Directions on Google Maps</a>`
+              : ''
+          }
+        </td>
+      </tr>
+    </table>`
+    : '';
+
+  const body = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:14px 20px;text-align:center;">
+          <p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.08em;color:#b45309;text-transform:uppercase;">Starting in 3 Hours</p>
+        </td>
+      </tr>
+    </table>
+
+    <h1 style="margin:0 0 8px;font-size:20px;color:#0f172a;font-weight:700;">${params.eventName}</h1>
+    <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
+      Hi ${params.attendeeName}, this is a reminder that your event starts soon — ${params.eventTimeLabel}.
+    </p>
+
+    ${locationBlock}
+
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-radius:12px;">
+      <tr>
+        <td style="padding:14px 18px;font-size:12px;color:#1e3a8a;line-height:1.6;">
+          Booking reference <strong>${params.bookingReference}</strong> — bring your QR pass (attached to your original confirmation email) for check-in.
+        </td>
+      </tr>
+    </table>
+  `;
+  return emailShell(body, `${params.eventName} starts in 3 hours`);
+}
