@@ -104,7 +104,10 @@ export default function CreateEvent() {
       }
     ],
     cancellationPolicy: {
-      refundable: true,
+      // Defaults to off (No Refund) — an organizer opts in explicitly
+      // per event, matching the same "opt-in, not silently on" design
+      // as the backend itself (organizerVerification / eventCreation).
+      refundable: false,
       cutoffDays: 3,
       refundPercentage: 80,
       description: ''
@@ -1137,8 +1140,9 @@ export default function CreateEvent() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Refund Cutoff (Days before event)</label>
+                  <label htmlFor="refund-cutoff-days" className="block text-xs font-bold text-slate-700 mb-1">Refund Cutoff (Days before event)</label>
                   <input
+                    id="refund-cutoff-days"
                     type="number"
                     value={formData.cancellationPolicy.cutoffDays}
                     onChange={(e) => setFormData({
@@ -1150,8 +1154,9 @@ export default function CreateEvent() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Refund Amount Percentage (%)</label>
+                  <label htmlFor="refund-amount-percentage" className="block text-xs font-bold text-slate-700 mb-1">Refund Amount Percentage (%)</label>
                   <input
+                    id="refund-amount-percentage"
                     type="number"
                     value={formData.cancellationPolicy.refundPercentage}
                     onChange={(e) => setFormData({
@@ -1164,8 +1169,9 @@ export default function CreateEvent() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Policy Terms Description</label>
+                <label htmlFor="refund-policy-description" className="block text-xs font-bold text-slate-700 mb-1">Policy Terms Description</label>
                 <textarea
+                  id="refund-policy-description"
                   rows={3}
                   value={formData.cancellationPolicy.description}
                   onChange={(e) => setFormData({
