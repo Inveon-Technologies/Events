@@ -5,7 +5,7 @@ import { useEvents } from '../../context/EventsContext';
 import StatusBadge from '../../components/common/StatusBadge';
 
 export default function Cancellations() {
-  const { bookings, processRefund } = useEvents();
+  const { bookings } = useEvents();
   const [searchTerm, setSearchTerm] = useState('');
 
   const cancelledBookings = bookings.filter(
@@ -102,12 +102,9 @@ export default function Cancellations() {
                         Refund Settled
                       </span>
                     ) : (
-                      <button
-                        onClick={() => processRefund(b.id, b.amount)}
-                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded font-bold text-xs shadow-xs"
-                      >
-                        Approve Refund
-                      </button>
+                      <span className="text-slate-400 text-[11px] italic">
+                        Refunds process automatically on cancellation
+                      </span>
                     )}
                   </td>
                 </tr>

@@ -15,14 +15,15 @@ import {
   Edit,
   ExternalLink,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  XCircle
 } from 'lucide-react';
 import StatusBadge from '../../components/common/StatusBadge';
 import Tabs from '../../components/common/Tabs';
 import { useEvents } from '../../context/EventsContext';
 
 export default function MyEvents() {
-  const { events, duplicateEvent, deleteEvent, toggleEventStatus } = useEvents();
+  const { events, duplicateEvent, deleteEvent, toggleEventStatus, cancelEvent } = useEvents();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -197,6 +198,21 @@ export default function MyEvents() {
                               <span>{event.status === 'published' ? 'Unpublish to Draft' : 'Publish Live'}</span>
                             </button>
                             <div className="border-t border-slate-100 my-1"></div>
+                            {event.status !== 'cancelled' && (
+                              <button
+                                onClick={() => {
+                                  const reason = window.prompt(`Why are you cancelling "${event.title}"? This will refund every confirmed booking in full.`);
+                                  if (reason && reason.trim()) {
+                                    cancelEvent(event.id, reason.trim());
+                                  }
+                                  setActiveMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-amber-600 hover:bg-amber-50 flex items-center gap-2"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Cancel Event</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 if (confirm(`Are you sure you want to delete "${event.title}"?`)) {

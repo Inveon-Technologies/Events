@@ -7,7 +7,7 @@ import Tabs from '../../components/common/Tabs';
 import Modal from '../../components/common/Modal';
 
 export default function Bookings() {
-  const { bookings, events, processRefund } = useEvents();
+  const { bookings, events, cancelBooking } = useEvents();
   const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEventId, setSelectedEventId] = useState('all');
@@ -195,7 +195,10 @@ export default function Bookings() {
               {selectedBooking.bookingStatus !== 'cancelled' && (
                 <button
                   onClick={() => {
-                    processRefund(selectedBooking.id, selectedBooking.amount);
+                    const reason = window.prompt(`Why are you cancelling this booking for ${selectedBooking.customerName}? They will be refunded in full.`);
+                    if (reason && reason.trim()) {
+                      cancelBooking(selectedBooking.bookingId, reason.trim());
+                    }
                     setSelectedBooking(null);
                   }}
                   className="px-3.5 py-2 bg-rose-50 text-rose-700 hover:bg-rose-100 font-bold text-xs rounded-lg border border-rose-200"
