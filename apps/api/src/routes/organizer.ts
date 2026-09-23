@@ -34,6 +34,13 @@ import {
 import { getOrganizerTickets } from '../services/organizerTickets';
 import { getOrganizerPayments } from '../services/organizerPayments';
 import {
+  getOrganizerProfile,
+  updateOrganizerProfile,
+  uploadOrganizerLogo,
+  NotFoundError as ProfileNotFoundError,
+  ValidationError as ProfileValidationError,
+} from '../services/organizerProfile';
+import {
   getOrganizerEvent,
   updateOrganizerEvent,
   deleteOrganizerEvent,
@@ -659,3 +666,97 @@ organizerRouter.get('/payments', asyncHandler(async (req, res) => {
   const result = await getOrganizerPayments(organizerId);
   res.status(200).json(result);
 }));
+
+organizerRouter.get('/profile', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  try {
+    const profile = await getOrganizerProfile(organizerId);
+    res.status(200).json(profile);
+  } catch (err) {
+    if (err instanceof ProfileNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.patch('/profile', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  try {
+    const profile = await updateOrganizerProfile({
+      organizerId,
+      name: typeof body.name === 'string' ? body.name : undefined,
+      contactEmail: typeof body.contactEmail === 'string' ? body.contactEmail : undefined,
+      contactPhone: typeof body.contactPhone === 'string' ? body.contactPhone : undefined,
+      about: typeof body.about === 'string' ? body.about : undefined,
+    });
+    res.status(200).json(profile);
+  } catch (err) {
+    if (err instanceof ProfileNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof ProfileValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post(
+  '/profile/logo',
+  (req, res, next) => {
+    mediaUpload.single('file')(req, res, (err: unknown) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({ error: `File is too large — the limit is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB` });
+          return;
+        }
+        res.status(400).json({ error: 'Upload failed — please try again' });
+        return;
+      }
+      next();
+    });
+  },
+  asyncHandler(async (req, res) => {
+    const organizerId = req.user?.organizerId;
+    if (!organizerId) {
+      res.status(400).json({ error: 'This account has no associated organizer' });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'No file was uploaded' });
+      return;
+    }
+    try {
+      const result = await uploadOrganizerLogo({
+        organizerId,
+        mimeType: req.file.mimetype,
+        sizeBytes: req.file.size,
+        tempFilePath: req.file.path,
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof ProfileNotFoundError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      if (err instanceof ProfileValidationError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }),
+);

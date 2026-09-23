@@ -76,3 +76,22 @@ export async function uploadEventMediaFile(
 
   return data as UploadedEventMedia;
 }
+
+export async function uploadOrganizerLogoFile(file: File, token: string | null): Promise<{ logoUrl: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const res = await fetch(`${API_BASE_URL}/api/organizer/profile/logo`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed', data);
+  }
+
+  return data as { logoUrl: string };
+}
