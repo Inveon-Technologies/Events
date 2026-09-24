@@ -47,6 +47,7 @@ export interface PublicEventDetail {
   allowSelfServiceCancellation: boolean;
   refundCutoffDays: number | null;
   refundPercentage: number | null;
+  genderRestriction: 'male' | 'female' | null;
   scheduleItems: EventScheduleItem[] | null;
   packingChecklist: EventPackingItem[] | null;
   faqItems: EventFaqItem[] | null;
@@ -150,6 +151,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     allowSelfServiceCancellation: event.allowSelfServiceCancellation,
     refundCutoffDays: event.refundCutoffDays,
     refundPercentage: event.refundPercentage,
+    genderRestriction: event.genderRestriction,
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,

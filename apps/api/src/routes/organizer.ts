@@ -62,6 +62,17 @@ import {
   ForbiddenError as EventForbiddenError,
 } from '../services/eventManagement';
 
+// Undefined (field not sent) is distinct from null (explicitly clearing
+// a restriction) — the caller decides which, this only rejects a
+// genuinely invalid value. Anything other than 'male', 'female', or
+// null/absent is silently ignored rather than erroring, matching how
+// this route already treats other malformed optional fields.
+function parseGenderRestriction(body: Record<string, unknown>): 'male' | 'female' | null | undefined {
+  if (body.genderRestriction === 'male' || body.genderRestriction === 'female') return body.genderRestriction;
+  if (body.genderRestriction === null || body.genderRestriction === '') return null;
+  return undefined;
+}
+
 function parseTicketTiers(body: Record<string, unknown>) {
   const rawTiers = Array.isArray(body.ticketTiers) ? body.ticketTiers : [];
   return rawTiers.map((t) => {
@@ -246,6 +257,7 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       packingChecklist,
       faqItems,
       status,
+      genderRestriction: parseGenderRestriction(body),
     });
     res.status(201).json(created);
   } catch (err) {
@@ -313,6 +325,7 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       packingChecklist: body.packingChecklist !== undefined ? parsePackingChecklist(body) : undefined,
       faqItems: body.faqItems !== undefined ? parseFaqItems(body) : undefined,
       status: body.status === 'draft' || body.status === 'published' || body.status === 'closed' ? body.status : undefined,
+      genderRestriction: parseGenderRestriction(body),
     });
     res.status(200).json(updated);
   } catch (err) {

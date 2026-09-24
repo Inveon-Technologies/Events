@@ -70,6 +70,7 @@ export interface CreateEventParams {
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
   status: 'draft' | 'published';
+  genderRestriction?: 'male' | 'female' | null;
 }
 
 export class ValidationError extends Error {}
@@ -185,6 +186,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         faqItems: sanitizeFaqItems(params.faqItems),
         status: params.status,
         capacity: totalCapacity,
+        genderRestriction: params.genderRestriction || null,
       },
       { transaction: t },
     );
@@ -252,6 +254,7 @@ export async function duplicateEvent(eventId: string, organizerId: string): Prom
         faqItems: source.faqItems,
         status: 'draft',
         capacity: source.capacity,
+        genderRestriction: source.genderRestriction,
       },
       { transaction: t },
     );
