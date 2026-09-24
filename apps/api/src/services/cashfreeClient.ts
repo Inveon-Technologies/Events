@@ -171,6 +171,57 @@ export async function cashfreeGetVendor(vendorId: string): Promise<CashfreeVendo
   return cashfreeRequest<CashfreeVendorResponse>('GET', `/easy-split/vendors/${encodeURIComponent(vendorId)}`);
 }
 
+// Cashfree's vendor-level status (ACTIVE/IN_BENE_CREATION/BLOCKED/
+// DELETED) has no dedicated "rejected" or "failed" value at all — a
+// verification that fails penny-drop or KYC review simply never
+// leaves IN_BENE_CREATION, indistinguishable at that level from one
+// that's still genuinely in progress. This per-document endpoint is
+// the real signal: each submitted KYC item (PAN, bank account, etc.)
+// carries its own review status and, when something's actually wrong,
+// a real remarks string explaining what.
+export interface CashfreeVendorDocStatus {
+  vendor_id: string;
+  doc_type: string;
+  doc_value: string;
+  status: string;
+  remarks: string | null;
+}
+
+export async function cashfreeGetVendorDocs(vendorId: string): Promise<CashfreeVendorDocStatus[]> {
+  const response = await cashfreeRequest<{ related_docs: CashfreeVendorDocStatus[] }>(
+    'GET',
+    `/easy-split/vendor-docs/${encodeURIComponent(vendorId)}`,
+  );
+  return response.related_docs;
+}
+
+// Corrects an existing vendor's details (a real resubmission after a
+// stalled or failed verification) — Cashfree's create endpoint is for
+// a vendor_id that doesn't exist yet and would reject a duplicate, so
+// fixing a typo'd IFSC or account number after the fact has to go
+// through this real PATCH endpoint instead.
+export async function cashfreeUpdateVendor(vendorId: string, params: CreateVendorParams): Promise<CashfreeVendorResponse> {
+  return cashfreeRequest<CashfreeVendorResponse>('PATCH', `/easy-split/vendors/${encodeURIComponent(vendorId)}`, {
+    status: 'ACTIVE',
+    name: params.name,
+    email: params.email,
+    phone: params.phone,
+    verify_account: true,
+    dashboard_access: false,
+    schedule_option: 1,
+    bank: {
+      account_number: params.accountNumber,
+      account_holder: params.accountHolder,
+      ifsc: params.ifsc,
+    },
+    kyc_details: {
+      account_type: params.accountType,
+      business_type: params.businessType,
+      pan: params.pan,
+    },
+  });
+}
+
 // ---- Orders ----
 
 export interface CreateOrderParams {

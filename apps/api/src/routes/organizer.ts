@@ -4,7 +4,6 @@ import os from 'os';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 import { asyncHandler } from '../middleware/asyncHandler';
-import { Organizer } from '../models';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
 import { getOrganizerEvents, getEventFinancials, DisplayEventStatus, NotFoundError as FinancialsNotFoundError, ForbiddenError as FinancialsForbiddenError } from '../services/organizerEvents';
@@ -20,6 +19,7 @@ import { uploadEventMedia, deleteEventMedia, duplicateEventMedia, MediaValidatio
 import {
   submitOrganizerVerification,
   refreshOrganizerVerificationStatus,
+  getOrganizerVerificationDetail,
   ValidationError as VerificationValidationError,
   NotFoundError as VerificationNotFoundError,
 } from '../services/organizerVerification';
@@ -446,21 +446,8 @@ organizerRouter.get('/verification', asyncHandler(async (req, res) => {
     return;
   }
 
-  const organizer = await Organizer.findByPk(organizerId);
-  if (!organizer) {
-    res.status(404).json({ error: 'Organizer not found' });
-    return;
-  }
-
-  res.status(200).json({
-    cashfreeVendorStatus: organizer.cashfreeVendorStatus,
-    panNumber: organizer.panNumber,
-    kycAccountType: organizer.kycAccountType,
-    businessType: organizer.businessType,
-    bankAccountHolderName: organizer.bankAccountHolderName,
-    bankAccountNumberLast4: organizer.bankAccountNumberLast4,
-    bankIfsc: organizer.bankIfsc,
-  });
+  const detail = await getOrganizerVerificationDetail(organizerId);
+  res.status(200).json(detail);
 }));
 
 organizerRouter.post('/verification', asyncHandler(async (req, res) => {
