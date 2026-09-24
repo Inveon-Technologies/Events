@@ -1,6 +1,25 @@
 import { Organizer, User } from '../models';
-import { cashfreeCreateVendor, cashfreeGetVendor, CashfreeVendorResponse, CashfreeApiError, CASHFREE_BUSINESS_TYPES, CashfreeBusinessType } from './cashfreeClient';
+import {
+  cashfreeCreateVendor,
+  cashfreeUpdateVendor,
+  cashfreeGetVendor,
+  cashfreeGetVendorDocs,
+  CashfreeVendorResponse,
+  CashfreeVendorDocStatus,
+  CashfreeApiError,
+  CASHFREE_BUSINESS_TYPES,
+  CashfreeBusinessType,
+} from './cashfreeClient';
 import type { CashfreeVendorStatus, KycAccountType } from '../models/Organizer';
+
+// Cashfree's own vendor-level status has no "rejected"/"failed" value
+// — a verification that never completes just sits in
+// IN_BENE_CREATION forever, identical to one still genuinely being
+// processed. Real penny-drop/KYC review normally resolves within
+// minutes to a couple of days; well past that with no change is the
+// real signal something needs the organizer's attention, not Cashfree
+// simply being slow.
+const STALLED_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
@@ -98,10 +117,15 @@ export async function submitOrganizerVerification(params: SubmitVerificationPara
   if (!owner) throw new ValidationError('This organizer has no owner account to register as a vendor');
 
   const vendorId = organizer.cashfreeVendorId || vendorIdForOrganizer(organizer.id);
+  // A vendor_id that already exists (a resubmission after a stalled
+  // or failed verification) has to go through Cashfree's real update
+  // endpoint — their create endpoint is for a vendor that doesn't
+  // exist yet and rejects a duplicate id outright.
+  const isResubmission = Boolean(organizer.cashfreeVendorId);
 
   let vendorResponse: CashfreeVendorResponse;
   try {
-    vendorResponse = await cashfreeCreateVendor({
+    const vendorParams = {
       vendorId,
       name: organizer.name,
       email: owner.email,
@@ -109,10 +133,11 @@ export async function submitOrganizerVerification(params: SubmitVerificationPara
       accountHolder: params.bankAccountHolderName.trim(),
       accountNumber,
       ifsc,
-      accountType: params.accountType === 'business' ? 'BUSINESS' : 'INDIVIDUAL',
+      accountType: (params.accountType === 'business' ? 'BUSINESS' : 'INDIVIDUAL') as 'BUSINESS' | 'INDIVIDUAL',
       pan,
       businessType: businessTypeForCashfree,
-    });
+    };
+    vendorResponse = isResubmission ? await cashfreeUpdateVendor(vendorId, vendorParams) : await cashfreeCreateVendor(vendorParams);
   } catch (err) {
     if (err instanceof CashfreeApiError) {
       throw new ValidationError(err.message);
@@ -135,6 +160,7 @@ export async function submitOrganizerVerification(params: SubmitVerificationPara
     bankIfsc: ifsc,
     cashfreeVendorId: vendorResponse.vendor_id,
     cashfreeVendorStatus: mapCashfreeStatus(vendorResponse.status),
+    kycSubmittedAt: new Date(),
   });
 
   return { cashfreeVendorStatus: organizer.cashfreeVendorStatus };
@@ -151,4 +177,68 @@ export async function refreshOrganizerVerificationStatus(organizerId: string): P
   await organizer.update({ cashfreeVendorStatus: mapCashfreeStatus(vendorResponse.status) });
 
   return { cashfreeVendorStatus: organizer.cashfreeVendorStatus };
+}
+
+export interface OrganizerVerificationDetail {
+  cashfreeVendorStatus: CashfreeVendorStatus;
+  panNumber: string | null;
+  kycAccountType: KycAccountType | null;
+  businessType: string | null;
+  bankAccountHolderName: string | null;
+  bankAccountNumberLast4: string | null;
+  bankIfsc: string | null;
+  contactPhone: string | null;
+  kycSubmittedAt: string | null;
+  // Real elapsed time since submission past a generous threshold —
+  // not a guess at an undocumented "rejected" status Cashfree's API
+  // doesn't actually expose. This is the honest signal: verification
+  // is taking far longer than penny-drop/KYC review normally does,
+  // so something likely needs the organizer's attention rather than
+  // just more waiting.
+  likelyStalled: boolean;
+  // Raw per-document review status and remarks, exactly as Cashfree
+  // reports them — surfaced as-is rather than reinterpreted, since
+  // Cashfree's own docs don't enumerate every status string this can
+  // return and guessing at which ones mean "failed" risks hiding a
+  // real rejection behind a made-up "still fine" label.
+  documents: { docType: string; status: string; remarks: string | null }[] | null;
+}
+
+export async function getOrganizerVerificationDetail(organizerId: string): Promise<OrganizerVerificationDetail> {
+  const organizer = await Organizer.findByPk(organizerId);
+  if (!organizer) throw new NotFoundError('Organizer not found');
+
+  let documents: CashfreeVendorDocStatus[] | null = null;
+  // No point calling Cashfree for document review detail once fully
+  // verified, or before anything's even been submitted — this is only
+  // useful while genuinely waiting on a real, in-progress or possibly
+  // stalled verification.
+  if (organizer.cashfreeVendorId && organizer.cashfreeVendorStatus === 'in_bene_creation') {
+    try {
+      documents = await cashfreeGetVendorDocs(organizer.cashfreeVendorId);
+    } catch {
+      // Best-effort — the core status fields below are still real and
+      // useful even if this particular Cashfree call fails.
+      documents = null;
+    }
+  }
+
+  const likelyStalled =
+    organizer.cashfreeVendorStatus === 'in_bene_creation' &&
+    organizer.kycSubmittedAt !== null &&
+    Date.now() - organizer.kycSubmittedAt.getTime() > STALLED_THRESHOLD_MS;
+
+  return {
+    cashfreeVendorStatus: organizer.cashfreeVendorStatus,
+    panNumber: organizer.panNumber,
+    kycAccountType: organizer.kycAccountType,
+    businessType: organizer.businessType,
+    bankAccountHolderName: organizer.bankAccountHolderName,
+    bankAccountNumberLast4: organizer.bankAccountNumberLast4,
+    bankIfsc: organizer.bankIfsc,
+    contactPhone: organizer.contactPhone,
+    kycSubmittedAt: organizer.kycSubmittedAt?.toISOString() ?? null,
+    likelyStalled,
+    documents: documents?.map((d) => ({ docType: d.doc_type, status: d.status, remarks: d.remarks })) ?? null,
+  };
 }
