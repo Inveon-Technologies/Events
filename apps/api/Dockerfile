@@ -20,7 +20,14 @@ ENV NODE_ENV=production
 RUN apk add --no-cache curl ffmpeg
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+# Then remove the package managers: the running API only needs `node`
+# (the app and `node dist/db/migrate.js`), and npm/yarn/corepack bundle
+# their own dependencies, which the image scan (security.yml) flags as
+# vulnerable even though the app never loads them.
+RUN npm ci --omit=dev \
+  && npm cache clean --force \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /root/.npm
 COPY --from=build /app/dist ./dist
 
 # Don't run as root in production.
