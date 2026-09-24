@@ -143,7 +143,14 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
     let totalCapacity = event.capacity;
 
     if (params.ticketTiers) {
-      existingTiers = await TicketCategory.findAll({ where: { eventId: event.id }, transaction: t });
+      // FOR UPDATE: each tier's quota_remaining is rewritten below as
+      // an absolute value (newTotal - sold), so it must be computed from
+      // numbers no booking can change underneath it. Without the lock, a
+      // booking committing between this read and that write had its
+      // decrement silently overwritten — tickets sold, but counted as
+      // still available, i.e. oversold. Concurrent bookings now simply
+      // wait for this edit to commit (and vice versa).
+      existingTiers = await TicketCategory.findAll({ where: { eventId: event.id }, transaction: t, lock: t.LOCK.UPDATE });
       const existingById = new Map(existingTiers.map((tier) => [tier.id, tier]));
       const keptIds = new Set<string>();
 

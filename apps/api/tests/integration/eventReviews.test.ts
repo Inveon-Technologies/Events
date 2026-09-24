@@ -15,8 +15,23 @@ describe('event feedback and ratings (real DB)', () => {
   let tierId: string;
   let futureTierId: string;
 
+  // Bookings on an event that has already happened are refused, but
+  // reviews are only accepted for completed events — so a "past event"
+  // booking is made while the event is briefly moved into the future,
+  // exactly as it would have been booked in real life.
+  async function bookWhileUpcoming(eventId: string, body: Record<string, unknown>) {
+    const event = (await Event.findByPk(eventId))!;
+    const realDate = event.eventDate;
+    await event.update({ eventDate: new Date(Date.now() + 30 * 86400000) });
+    try {
+      return await request(app).post(`/api/events/${eventId}/bookings`).send(body);
+    } finally {
+      await event.update({ eventDate: realDate });
+    }
+  }
+
   async function createConfirmedBooking(eventId: string, tierIdParam: string, email: string, name: string) {
-    const res = await request(app).post(`/api/events/${eventId}/bookings`).send({
+    const res = await bookWhileUpcoming(eventId, {
       ticketCategoryId: tierIdParam,
       quantity: 1,
       primaryContactName: name,
@@ -118,7 +133,7 @@ describe('event feedback and ratings (real DB)', () => {
   });
 
   it('rejects feedback for a booking that was never confirmed', async () => {
-    const res = await request(app).post(`/api/events/${pastEventId}/bookings`).send({
+    const res = await bookWhileUpcoming(pastEventId, {
       ticketCategoryId: tierId,
       quantity: 1,
       primaryContactName: 'Unconfirmed Customer',

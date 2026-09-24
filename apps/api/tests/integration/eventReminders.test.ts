@@ -5,7 +5,7 @@ import { Organizer, User, Event, TicketCategory, Booking, Payment, Ticket } from
 import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
 import { sendEmail, isEmailConfigured } from '../../src/services/email';
-import { checkAndSendEventReminders, findEventsNeedingReminder } from '../../src/services/eventReminders';
+import { checkAndSendEventReminders, findEventsNeedingReminder, sendEventReminder } from '../../src/services/eventReminders';
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');
@@ -99,7 +99,8 @@ describe('real 3-hour event reminder system (real DB)', () => {
     const results = await checkAndSendEventReminders();
     const thisEventResult = results.find((r) => r.eventId === eventId);
     expect(thisEventResult).toBeTruthy();
-    expect(thisEventResult!.attendeesEmailed).toBe(1);
+    expect(thisEventResult!.emailsSent).toBe(1);
+    expect(thisEventResult!.attendeesCovered).toBe(1);
 
     const call = mockSendEmail.mock.calls.find((c) => c[0].to === `reminder-in-window-${suffix}@example.com` && c[0].subject.includes('starts in 3 hours'));
     expect(call).toBeTruthy();
@@ -122,8 +123,9 @@ describe('real 3-hour event reminder system (real DB)', () => {
 
   it('does not send a reminder for an event that has already started', async () => {
     const { eventId, tierId: tId } = await createEventAndTier();
-    await setEventDate(eventId, new Date(Date.now() - 60 * 60 * 1000));
+    // Booked while still upcoming (bookings on a started event are refused).
     await createConfirmedBooking(eventId, tId, `reminder-already-started-${suffix}@example.com`, 'Already Started Attendee');
+    await setEventDate(eventId, new Date(Date.now() - 60 * 60 * 1000));
 
     const found = await findEventsNeedingReminder();
     expect(found.find((e) => e.id === eventId)).toBeUndefined();
@@ -144,7 +146,20 @@ describe('real 3-hour event reminder system (real DB)', () => {
     expect(reminderCallsSecond).toHaveLength(0);
   });
 
-  it('emails every real ticket holder on a multi-attendee booking, not just the primary contact once', async () => {
+  it('two overlapping runs (e.g. two API processes) send the reminder exactly once', async () => {
+    const { eventId, tierId: tId } = await createEventAndTier();
+    await setEventDate(eventId, new Date(Date.now() + 2 * 60 * 60 * 1000));
+    const email = `reminder-race-${suffix}@example.com`;
+    await createConfirmedBooking(eventId, tId, email, 'Race Attendee');
+    mockSendEmail.mockClear();
+
+    const event = await Event.findByPk(eventId);
+    const [a, b] = await Promise.all([sendEventReminder(event!), sendEventReminder(event!)]);
+    expect(a.emailsSent + b.emailsSent).toBe(1);
+    expect(mockSendEmail.mock.calls.filter((c) => c[0].to === email && c[0].subject.includes('starts in 3 hours'))).toHaveLength(1);
+  });
+
+  it('sends one email per multi-attendee booking (its only address), greeting every attendee by name', async () => {
     const { eventId, tierId: tId } = await createEventAndTier();
     await setEventDate(eventId, new Date(Date.now() + 2 * 60 * 60 * 1000));
     const bookingRes = await request(app).post(`/api/events/${eventId}/bookings`).send({
@@ -156,7 +171,12 @@ describe('real 3-hour event reminder system (real DB)', () => {
 
     const results = await checkAndSendEventReminders();
     const thisEventResult = results.find((r) => r.eventId === eventId);
-    expect(thisEventResult!.attendeesEmailed).toBe(3);
+    expect(thisEventResult!.emailsSent).toBe(1);
+    expect(thisEventResult!.attendeesCovered).toBe(3);
+    const call = mockSendEmail.mock.calls.find(
+      (c) => c[0].to === `reminder-group-${suffix}@example.com` && c[0].subject.includes('starts in 3 hours'),
+    );
+    expect(call![0].html).toContain('Attendee One, Attendee Two and Attendee Three');
   });
 
   it('skips a cancelled ticket within an otherwise-confirmed booking', async () => {
@@ -168,6 +188,6 @@ describe('real 3-hour event reminder system (real DB)', () => {
 
     const results = await checkAndSendEventReminders();
     const thisEventResult = results.find((r) => r.eventId === eventId);
-    expect(thisEventResult!.attendeesEmailed).toBe(0);
+    expect(thisEventResult!.emailsSent).toBe(0);
   });
 });

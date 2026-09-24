@@ -8,6 +8,13 @@ import { UPLOAD_DIR } from './services/eventMedia';
 export function createApp(): Express {
   const app = express();
 
+  // Production traffic arrives through two nginx hops (the shared
+  // front-door that terminates TLS, then this stack's own nginx), so
+  // req.protocol / req.ip must come from X-Forwarded-* — otherwise
+  // every generated URL says http:// and every client shares the proxy's
+  // IP for rate limiting. Configurable for other topologies.
+  app.set('trust proxy', process.env.TRUST_PROXY_HOPS ? Number(process.env.TRUST_PROXY_HOPS) : 2);
+
   // Mounted with express.raw(), and before the global express.json()
   // below — webhook signature verification needs the exact raw bytes
   // Cashfree sent (see routes/webhooks.ts), which express.json() would

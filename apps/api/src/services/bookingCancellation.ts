@@ -1,5 +1,7 @@
+import { Op } from 'sequelize';
 import { sequelize } from '../db/connection';
-import { Event, Booking, Payment, Ticket, User } from '../models';
+import { Event, Booking, Payment, User } from '../models';
+import { releaseBookingTickets } from './bookingTickets';
 import { cashfreeCreateRefund } from './cashfreeClient';
 import { sendEmail, isEmailConfigured } from './email';
 import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '../emails/templates';
@@ -7,6 +9,16 @@ import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '.
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
 export class ForbiddenError extends Error {}
+
+// Emails are read in India — format in IST explicitly rather than in
+// whatever timezone the server/container happens to run in (UTC in
+// Docker), which showed customers the wrong time.
+function formatEventDateLabel(date: Date): string {
+  return date.toLocaleString('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+}
 
 export interface CancellationResult {
   bookingId: string;
@@ -33,10 +45,19 @@ async function performCancellation(params: {
   refundPercentage: number;
 }): Promise<CancellationResult> {
   const { booking, event } = params;
-  const refundAmountPaise = Math.round(booking.totalAmountPaise * (params.refundPercentage / 100));
+  // Nothing was ever collected for a still-pending booking, so there's
+  // nothing to refund, whatever the policy says.
+  const wasPaid = booking.status === 'confirmed';
+  const refundAmountPaise = wasPaid ? Math.round(booking.totalAmountPaise * (params.refundPercentage / 100)) : 0;
 
   await sequelize.transaction(async (t) => {
-    await booking.update(
+    // The status check and the change are one conditional UPDATE, so
+    // two concurrent cancellations of the same booking (a double-click,
+    // or customer and organizer at once) can't both proceed — the loser
+    // matches zero rows. Checking booking.status in JS first and then
+    // updating let both through, releasing the tickets twice
+    // (overselling) and firing two refunds.
+    const [count] = await Booking.update(
       {
         status: 'cancelled',
         cancellationReason: params.reason,
@@ -44,21 +65,13 @@ async function performCancellation(params: {
         refundAmountPaise,
         refundStatus: refundAmountPaise > 0 ? 'pending' : null,
       },
-      { transaction: t },
+      { where: { id: booking.id, status: booking.status }, transaction: t },
     );
+    if (count === 0) throw new ValidationError('This booking cannot be cancelled');
 
-    const tickets = await Ticket.findAll({ where: { bookingId: booking.id }, transaction: t });
-    for (const ticket of tickets) {
-      // eslint-disable-next-line no-await-in-loop
-      await ticket.update({ status: 'cancelled' }, { transaction: t });
-    }
-    if (tickets.length > 0) {
-      await sequelize.query(
-        `UPDATE ticket_categories SET quota_remaining = quota_remaining + :qty, updated_at = NOW() WHERE id = :id`,
-        { replacements: { qty: tickets.length, id: tickets[0].ticketCategoryId }, transaction: t },
-      );
-    }
+    await releaseBookingTickets(booking.id, t);
   });
+  await booking.reload();
 
   let refundStatus: string | null = null;
 
@@ -101,9 +114,7 @@ async function performCancellation(params: {
       const html = bookingCancellationEmail({
         customerName: booking.primaryContactName,
         eventName: event.name,
-        eventDateLabel: event.eventDate.toLocaleDateString('en-IN', {
-          weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit',
-        }),
+        eventDateLabel: formatEventDateLabel(event.eventDate),
         bookingReference: booking.bookingReference,
         reason: params.reason,
         cancelledByEventCancellation: params.isEventCancellation,
@@ -193,6 +204,9 @@ export async function organizerCancelBooking(bookingId: string, organizerId: str
 
 export interface EventCancellationResult {
   cancelledBookings: CancellationResult[];
+  // Bookings that couldn't be cancelled this run — calling
+  // organizerCancelEvent again retries them.
+  failedBookingIds: string[];
 }
 
 export async function organizerCancelEvent(eventId: string, organizerId: string, reason: string): Promise<EventCancellationResult> {
@@ -202,25 +216,50 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
   if (!event) throw new NotFoundError('Event not found');
   if (event.organizerId !== organizerId) throw new ForbiddenError('You do not have access to this event');
 
-  if (event.status === 'cancelled') {
+  // Every booking still active on the event: confirmed ones (refunded
+  // in full) and pending ones (nothing collected yet — cancelled so a
+  // late online payment or a cash handover can't confirm a seat at an
+  // event that isn't happening).
+  const activeBookings = await Booking.findAll({ where: { eventId, status: { [Op.in]: ['confirmed', 'pending'] } } });
+
+  // Resumable: an event already marked cancelled whose earlier run
+  // failed partway still has active bookings, and calling this again
+  // finishes the job instead of refusing with "already cancelled".
+  if (event.status === 'cancelled' && activeBookings.length === 0) {
     throw new ValidationError('This event is already cancelled');
   }
 
-  await event.update({ status: 'cancelled', cancellationReason: reason.trim() });
+  // Marked cancelled first so no new booking can start while the
+  // existing ones are being cancelled (bookingCreation.ts only accepts
+  // published events).
+  if (event.status !== 'cancelled') {
+    await event.update({ status: 'cancelled', cancellationReason: reason.trim() });
+  }
 
-  const confirmedBookings = await Booking.findAll({ where: { eventId, status: 'confirmed' } });
   const cancelledBookings: CancellationResult[] = [];
-  for (const booking of confirmedBookings) {
-    // eslint-disable-next-line no-await-in-loop
-    const result = await performCancellation({
-      booking,
-      event,
-      reason: `Event cancelled by organizer: ${reason.trim()}`,
-      cancelledBy: 'organizer',
-      isEventCancellation: true,
-      refundPercentage: 100,
-    });
-    cancelledBookings.push(result);
+  const failedBookingIds: string[] = [];
+  for (const booking of activeBookings) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await performCancellation({
+        booking,
+        event,
+        reason: `Event cancelled by organizer: ${reason.trim()}`,
+        cancelledBy: 'organizer',
+        isEventCancellation: true,
+        refundPercentage: 100,
+      });
+      cancelledBookings.push(result);
+    } catch (err) {
+      // One booking failing (e.g. it was concurrently cancelled, or a
+      // DB hiccup) must not stop every other attendee from being
+      // cancelled and refunded. The organizer can re-run this to retry.
+      if (!(err instanceof ValidationError)) {
+        // eslint-disable-next-line no-console
+        console.error(`Failed to cancel booking ${booking.id} during event cancellation ${eventId}:`, err);
+        failedBookingIds.push(booking.id);
+      }
+    }
   }
 
   // Best-effort summary to the organizer confirming what just happened —
@@ -235,9 +274,7 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
         const html = eventCancelledOrganizerSummaryEmail({
           organizerContactName: owner.name ?? 'there',
           eventName: event.name,
-          eventDateLabel: event.eventDate.toLocaleDateString('en-IN', {
-            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit',
-          }),
+          eventDateLabel: formatEventDateLabel(event.eventDate),
           reason: reason.trim(),
           cancelledBookingsCount: cancelledBookings.length,
           totalRefundedPaise,
@@ -254,5 +291,5 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
     }
   }
 
-  return { cancelledBookings };
+  return { cancelledBookings, failedBookingIds };
 }

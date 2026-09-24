@@ -1,5 +1,12 @@
-import { Router } from 'express';
-import { createBooking, SoldOutError, GenderRestrictionError, NotFoundError, OrganizerNotVerifiedError } from '../services/bookingCreation';
+import { Router, Request } from 'express';
+import {
+  createBooking,
+  SoldOutError,
+  GenderRestrictionError,
+  NotFoundError,
+  OrganizerNotVerifiedError,
+  BookingValidationError,
+} from '../services/bookingCreation';
 import { createCashfreeOrderForBooking, NotFoundError as OrderNotFoundError } from '../services/cashfreeOrders';
 import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
@@ -26,9 +33,50 @@ import {
 } from '../services/customerAuth';
 import { verifyCustomerSessionToken } from '../auth/jwt';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { rateLimit } from '../middleware/rateLimit';
 import { Booking, Event } from '../models';
 
 export const publicBookingsRouter = Router();
+
+const FIFTEEN_MINUTES = 15 * 60;
+// Booking creation reserves real stock and (for free/cash bookings)
+// sends email to whatever address was entered.
+const bookingCreateLimit = rateLimit({ name: 'booking-create', windowSeconds: FIFTEEN_MINUTES, max: 20 });
+// Reference + email lookups — the booking reference is the only secret
+// here, so guessing has to be slow. Generous enough for one customer's
+// ticket page (detail + one QR image per ticket, reloaded a few times).
+const bookingLookupLimit = rateLimit({ name: 'booking-lookup', windowSeconds: FIFTEEN_MINUTES, max: 120 });
+const bookingActionLimit = rateLimit({ name: 'booking-action', windowSeconds: FIFTEEN_MINUTES, max: 10 });
+const customerLoginSendLimit = rateLimit({ name: 'customer-login-send', windowSeconds: FIFTEEN_MINUTES, max: 5 });
+const customerLoginVerifyLimit = rateLimit({ name: 'customer-login-verify', windowSeconds: FIFTEEN_MINUTES, max: 20 });
+
+// Cashfree sends the customer's browser to whatever return_url we give
+// it, so a client-supplied value is only honored when it points back at
+// this site (same origin as the request, or WEB_PUBLIC_URL when the
+// frontend lives elsewhere) — never an arbitrary external page. With
+// `trust proxy` set in app.ts, req.protocol reflects the real https
+// scheme behind the TLS-terminating front-door nginx.
+function resolveReturnUrl(req: Request, requested: unknown, bookingId: string): string {
+  const ownOrigin = `${req.protocol}://${req.get('host')}`;
+  const allowedOrigins = new Set([ownOrigin]);
+  if (process.env.WEB_PUBLIC_URL) {
+    try {
+      allowedOrigins.add(new URL(process.env.WEB_PUBLIC_URL).origin);
+    } catch {
+      // Misconfigured WEB_PUBLIC_URL — just don't allow it.
+    }
+  }
+
+  if (typeof requested === 'string') {
+    try {
+      const url = new URL(requested, ownOrigin);
+      if (allowedOrigins.has(url.origin)) return url.toString();
+    } catch {
+      // Unparseable — fall through to the default.
+    }
+  }
+  return `${ownOrigin}/bookings/${bookingId}/confirmed`;
+}
 
 // Intentionally minimal, no auth — this exists for exactly one purpose:
 // Cashfree redirects the customer's own browser back here right after
@@ -83,7 +131,7 @@ publicBookingsRouter.get('/events/:eventId', asyncHandler(async (req, res) => {
   res.status(200).json(event);
 }));
 
-publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, res) => {
+publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const {
     ticketCategoryId,
@@ -130,10 +178,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
     // confirmation email fires later, from the payment webhook, once
     // money has actually moved (see cashfreeOrders.ts).
     if (result.totalAmountPaise > 0 && paymentMethod === 'online') {
-      const returnUrl =
-        typeof (req.body as Record<string, unknown>).returnUrl === 'string'
-          ? ((req.body as Record<string, unknown>).returnUrl as string)
-          : `${req.protocol}://${req.get('host')}/bookings/${result.bookingId}/confirmed`;
+      const returnUrl = resolveReturnUrl(req, (req.body as Record<string, unknown>).returnUrl, result.bookingId);
 
       const order = await createCashfreeOrderForBooking({
         bookingId: result.bookingId,
@@ -167,7 +212,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
       res.status(409).json({ error: err.message });
       return;
     }
-    if (err instanceof GenderRestrictionError) {
+    if (err instanceof GenderRestrictionError || err instanceof BookingValidationError) {
       res.status(400).json({ error: err.message });
       return;
     }
@@ -196,7 +241,7 @@ publicBookingsRouter.get('/events/:eventId/reviews', asyncHandler(async (req, re
   res.status(200).json({ reviews });
 }));
 
-publicBookingsRouter.post('/bookings/:bookingReference/feedback', asyncHandler(async (req, res) => {
+publicBookingsRouter.post('/bookings/:bookingReference/feedback', bookingActionLimit, asyncHandler(async (req, res) => {
   const { email, rating, reviewText } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || typeof rating !== 'number') {
@@ -225,7 +270,7 @@ publicBookingsRouter.post('/bookings/:bookingReference/feedback', asyncHandler(a
   }
 }));
 
-publicBookingsRouter.post('/bookings/:bookingReference/cancel', asyncHandler(async (req, res) => {
+publicBookingsRouter.post('/bookings/:bookingReference/cancel', bookingActionLimit, asyncHandler(async (req, res) => {
   const { email, reason } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || typeof reason !== 'string') {
@@ -249,7 +294,7 @@ publicBookingsRouter.post('/bookings/:bookingReference/cancel', asyncHandler(asy
   }
 }));
 
-publicBookingsRouter.get('/bookings/:bookingReference/tickets', asyncHandler(async (req, res) => {
+publicBookingsRouter.get('/bookings/:bookingReference/tickets', bookingLookupLimit, asyncHandler(async (req, res) => {
   const { email } = req.query;
   if (typeof email !== 'string') {
     res.status(400).json({ error: 'Email is required' });
@@ -268,7 +313,7 @@ publicBookingsRouter.get('/bookings/:bookingReference/tickets', asyncHandler(asy
   }
 }));
 
-publicBookingsRouter.get('/bookings/:bookingReference/tickets/:ticketId/qr', asyncHandler(async (req, res) => {
+publicBookingsRouter.get('/bookings/:bookingReference/tickets/:ticketId/qr', bookingLookupLimit, asyncHandler(async (req, res) => {
   const { email } = req.query;
   if (typeof email !== 'string') {
     res.status(400).json({ error: 'Email is required' });
@@ -287,7 +332,7 @@ publicBookingsRouter.get('/bookings/:bookingReference/tickets/:ticketId/qr', asy
   }
 }));
 
-publicBookingsRouter.post('/bookings/login/initiate', asyncHandler(async (req, res) => {
+publicBookingsRouter.post('/bookings/login/initiate', customerLoginSendLimit, asyncHandler(async (req, res) => {
   const { bookingReference, email } = req.body as Record<string, unknown>;
   if (typeof bookingReference !== 'string' || typeof email !== 'string') {
     res.status(400).json({ error: 'Booking reference and email are required' });
@@ -311,7 +356,7 @@ publicBookingsRouter.post('/bookings/login/initiate', asyncHandler(async (req, r
   }
 }));
 
-publicBookingsRouter.post('/bookings/login/verify', asyncHandler(async (req, res) => {
+publicBookingsRouter.post('/bookings/login/verify', customerLoginVerifyLimit, asyncHandler(async (req, res) => {
   const { email, code } = req.body as Record<string, unknown>;
   if (typeof email !== 'string' || typeof code !== 'string') {
     res.status(400).json({ error: 'Email and code are required' });

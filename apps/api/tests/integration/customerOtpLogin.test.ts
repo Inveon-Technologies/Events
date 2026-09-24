@@ -139,6 +139,21 @@ describe('real customer OTP login (real DB)', () => {
     expect(eventNames).toEqual([`OTP Login Event A ${suffix}`, `OTP Login Event B ${suffix}`].sort());
   });
 
+  it('lists older bookings stored with different email casing (before emails were normalized)', async () => {
+    await Booking.update({ primaryContactEmail: customerEmail.toUpperCase() }, { where: { bookingReference: bookingRefA } });
+    try {
+      mockSendEmail.mockClear();
+      await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, email: customerEmail });
+      // Sent to the address as stored on the booking.
+      const code = mockSendEmail.mock.calls[0][0].html.match(/(\d{6})/)![1];
+      const verifyRes = await request(app).post('/api/bookings/login/verify').send({ email: customerEmail, code });
+      const myBookingsRes = await request(app).get('/api/bookings/my').set('Authorization', `Bearer ${verifyRes.body.token}`);
+      expect(myBookingsRes.body.bookings).toHaveLength(2);
+    } finally {
+      await Booking.update({ primaryContactEmail: customerEmail }, { where: { bookingReference: bookingRefA } });
+    }
+  });
+
   it('the same OTP code cannot be used twice — real single-use enforcement', async () => {
     await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, email: customerEmail });
     const realCode = extractOtpFromEmail();

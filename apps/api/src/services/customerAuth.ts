@@ -1,3 +1,4 @@
+import { fn, col, where as sqlWhere } from 'sequelize';
 import { Booking, Event, Ticket } from '../models';
 import { issueOtp, verifyOtp, OTP_EXPIRY_MINUTES } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
@@ -66,7 +67,10 @@ export interface CustomerBookingSummary {
 // full password-based account system to get there.
 export async function getCustomerBookings(email: string): Promise<CustomerBookingSummary[]> {
   const bookings = await Booking.findAll({
-    where: { primaryContactEmail: email },
+    // Case-insensitive: bookings are stored lowercased now (see
+    // bookingCreation.ts), but older rows kept whatever casing the
+    // customer typed, and the session email is always lowercased.
+    where: sqlWhere(fn('lower', col('Booking.primary_contact_email')), email.trim().toLowerCase()),
     include: [{ model: Event, attributes: ['id', 'name', 'eventDate', 'bannerUrl'] }],
     order: [['createdAt', 'DESC']],
   });

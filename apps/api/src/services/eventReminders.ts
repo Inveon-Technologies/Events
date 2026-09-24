@@ -27,53 +27,75 @@ export async function findEventsNeedingReminder(): Promise<Event[]> {
 
 export interface ReminderSendResult {
   eventId: string;
-  attendeesEmailed: number;
+  // One email per booking, to its primary contact — the only address
+  // this system has for any attendee on it.
+  emailsSent: number;
+  // Tickets those emails covered (every non-cancelled attendee).
+  attendeesCovered: number;
 }
 
-// Sends to every ticket holder on every confirmed booking for this
-// event — not just the primary contact per booking, so a booking for
-// three people reminds all three real attendee names, each getting
-// their own email. Marks reminder_sent_at only after attempting every
-// send, so a mid-batch failure doesn't leave the event stuck retrying
-// forever on the next poll — matches the same "one send, tracked,
-// never blocks on individual failures" reasoning as every other
-// best-effort email path in this codebase.
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+// Claims the event first with a conditional UPDATE (reminder_sent_at
+// still NULL -> now), then sends. With more than one API process (or
+// two overlapping polls) running, exactly one claim succeeds, so a
+// reminder can never go out twice. The trade-off is at-most-once: a
+// crash mid-batch leaves the rest unsent rather than re-sending to
+// everyone, which is the right side to err on for a reminder.
+//
+// One email per booking, not per ticket — every ticket's only address
+// is the booking's primary contact, so per-ticket sends just gave that
+// person N identical emails. The one email greets every attendee on
+// the booking by name instead.
 export async function sendEventReminder(event: Event): Promise<ReminderSendResult> {
-  let attendeesEmailed = 0;
+  const result: ReminderSendResult = { eventId: event.id, emailsSent: 0, attendeesCovered: 0 };
 
-  if (isEmailConfigured()) {
-    const bookings = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
-    const mapUrl = buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude);
-    const eventTimeLabel = event.eventDate.toLocaleString('en-IN', {
-      weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata',
+  const [claimed] = await Event.update(
+    { reminderSentAt: new Date() },
+    { where: { id: event.id, reminderSentAt: null } },
+  );
+  if (claimed === 0) return result;
+
+  if (!isEmailConfigured()) return result;
+
+  const bookings = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
+  const mapUrl = buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude);
+  const eventTimeLabel = event.eventDate.toLocaleString('en-IN', {
+    weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata',
+  });
+
+  for (const booking of bookings) {
+    // eslint-disable-next-line no-await-in-loop
+    const tickets = await Ticket.findAll({
+      where: { bookingId: booking.id, status: { [Op.ne]: 'cancelled' } },
+      order: [['createdAt', 'ASC']],
     });
+    if (tickets.length === 0) continue;
 
-    for (const booking of bookings) {
+    const attendeeNames = Array.from(new Set(tickets.map((t) => t.attendeeName)));
+    try {
+      const html = eventReminderEmail({
+        attendeeName: joinNames(attendeeNames),
+        eventName: event.name,
+        bookingReference: booking.bookingReference,
+        eventTimeLabel,
+        venueAddress: event.venueAddress,
+        mapUrl,
+      });
       // eslint-disable-next-line no-await-in-loop
-      const tickets = await Ticket.findAll({ where: { bookingId: booking.id, status: { [Op.ne]: 'cancelled' } } });
-      for (const ticket of tickets) {
-        try {
-          const html = eventReminderEmail({
-            attendeeName: ticket.attendeeName,
-            eventName: event.name,
-            bookingReference: booking.bookingReference,
-            eventTimeLabel,
-            venueAddress: event.venueAddress,
-            mapUrl,
-          });
-          // eslint-disable-next-line no-await-in-loop
-          await sendEmail({ to: booking.primaryContactEmail, subject: `${event.name} starts in 3 hours`, html });
-          attendeesEmailed += 1;
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error(`Failed to send event reminder for ticket ${ticket.id} (event ${event.id}):`, err);
-        }
-      }
+      await sendEmail({ to: booking.primaryContactEmail, subject: `${event.name} starts in 3 hours`, html });
+      result.emailsSent += 1;
+      result.attendeesCovered += tickets.length;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`Failed to send event reminder for booking ${booking.id} (event ${event.id}):`, err);
     }
   }
 
-  await event.update({ reminderSentAt: new Date() });
-  return { eventId: event.id, attendeesEmailed };
+  return result;
 }
 
 // The single entry point the poller calls — finds every event that

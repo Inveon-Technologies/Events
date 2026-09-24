@@ -131,7 +131,34 @@ export const organizerRouter = Router();
 // from.
 const mediaUpload = multer({ dest: os.tmpdir(), limits: { fileSize: MAX_FILE_SIZE_BYTES } });
 
-organizerRouter.use(authenticate, requireRole('organizer_owner', 'organizer_staff'));
+// Access by role:
+// - organizer_owner: everything.
+// - organizer_staff: everything except the few actions that move money
+//   or are irreversible (bank/payout details, cancelling or deleting a
+//   whole event) — those go through ownerOnly below.
+// - gate_volunteer: only what gate check-in needs — the event list to
+//   pick an event, and scanning/undoing check-ins. Previously they were
+//   locked out of the whole router, including check-in itself.
+const GATE_VOLUNTEER_ROUTES: Array<{ method: string; pattern: RegExp }> = [
+  { method: 'GET', pattern: /^\/events\/?$/ },
+  { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/?$/ },
+  { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/[^/]+\/undo\/?$/ },
+];
+
+organizerRouter.use(authenticate, (req, res, next) => {
+  const role = req.user?.role;
+  if (role === 'organizer_owner' || role === 'organizer_staff') {
+    next();
+    return;
+  }
+  if (role === 'gate_volunteer' && GATE_VOLUNTEER_ROUTES.some((r) => r.method === req.method && r.pattern.test(req.path))) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: 'Forbidden' });
+});
+
+const ownerOnly = requireRole('organizer_owner');
 
 organizerRouter.get('/dashboard', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
@@ -350,7 +377,7 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
   }
 }));
 
-organizerRouter.delete('/events/:eventId', asyncHandler(async (req, res) => {
+organizerRouter.delete('/events/:eventId', ownerOnly, asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
     res.status(400).json({ error: 'This account has no associated organizer' });
@@ -468,7 +495,7 @@ organizerRouter.get('/verification', asyncHandler(async (req, res) => {
   res.status(200).json(detail);
 }));
 
-organizerRouter.post('/verification', asyncHandler(async (req, res) => {
+organizerRouter.post('/verification', ownerOnly, asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
     res.status(400).json({ error: 'This account has no associated organizer' });
@@ -566,7 +593,7 @@ organizerRouter.post('/bookings/:bookingId/cancel', asyncHandler(async (req, res
   }
 }));
 
-organizerRouter.post('/events/:eventId/cancel', asyncHandler(async (req, res) => {
+organizerRouter.post('/events/:eventId/cancel', ownerOnly, asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
     res.status(400).json({ error: 'This account has no associated organizer' });

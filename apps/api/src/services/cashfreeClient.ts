@@ -234,6 +234,10 @@ export interface CreateOrderParams {
   vendorSplit?: { vendorId: string; amountRupees: number };
   returnUrl: string;
   notifyUrl: string;
+  // When the payment session stops accepting payment. Without it
+  // Cashfree defaults to 30 days — far longer than this platform holds
+  // a pending booking's reserved tickets (see pendingBookingExpiry.ts).
+  expiresAt?: Date;
 }
 
 export interface CashfreeOrderResponse {
@@ -259,6 +263,7 @@ export async function cashfreeCreateOrder(params: CreateOrderParams): Promise<Ca
       return_url: params.returnUrl,
       notify_url: params.notifyUrl,
     },
+    ...(params.expiresAt ? { order_expiry_time: params.expiresAt.toISOString() } : {}),
     ...(params.vendorSplit
       ? {
           order_splits: [
@@ -267,6 +272,14 @@ export async function cashfreeCreateOrder(params: CreateOrderParams): Promise<Ca
         }
       : {}),
   });
+}
+
+// Order status as Cashfree currently sees it — ACTIVE (awaiting
+// payment), PAID, EXPIRED, or TERMINATED. Used to double-check a
+// pending booking before releasing its tickets, in case the payment
+// webhook was delayed or lost.
+export async function cashfreeGetOrder(orderId: string): Promise<CashfreeOrderResponse> {
+  return cashfreeRequest<CashfreeOrderResponse>('GET', `/orders/${encodeURIComponent(orderId)}`);
 }
 
 // ---- Refunds ----
