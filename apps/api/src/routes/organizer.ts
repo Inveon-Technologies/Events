@@ -42,6 +42,7 @@ import {
 import { getOrganizerTickets } from '../services/organizerTickets';
 import { getOrganizerNotifications } from '../services/organizerNotifications';
 import { getOrganizerPayments } from '../services/organizerPayments';
+import { getOrganizerReport, REPORT_TYPES, ReportType, ReportValidationError } from '../services/organizerReports';
 import { searchVenues, reverseGeocode, VenueSearchError } from '../services/venueSearch';
 import {
   getOrganizerProfile,
@@ -777,6 +778,36 @@ organizerRouter.get('/payments', asyncHandler(async (req, res) => {
 
   const result = await getOrganizerPayments(organizerId);
   res.status(200).json(result);
+}));
+
+organizerRouter.get('/reports/:type', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  const { type } = req.params;
+  if (!(REPORT_TYPES as readonly string[]).includes(type)) {
+    res.status(404).json({ error: 'Unknown report' });
+    return;
+  }
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  try {
+    const report = await getOrganizerReport({
+      organizerId,
+      type: type as ReportType,
+      eventId: str(req.query.eventId) === 'all' ? undefined : str(req.query.eventId),
+      from: str(req.query.from),
+      to: str(req.query.to),
+    });
+    res.status(200).json(report);
+  } catch (err) {
+    if (err instanceof ReportValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
 }));
 
 organizerRouter.get('/profile', asyncHandler(async (req, res) => {

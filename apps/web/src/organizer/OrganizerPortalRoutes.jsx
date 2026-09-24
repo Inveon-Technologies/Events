@@ -37,6 +37,7 @@ import Participants from './pages/operations/Participants';
 import Payments from './pages/operations/Payments';
 import CheckIn from './pages/operations/CheckIn';
 import Cancellations from './pages/operations/Cancellations';
+import Reports from './pages/operations/Reports';
 
 // Settings
 import AccountSettings from './pages/settings/AccountSettings';
@@ -106,6 +107,7 @@ export default function OrganizerPortalRoutes() {
         <Route path="payments" element={<Payments />} />
         <Route path="check-in" element={<CheckIn />} />
         <Route path="cancellations-refunds" element={<Cancellations />} />
+        <Route path="reports" element={<Reports />} />
 
         {/* Settings */}
         <Route path="settings" element={<Navigate to="/organizer/settings/account" replace />} />
