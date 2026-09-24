@@ -898,7 +898,7 @@ describe('App routing', () => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/bookings'));
       expect(call).toBeTruthy();
     });
-    const [, bookingOpts] = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/bookings'));
+    const [, bookingOpts] = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/bookings'))!;
     expect(JSON.parse(bookingOpts.body).attendeeGenders).toEqual(['male']);
 
     vi.unstubAllGlobals();
@@ -1127,7 +1127,7 @@ describe('App routing', () => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/cancel'));
       expect(call).toBeTruthy();
     });
-    const [, cancelOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/cancel'));
+    const [, cancelOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/cancel'))!;
     const body = JSON.parse(cancelOpts.body);
     expect(body).toEqual({ email: 'canceller@example.com', reason: 'Change of plans' });
 
@@ -1243,7 +1243,7 @@ describe('App routing', () => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'));
       expect(call).toBeTruthy();
     });
-    const [, initiateOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'));
+    const [, initiateOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'))!;
     expect(JSON.parse(initiateOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', email: 'real-customer@example.com' });
 
     // Real 6-box OTP entry — pasted as one atomic clipboard event
@@ -1262,7 +1262,7 @@ describe('App routing', () => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'));
       expect(call).toBeTruthy();
     });
-    const [, verifyOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'));
+    const [, verifyOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'))!;
     expect(JSON.parse(verifyOpts.body)).toEqual({ email: 'real-customer@example.com', code: '123456' });
 
     // Real navigation to the real hub, real session stored, real bookings shown.

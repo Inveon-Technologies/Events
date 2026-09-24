@@ -1,0 +1,10 @@
+# Accepted Trivy findings — each with the reason. Review when the
+# relevant file changes.
+
+# DS-0002 (no non-root USER) — apps/web/Dockerfile only. That image never
+# serves anything: it runs once to copy the built static files into the
+# shared, root-owned web_static volume that nginx serves, then exits. As
+# a non-root user the copy would fail and nginx would keep serving the
+# old build. The API image does run as a non-root user.
+DS-0002
+AVD-DS-0002
