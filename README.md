@@ -12,14 +12,16 @@ Repository: `https://github.com/Inveon-Technologies/Events.git`
 
 ## Features
 
-- **Organizer portal** — event creation, ticket category & quota management, live booking dashboard, cash-payment approval, reports/export.
-- **Public event site** — per-organizer branded pages, event listings, event details with live ticket availability.
-- **Booking & payments** — online payment (UPI/cards/netbanking via Cashfree/Razorpay) and offline cash payment flows, with atomic ticket-quota reservation to prevent overselling.
-- **Digital tickets** — QR-coded tickets delivered instantly over WhatsApp and Email.
-- **Gate check-in** — camera-based QR scanner with duplicate-scan protection and a live event-day dashboard.
-- **Post-event engagement** — automated next-day photo/video gallery links and PDF participation certificates.
+What exists today (see the roadmap for what's planned):
 
-See [`Inveon_Events_Business_Process_Guide`](./docs) for the full functional scope, and [`Inveon_Events_Technical_Roadmap.md`](./docs) for architecture details.
+- **Organizer portal** — signup with email verification, event creation/editing/duplication/cancellation, ticket tiers with quotas, event media (images + a short video), bank/payout verification via Cashfree, bookings and cancellations with refunds, gate check-in, dashboard.
+- **Public event site** — organizer and event listings, event details with live ticket availability, reviews and ratings.
+- **Booking & payments** — online payment through Cashfree (with split settlement to the organizer), free tickets, and cash bookings (held as pending for the organizer). Ticket quota is reserved atomically, so events never oversell; unpaid online bookings release their tickets automatically after the payment window.
+- **Digital tickets** — QR-coded tickets, delivered by email with a PDF invoice. Customers can log in with an emailed code to see all their bookings, view QR passes, and cancel within the organizer's refund policy.
+- **Gate check-in** — camera-based QR scanner; each ticket can be admitted exactly once, even when scanned at two gates at the same moment.
+- **Reminders** — an email to every booking 3 hours before the event.
+
+Not built yet: WhatsApp delivery, organizer approval of cash payments, post-event galleries and certificates.
 
 ---
 
@@ -27,18 +29,17 @@ See [`Inveon_Events_Business_Process_Guide`](./docs) for the full functional sco
 
 | Layer | Technology |
 |---|---|
-| Frontend | React, Vite, React Router, TanStack Query |
-| Backend | Node.js, Express, TypeScript |
-| Database | PostgreSQL |
-| Cache / Queue | Redis, BullMQ |
+| Frontend | React 18, Vite, React Router, Tailwind CSS |
+| Backend | Node.js 22, Express, TypeScript, Sequelize |
+| Database | PostgreSQL 15 (migrations via Umzug) |
+| Cache | Redis 7 (sign-in codes, rate limiting) |
+| Background jobs | In-process timers in the API (event reminders, expiring unpaid bookings) — safe with multiple API processes |
 | Reverse proxy | Nginx |
-| Process manager | PM2 (cluster mode) |
-| Object storage | AWS S3 / Cloudflare R2 |
-| CDN | Cloudflare |
+| Object storage | AWS S3 (falls back to local disk when unconfigured) |
 | Containers | Docker, Docker Compose |
-| CI/CD | GitHub Actions |
-| Payments | Cashfree / Razorpay |
-| Messaging | WhatsApp Business API, AWS SES / Brevo |
+| CI/CD | GitHub Actions → GHCR → SSH deploy with health-check rollback |
+| Payments | Cashfree (Payment Gateway + Easy Split) |
+| Email | SMTP via nodemailer (Gmail app password) |
 
 ---
 
@@ -87,28 +88,29 @@ cd apps/api && npm install && npm run migrate
 cd ../web && npm install && npm run dev
 ```
 
-### Environment variables (`apps/api/.env`)
+### Environment variables
 
-```
-DATABASE_URL=postgres://user:password@localhost:5432/inveon_events
-REDIS_URL=redis://localhost:6379
-JWT_SECRET=
-PAYMENT_GATEWAY_KEY=
-PAYMENT_GATEWAY_SECRET=
-WHATSAPP_API_TOKEN=
-EMAIL_PROVIDER_API_KEY=
-S3_BUCKET=
-S3_ACCESS_KEY=
-S3_SECRET_KEY=
+`apps/api/.env.example` lists every variable the API reads, with an explanation of each (database, Redis, JWT secret, Cashfree, SMTP, S3, public URLs, proxy hops). `apps/web/.env.example` covers the frontend.
+
+### Tests
+
+```bash
+cd apps/api
+npm test                 # unit tests, no database needed
+npm run test:integration # needs DATABASE_URL + REDIS_URL (and ffmpeg for media tests)
+npm run test:concurrency # oversell-prevention test against a real Postgres
+
+cd ../web
+npm test
 ```
 
 ---
 
 ## Deployment
 
-The project deploys via Docker Compose behind Nginx and Cloudflare, targeting a single VPS (4–8GB RAM, 50GB SSD) sized for ~1,000 concurrent users. GitHub Actions builds and pushes the image to GHCR, then deploys over SSH with a health-check gate and automatic rollback on failure.
+The project deploys via Docker Compose behind Nginx on a single VPS. After CI passes on `main`, GitHub Actions builds and pushes images to GHCR, then `scripts/deploy.sh` runs over SSH: it applies database migrations with the new image *before* replacing the running API, starts the new containers, health-checks them, and rolls back to the last good image on failure. Because a rollback keeps the migrated schema, migrations must stay backward-compatible with the previous release.
 
-See `docs/Inveon_Events_Technical_Roadmap.md` for the full infrastructure and scaling notes.
+`docker/docker-compose.yml` is for standalone/local use; production runs the Events services inside a shared compose project on the VPS (see the comments in `scripts/deploy.sh`).
 
 ---
 

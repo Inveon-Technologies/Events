@@ -31,31 +31,42 @@ NEW_TAG="${1:?Usage: deploy.sh <image_tag>}"
 
 cd "$APP_DIR"
 
+write_tag() {
+  echo "EVENTS_IMAGE_TAG=${1}" > .env.deploy
+}
+
+# --env-file REPLACES the directory's default .env auto-load rather than
+# adding to it — without also passing .env explicitly here, every other
+# var that file provides (EVENTS_POSTGRES_PASSWORD, PORTAL_POSTGRES_PASSWORD,
+# etc.) disappears, and Compose fails just interpolating the file, since
+# that happens for every service up front regardless of which ones
+# pull/up actually targets. Passing both merges them, .env.deploy's
+# EVENTS_IMAGE_TAG taking precedence for that one key.
+compose() {
+  docker compose --env-file .env --env-file .env.deploy "$@"
+}
+
 deploy_tag() {
-  local tag="$1"
-  echo "EVENTS_IMAGE_TAG=${tag}" > .env.deploy
-  # --env-file REPLACES the directory's default .env auto-load rather than
-  # adding to it — without also passing .env explicitly here, every other
-  # var that file provides (EVENTS_POSTGRES_PASSWORD, PORTAL_POSTGRES_PASSWORD,
-  # etc.) disappears, and Compose fails just interpolating the file, since
-  # that happens for every service up front regardless of which ones
-  # pull/up actually targets. Passing both merges them, .env.deploy's
-  # EVENTS_IMAGE_TAG taking precedence for that one key.
-  docker compose --env-file .env --env-file .env.deploy pull events-api events-web
-  docker compose --env-file .env --env-file .env.deploy up -d --no-deps events-api events-web
+  write_tag "$1"
+  compose pull events-api events-web
+  compose up -d --no-deps events-api events-web
 }
 
 run_migrations() {
-  # Against the compiled output already inside the container just
-  # started — no tsx, no devDependencies, matches exactly how the
-  # container itself runs (node dist/index.js), unlike `npm run migrate`
-  # which needs tsx and the TS source, neither present in this image.
-  # No deploy before this one ever actually ran this — found live when a
-  # freshly-fixed DB connection still hit "relation users does not
-  # exist". Umzug's `up` only applies pending migrations, so this is a
-  # no-op on a deploy with nothing new, and safe during a rollback to an
-  # older tag too — it never runs anything down automatically.
-  docker compose exec -T events-api node dist/db/migrate.js up
+  # Runs in a throwaway container of the NEW image, BEFORE the running
+  # API is replaced — so new code never serves traffic against the old
+  # schema, and a failed migration leaves the currently running version
+  # untouched (nothing to roll back). Against the compiled output
+  # (node dist/db/migrate.js), since the production image has no tsx or
+  # TS source. Umzug's `up` only applies pending migrations, so this is
+  # a no-op on a deploy with nothing new. --no-deps: the database is
+  # already running and must never be recreated by a deploy.
+  #
+  # Because the old version keeps running on the migrated schema until
+  # the swap (and a rollback returns to it), migrations must stay
+  # backward-compatible with the previous release: add columns/tables
+  # first, drop or rename only in a later release.
+  compose run --rm --no-deps -T events-api node dist/db/migrate.js up
 }
 
 health_check() {
@@ -75,23 +86,41 @@ health_check() {
 }
 
 echo "== Deploying image tag: $NEW_TAG =="
-deploy_tag "$NEW_TAG"
 
-if run_migrations && health_check; then
+PREVIOUS_TAG=""
+if [ -f "$LAST_GOOD_FILE" ]; then
+  PREVIOUS_TAG="$(cat "$LAST_GOOD_FILE")"
+fi
+
+write_tag "$NEW_TAG"
+compose pull events-api events-web
+
+if ! run_migrations; then
+  echo "== Migrations failed. The running version was never replaced. =="
+  # Put .env.deploy back so a later manual `docker compose up` doesn't
+  # pick up the tag that failed.
+  if [ -n "$PREVIOUS_TAG" ]; then
+    write_tag "$PREVIOUS_TAG"
+  fi
+  exit 1
+fi
+
+compose up -d --no-deps events-api events-web
+
+if health_check; then
   echo "$NEW_TAG" > "$LAST_GOOD_FILE"
   echo "== Deploy succeeded, migrations applied, health check passed. =="
   exit 0
 fi
 
-echo "== Migration or health check failed. Rolling back. =="
+echo "== Health check failed. Rolling back. =="
 
-if [ -f "$LAST_GOOD_FILE" ]; then
-  ROLLBACK_TAG="$(cat "$LAST_GOOD_FILE")"
-  echo "Rolling back to last known good tag: $ROLLBACK_TAG"
-  deploy_tag "$ROLLBACK_TAG"
+if [ -n "$PREVIOUS_TAG" ]; then
+  echo "Rolling back to last known good tag: $PREVIOUS_TAG (schema stays migrated — see run_migrations)"
+  deploy_tag "$PREVIOUS_TAG"
 
   if health_check; then
-    echo "== Rollback succeeded. Currently running: $ROLLBACK_TAG =="
+    echo "== Rollback succeeded. Currently running: $PREVIOUS_TAG =="
     exit 1  # still exit non-zero so the CI job is marked failed and gets investigated
   else
     echo "== Rollback ALSO failed health check. Manual intervention required. =="
