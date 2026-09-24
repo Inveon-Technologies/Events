@@ -3,13 +3,11 @@ import { useParams, NavLink } from 'react-router-dom';
 import { Search, Filter, Download, QrCode, CheckCircle2, XCircle, Phone, Mail, UserCheck, ShieldAlert } from 'lucide-react';
 import { useEvents } from '../../context/EventsContext';
 import StatusBadge from '../../components/common/StatusBadge';
+import EventLookupState from '../../components/common/EventLookupState';
 
-export default function EventParticipants() {
-  const { id } = useParams();
-  const { events, participants, checkInParticipant, undoCheckIn } = useEvents();
+function EventParticipantsContent({ event }) {
+  const { participants, checkInParticipant, undoCheckIn } = useEvents();
 
-  const eventId = id || 'rajgad-sunrise-trek';
-  const event = events.find((e) => e.id === eventId) || events[0];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCheckIn, setFilterCheckIn] = useState('all');
@@ -181,4 +179,12 @@ export default function EventParticipants() {
       </div>
     </div>
   );
+}
+
+export default function EventParticipants() {
+  const { id } = useParams();
+  const { events, eventsLoaded, eventsLoadError } = useEvents();
+  const event = events.find((e) => e.id === id);
+  if (!event) return <EventLookupState loaded={eventsLoaded} error={eventsLoadError} />;
+  return <EventParticipantsContent event={event} />;
 }

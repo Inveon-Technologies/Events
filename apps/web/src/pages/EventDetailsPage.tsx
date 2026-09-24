@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { fetchEventData, EventDetails } from '../mockData/rajgadTrek';
+import { fetchEventData, EventDetails, EventNotFoundError } from '../lib/eventDetails';
+import { EventUnavailablePage } from './EventUnavailablePage';
 import { formatINR } from '../lib/format';
 
 export function EventDetailsPage() {
@@ -9,6 +10,8 @@ export function EventDetailsPage() {
   const navigate = useNavigate();
 
   const [event, setEvent] = useState<EventDetails | null>(null);
+  const [loadError, setLoadError] = useState<'not_found' | 'failed' | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [reviews, setReviews] = useState<{ id: string; rating: number; reviewText: string | null; customerName: string; createdAt: string }[]>([]);
 
   const [activeTab, setActiveTab] = useState<'about' | 'details' | 'gear' | 'location' | 'policy'>('about');
@@ -18,6 +21,7 @@ export function EventDetailsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoadError(null);
     fetchEventData(eventId).then((data) => {
       if (cancelled) return;
       setEvent(data);
@@ -26,10 +30,6 @@ export function EventDetailsPage() {
       // the mock event's fixed tier ids.
       setQuantities(data.ticketCategories[0] ? { [data.ticketCategories[0].id]: 1 } : {});
 
-      // A mock-fallback event's id doesn't correspond to any real
-      // reviews — the fetch below simply returns nothing for it, same
-      // "real data or nothing, never fabricated" handling as everywhere
-      // else on this page.
       fetch(`/api/events/${data.id}/reviews`)
         .then((res) => (res.ok ? res.json() : { reviews: [] }))
         .then((reviewData) => {
@@ -38,11 +38,35 @@ export function EventDetailsPage() {
         .catch(() => {
           if (!cancelled) setReviews([]);
         });
+    }).catch((err) => {
+      if (cancelled) return;
+      setLoadError(err instanceof EventNotFoundError ? 'not_found' : 'failed');
     });
     return () => {
       cancelled = true;
     };
-  }, [eventId]);
+  }, [eventId, reloadKey]);
+
+  if (loadError === 'not_found') {
+    return <EventUnavailablePage reference={eventId ?? '404'} />;
+  }
+
+  if (loadError === 'failed') {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center justify-center gap-4 min-h-[60vh] px-4 text-center">
+          <p className="text-slate-700 font-semibold">We couldn't load this event right now.</p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="px-4 py-2 bg-primary text-white font-semibold text-sm rounded-lg"
+          >
+            Try again
+          </button>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!event) {
     return (
@@ -54,9 +78,10 @@ export function EventDetailsPage() {
     );
   }
 
-  const galleryImages = event.galleryImages && event.galleryImages.length > 0
-    ? event.galleryImages
-    : [{ src: 'https://images.unsplash.com/photo-1544216428-d0e10da5ee56?q=80&w=1600&auto=format&fit=crop', alt: event.name }];
+  // Only the organizer's own photos (or banner) — never a stock photo
+  // standing in for a real event. With none, the hero shows a plain
+  // placeholder instead.
+  const galleryImages = event.galleryImages ?? [];
 
   const currentImage = galleryImages[galleryIdx] || galleryImages[0];
 
@@ -138,20 +163,29 @@ export function EventDetailsPage() {
             {/* Media Gallery (7 Cols) */}
             <div className="lg:col-span-7 flex flex-col gap-3">
               <div className="relative w-full aspect-[16/10] rounded-2xl overflow-hidden shadow-md bg-slate-100 group">
-                <img
-                  src={currentImage.src}
-                  alt={currentImage.alt}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                />
+                {currentImage ? (
+                  <img
+                    src={currentImage.src}
+                    alt={currentImage.alt}
+                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-100 to-slate-200">
+                    <span className="material-symbols-outlined text-slate-400 text-[64px]">event</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
 
                 {/* Location Pill over image */}
+                {event.venue && (
                 <div className="absolute bottom-4 left-4 flex items-center gap-1.5 bg-[#0b1c30]/80 backdrop-blur-md px-3 py-1 rounded-full text-white text-xs font-semibold shadow-sm">
                   <span className="material-symbols-outlined text-[16px] text-emerald-400">location_on</span>
                   <span>{event.venue}</span>
                 </div>
+                )}
 
                 {/* Carousel Controls */}
+                {galleryImages.length > 1 && (
                 <div className="absolute bottom-4 right-4 flex items-center gap-1.5 bg-[#0b1c30]/80 backdrop-blur-md px-2.5 py-1 rounded-full text-white text-xs font-semibold">
                   <button
                     type="button"
@@ -173,6 +207,7 @@ export function EventDetailsPage() {
                     <span className="material-symbols-outlined text-[16px]">chevron_right</span>
                   </button>
                 </div>
+                )}
               </div>
 
               {/* Thumbnails Row & Share Action */}
@@ -222,14 +257,18 @@ export function EventDetailsPage() {
               {/* Title & Category Badges */}
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-100 text-primary text-[11px] font-bold uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-[13px]">hiking</span>
-                    {event.category}
-                  </span>
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-[13px]">landscape</span>
-                    {event.subCategory || 'Sahyadri Range'}
-                  </span>
+                  {event.category && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-blue-100 text-primary text-[11px] font-bold uppercase tracking-wider">
+                      <span className="material-symbols-outlined text-[13px]">hiking</span>
+                      {event.category}
+                    </span>
+                  )}
+                  {event.subCategory && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-bold uppercase tracking-wider">
+                      <span className="material-symbols-outlined text-[13px]">landscape</span>
+                      {event.subCategory}
+                    </span>
+                  )}
                   {event.ratingSummary && event.ratingSummary.reviewCount > 0 ? (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-bold uppercase tracking-wider">
                       <span className="material-symbols-outlined text-[13px]" style={{ fontVariationSettings: "'FILL' 1" }}>star</span>
@@ -245,9 +284,11 @@ export function EventDetailsPage() {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0b1c30] tracking-tight mt-1">
                   {event.name}
                 </h1>
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  {event.tagline}
-                </p>
+                {event.tagline && (
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    {event.tagline}
+                  </p>
+                )}
               </div>
 
               {/* Verified Organizer Pill */}
@@ -263,7 +304,7 @@ export function EventDetailsPage() {
                         verified
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 font-medium">{event.organizer.tagline}</p>
+                    {event.organizer.tagline && <p className="text-xs text-slate-500 font-medium">{event.organizer.tagline}</p>}
                   </div>
                 </div>
 
@@ -293,21 +334,25 @@ export function EventDetailsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-start gap-2 pt-1 border-t border-slate-100">
-                  <span className="material-symbols-outlined text-primary text-[20px] mt-0.5">timer</span>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Reporting Time</span>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-900">{event.gatherTime}</span>
+                {event.gatherTime && (
+                  <div className="flex items-start gap-2 pt-1 border-t border-slate-100">
+                    <span className="material-symbols-outlined text-primary text-[20px] mt-0.5">timer</span>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Reporting Time</span>
+                      <span className="text-xs sm:text-sm font-semibold text-slate-900">{event.gatherTime}</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <div className="flex items-start gap-2 pt-1 border-t border-slate-100">
-                  <span className="material-symbols-outlined text-primary text-[20px] mt-0.5">distance</span>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Difficulty</span>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-900">{event.difficulty || 'Moderate'}</span>
+                {event.difficulty && (
+                  <div className="flex items-start gap-2 pt-1 border-t border-slate-100">
+                    <span className="material-symbols-outlined text-primary text-[20px] mt-0.5">distance</span>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">Difficulty</span>
+                      <span className="text-xs sm:text-sm font-semibold text-slate-900">{event.difficulty}</span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Quick Conversion Bar */}
@@ -319,7 +364,7 @@ export function EventDetailsPage() {
                   </div>
                   <div className="mt-0.5">
                     <span className="text-xs text-slate-500 font-medium">Starting from </span>
-                    <span className="text-xl font-extrabold text-slate-900">{formatINR(event.ticketCategories[0]?.price || 499)}</span>
+                    <span className="text-xl font-extrabold text-slate-900">{formatINR(event.ticketCategories.length > 0 ? Math.min(...event.ticketCategories.map((t) => t.price)) : 0)}</span>
                   </div>
                 </div>
 
@@ -376,7 +421,7 @@ export function EventDetailsPage() {
                   <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
                     <h2 className="text-xl font-bold text-[#0b1c30] tracking-tight">About the Event</h2>
                     <p className="text-sm text-slate-600 leading-relaxed">
-                      {event.about}
+                      {event.about || 'The organizer hasn\'t added a description for this event yet.'}
                     </p>
                     {event.aboutExtra && (
                       <p className="text-sm text-slate-600 leading-relaxed">
@@ -386,6 +431,7 @@ export function EventDetailsPage() {
                   </div>
 
                   {/* What's Included Grid */}
+                  {(event.included.length > 0 || event.excluded.length > 0) && (
                   <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
                     <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">What's Included &amp; Excluded</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -405,8 +451,10 @@ export function EventDetailsPage() {
                       ))}
                     </div>
                   </div>
+                  )}
 
                   {/* Key Highlights Mosaic */}
+                  {event.highlights.length > 0 && (
                   <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
                     <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Key Highlights</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -421,8 +469,10 @@ export function EventDetailsPage() {
                       ))}
                     </div>
                   </div>
+                  )}
 
                   {/* Trek Leader Profile */}
+                  {event.leader && (
                   <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-center gap-4">
                     <img
                       src={event.leader.avatar}
@@ -441,6 +491,7 @@ export function EventDetailsPage() {
                       </p>
                     </div>
                   </div>
+                  )}
                 </div>
               )}
 
@@ -449,6 +500,9 @@ export function EventDetailsPage() {
                 <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-6 animate-in fade-in duration-200">
                   <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Detailed Schedule &amp; Timeline</h3>
                   
+                  {event.schedule.length === 0 && (
+                    <p className="text-sm text-slate-500">The organizer hasn't published a schedule for this event yet.</p>
+                  )}
                   <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
                     {event.schedule.map((item, i) => (
                       <div key={i} className="relative">
@@ -465,8 +519,10 @@ export function EventDetailsPage() {
               {/* TAB 3: What to Bring Panel */}
               {activeTab === 'gear' && (
                 <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 animate-in fade-in duration-200">
-                  <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Mandatory Packing Checklist</h3>
-                  <p className="text-xs text-slate-500">Please make sure your daypack does not exceed 4kg for comfortable trekking.</p>
+                  <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Packing Checklist</h3>
+                  {event.packingList.length === 0 && (
+                    <p className="text-sm text-slate-500">The organizer hasn't published a packing checklist for this event.</p>
+                  )}
                   
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                     {event.packingList.map((item, i) => (
@@ -487,25 +543,22 @@ export function EventDetailsPage() {
                 <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 animate-in fade-in duration-200">
                   <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Base Camp Venue &amp; Directions</h3>
                   
-                  <div
-                    className="w-full h-72 rounded-2xl bg-cover bg-center shadow-inner relative flex items-end p-4 border border-slate-200"
-                    style={{
-                      backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuBlCjpy_XOf1W8cmOTy9WjoU1Mf67Wg5FwACOQxKolwaQV2AFFWJXv0lhnnHFjNK8_6l_8X5fpEfPG6raIunhItrt7Fd369Oy47plf9l8bkjmzigYuDCcYnRncXKBt7iUAD9kNVegpqSQNtftozMMGOpv_ViuvLWrchsCG1Cwz2xzGLcF3qxKp1ZSdrcwLz0cXIqLOfYb5JwmRpAaC-kLoGZ0-0_rHLvJcXgz8U9iuX')`,
-                    }}
-                  >
-                    <div className="bg-white/95 backdrop-blur-md p-3.5 rounded-xl shadow-md border border-slate-200">
-                      <p className="font-bold text-slate-900 text-sm">{event.venue}</p>
-                      <p className="text-xs text-slate-500 font-medium">{event.locationCoords || 'Coordinates: 18.2464° N, 73.6828° E • Ample vehicle parking available'}</p>
+                  <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-start gap-3">
+                    <span className="material-symbols-outlined text-primary text-[22px]">location_on</span>
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">{event.venue || 'Venue to be announced'}</p>
+                      {event.locationCoords && <p className="text-xs text-slate-500 font-medium">{event.locationCoords}</p>}
                     </div>
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3">
                     <div>
-                      <span className="font-bold text-slate-900 text-xs sm:text-sm block">Driving from Pune / Mumbai?</span>
-                      <span className="text-xs text-slate-500">{event.drivingInfo || 'Approx. 1h 45m via NH48 and Nasrapur - Velhe Road.'}</span>
+                      <span className="font-bold text-slate-900 text-xs sm:text-sm block">Getting there</span>
+                      <span className="text-xs text-slate-500">{event.drivingInfo || 'Open the venue in Google Maps for directions.'}</span>
                     </div>
+                    {event.venueMapUrl && (
                     <a
-                      href={event.venueMapUrl || 'https://maps.google.com'}
+                      href={event.venueMapUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="px-4 py-2 bg-white hover:bg-slate-100 text-primary font-semibold text-xs rounded-lg shadow-sm transition flex items-center gap-1 shrink-0 border border-slate-200"
@@ -513,6 +566,7 @@ export function EventDetailsPage() {
                       <span className="material-symbols-outlined text-[16px]">directions</span>
                       <span>Get Driving Route</span>
                     </a>
+                    )}
                   </div>
                 </div>
               )}
@@ -753,7 +807,12 @@ export function EventDetailsPage() {
 
                 <div className="flex items-start gap-3">
                   <div className="w-11 h-11 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
-                    EA
+                    {event.organizer.name
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((w) => w[0]?.toUpperCase())
+                      .join('')}
                   </div>
                   <div>
                     <div className="flex items-center gap-1">
@@ -762,24 +821,26 @@ export function EventDetailsPage() {
                         verified
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 font-medium">{event.organizer.tagline}</p>
+                    {event.organizer.tagline && <p className="text-xs text-slate-500 font-medium">{event.organizer.tagline}</p>}
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Example Adventures creates curated outdoor experiences including treks, weekend camping trips, and heritage adventure expeditions across Western Ghats since 2018. Over 15,000 happy hikers guided.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
-                    <span className="font-extrabold text-primary text-sm block">{event.organizer.eventsHosted || 62}+</span>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Events Hosted</span>
+                {(event.organizer.eventsHosted || event.organizer.rating) && (
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {event.organizer.eventsHosted ? (
+                      <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
+                        <span className="font-extrabold text-primary text-sm block">{event.organizer.eventsHosted}</span>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Events Hosted</span>
+                      </div>
+                    ) : null}
+                    {event.organizer.rating ? (
+                      <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
+                        <span className="font-extrabold text-emerald-600 text-sm block">{event.organizer.rating}</span>
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Rating</span>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="bg-slate-50 p-2 rounded-lg text-center border border-slate-100">
-                    <span className="font-extrabold text-emerald-600 text-sm block">{event.organizer.rating || '99.2%'}</span>
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Positive Rating</span>
-                  </div>
-                </div>
+                )}
 
                 <Link
                   to={`/organizers/${event.organizer.slug}`}
@@ -793,31 +854,6 @@ export function EventDetailsPage() {
             </div>
           </div>
         </div>
-
-        {/* FLOATING PROTOTYPE NAVIGATOR */}
-        <aside className="fixed bottom-6 right-6 z-40 flex items-center gap-3 bg-[#0b1c30]/90 text-white backdrop-blur-md px-4 py-2.5 rounded-full shadow-xl border border-slate-700 text-xs transition-all">
-          <div className="flex items-center gap-2 pr-2 border-r border-slate-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-semibold text-xs tracking-tight">
-              Attendee Flow: Step 2 of 6 - Event Details
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Link
-              to="/"
-              className="px-2.5 py-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] flex items-center gap-1 transition active:scale-95"
-            >
-              <span className="material-symbols-outlined text-xs">arrow_back</span> Prev: Step 1
-            </Link>
-            <button
-              type="button"
-              onClick={handleBookNow}
-              className="px-3 py-1 rounded-full bg-primary hover:bg-primary-container text-white font-semibold text-[11px] flex items-center gap-1 transition shadow-sm active:scale-95"
-            >
-              Next: Step 3 <span className="material-symbols-outlined text-xs">arrow_forward</span>
-            </button>
-          </div>
-        </aside>
 
         {/* FLOATING TOAST NOTIFICATION */}
         {toastMessage && (

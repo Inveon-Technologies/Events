@@ -179,9 +179,10 @@ describe('cancellation + refund system (real DB, Cashfree refund API mocked)', (
 
     it('is rejected past the refund cutoff window', async () => {
       const { eventId, tierId } = await createEvent({ allowSelfServiceCancellation: true, refundCutoffDays: 3, refundPercentage: 100 });
-      await Event.update({ eventDate: new Date('2020-01-01') }, { where: { id: eventId } });
-
       const booking = await createConfirmedOnlineBooking(eventId, tierId, `cutoff-${suffix}@example.com`, `order-cutoff-${suffix}`);
+      // Moved into the past only after booking — bookings on a started
+      // event are refused outright.
+      await Event.update({ eventDate: new Date('2020-01-01') }, { where: { id: eventId } });
       const res = await request(app)
         .post(`/api/bookings/${booking.bookingReference}/cancel`)
         .send({ email: `cutoff-${suffix}@example.com`, reason: 'x' });

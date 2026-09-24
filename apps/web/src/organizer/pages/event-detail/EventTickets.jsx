@@ -7,15 +7,13 @@ import { useAuth } from '../../context/AuthContext';
 import { apiRequest, ApiError } from '../../lib/api';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
+import EventLookupState from '../../components/common/EventLookupState';
 
-export default function EventTickets() {
-  const { id } = useParams();
-  const { events, updateEvent } = useEvents();
+function EventTicketsContent({ event }) {
+  const { updateEvent } = useEvents();
   const { showToast } = useNotifications();
   const { user } = useAuth();
 
-  const eventId = id || 'rajgad-sunrise-trek';
-  const event = events.find((e) => e.id === eventId) || events[0];
 
   // The events list (useEvents' `events`) never carries tier detail —
   // it's built for the list view, not per-tier editing. Real tiers
@@ -208,4 +206,12 @@ export default function EventTickets() {
       </Modal>
     </div>
   );
+}
+
+export default function EventTickets() {
+  const { id } = useParams();
+  const { events, eventsLoaded, eventsLoadError } = useEvents();
+  const event = events.find((e) => e.id === id);
+  if (!event) return <EventLookupState loaded={eventsLoaded} error={eventsLoadError} />;
+  return <EventTicketsContent event={event} />;
 }

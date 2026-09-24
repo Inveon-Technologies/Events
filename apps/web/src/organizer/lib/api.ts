@@ -22,6 +22,18 @@ export class ApiError extends Error {
   }
 }
 
+// Fired when an authenticated request comes back 401 — the organizer's
+// 12-hour token expired (or was otherwise rejected). AuthContext listens
+// and logs the user out, so they land on the login page instead of
+// every page silently failing to load.
+export const SESSION_EXPIRED_EVENT = 'inveon:session-expired';
+
+function notifyIfSessionExpired(status: number, token: string | null | undefined) {
+  if (status === 401 && token && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   options: { method?: string; body?: unknown; token?: string | null } = {},
@@ -38,6 +50,7 @@ export async function apiRequest<T>(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    notifyIfSessionExpired(res.status, options.token);
     throw new ApiError(res.status, (data as { error?: string }).error ?? 'Something went wrong', data);
   }
 
@@ -71,6 +84,7 @@ export async function uploadEventMediaFile(
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    notifyIfSessionExpired(res.status, token);
     throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed', data);
   }
 
@@ -101,6 +115,7 @@ export async function uploadOrganizerLogoFile(file: File, token: string | null):
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    notifyIfSessionExpired(res.status, token);
     throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed', data);
   }
 

@@ -11,8 +11,8 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "jest --ci",
-    "test:concurrency": "jest --testPathIgnorePatterns=/node_modules/ --testPathPattern=concurrency",
-    "test:integration": "jest --testPathIgnorePatterns=/node_modules/ --testPathPattern=integration",
+    "test:concurrency": "jest --runInBand --testPathIgnorePatterns=/node_modules/ --testPathPattern=concurrency",
+    "test:integration": "jest --runInBand --testPathIgnorePatterns=/node_modules/ --testPathPattern=integration",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts up",
     "migrate:down": "tsx --env-file-if-exists=.env src/db/migrate.ts down",
     "seed": "tsx --env-file-if-exists=.env src/db/seed.ts"

@@ -6,7 +6,6 @@ import {
   Search,
   Plus,
   QrCode,
-  ExternalLink,
   ChevronDown,
   LogOut,
   User,
@@ -172,14 +171,6 @@ export default function Header({ setMobileOpen }) {
                 >
                   <SettingsIcon className="w-4 h-4" />
                   <span>Organization Profile</span>
-                </NavLink>
-                <NavLink
-                  to="/organizer/events/rajgad-sunrise-trek/preview"
-                  onClick={() => setShowProfileMenu(false)}
-                  className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-600"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  <span>Customer Preview Page</span>
                 </NavLink>
                 <div className="border-t border-slate-100 my-1"></div>
                 <button

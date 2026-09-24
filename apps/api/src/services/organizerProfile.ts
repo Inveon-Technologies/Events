@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { Organizer, User } from '../models';
 import { isS3Configured, uploadFileToS3, deleteFileFromS3, s3KeyFromUrl } from './s3Storage';
-import { UPLOAD_DIR, UPLOAD_URL_PREFIX, MAX_FILE_SIZE_BYTES } from './eventMedia';
+import { UPLOAD_DIR, UPLOAD_URL_PREFIX, MAX_FILE_SIZE_BYTES, sniffImageMimeType } from './eventMedia';
 
 export class NotFoundError extends Error {}
 export class ValidationError extends Error {}
@@ -98,14 +98,21 @@ export async function uploadOrganizerLogo(params: UploadLogoParams): Promise<{ l
   if (!ALLOWED_LOGO_MIME_TYPES.has(params.mimeType)) {
     throw new ValidationError('Unsupported file type — logo must be JPEG, PNG, or WebP');
   }
+  // The declared type is only the client's claim — store and serve the
+  // real one from the file's own bytes (same check as event images).
+  const mimeType = await sniffImageMimeType(params.tempFilePath);
+  if (!mimeType) {
+    await fs.unlink(params.tempFilePath).catch(() => {});
+    throw new ValidationError('This file is not a valid JPEG, PNG, or WebP image');
+  }
 
   const previousUrl = organizer.logoUrl;
-  const filename = `${crypto.randomUUID()}${extensionForMimeType(params.mimeType)}`;
+  const filename = `${crypto.randomUUID()}${extensionForMimeType(mimeType)}`;
   let url: string;
 
   if (isS3Configured()) {
     const key = `organizers/${params.organizerId}/${filename}`;
-    url = await uploadFileToS3(params.tempFilePath, key, params.mimeType);
+    url = await uploadFileToS3(params.tempFilePath, key, mimeType);
     await fs.unlink(params.tempFilePath).catch(() => {});
   } else {
     const orgDir = path.join(UPLOAD_DIR, 'organizers', params.organizerId);

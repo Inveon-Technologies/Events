@@ -1,7 +1,7 @@
 import { QueryTypes } from 'sequelize';
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Booking, Ticket, Payment, Organizer } from '../models';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomInt } from 'crypto';
 
 export interface CreateBookingParams {
   eventId: string;
@@ -29,6 +29,12 @@ export class GenderRestrictionError extends Error {}
 
 export class NotFoundError extends Error {}
 
+// A request that's well-formed JSON but can never become a real booking:
+// a fractional/oversized quantity, more tickets than the tier allows per
+// booking, or an event that isn't open for sale (draft, cancelled,
+// closed, or already started).
+export class BookingValidationError extends Error {}
+
 // A paid ticket booked online needs a Cashfree vendor split to actually
 // pay the organizer their share — an organizer who hasn't completed
 // verification has no vendor for that split to go to. Cash bookings are
@@ -40,9 +46,22 @@ export class OrganizerNotVerifiedError extends Error {
   }
 }
 
-function generateBookingReference(): string {
+// Crockford base32 (no I/L/O/U) — unambiguous when read aloud or typed
+// from a printed ticket. 8 characters from a CSPRNG gives ~1.1e12
+// possible suffixes per year: collisions (which the unique constraint
+// would turn into a failed booking) are negligible at any realistic
+// volume, and references can't be enumerated by guessing — which
+// matters because reference + email is what the customer-facing
+// lookup endpoints accept.
+const REFERENCE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const REFERENCE_SUFFIX_LENGTH = 8;
+
+export function generateBookingReference(): string {
   const year = new Date().getFullYear();
-  const suffix = Math.floor(10000 + Math.random() * 90000);
+  let suffix = '';
+  for (let i = 0; i < REFERENCE_SUFFIX_LENGTH; i += 1) {
+    suffix += REFERENCE_ALPHABET[randomInt(0, REFERENCE_ALPHABET.length)];
+  }
   return `INV-BKG-${year}-${suffix}`;
 }
 
@@ -89,8 +108,12 @@ export interface CreateBookingResult {
 }
 
 export async function createBooking(params: CreateBookingParams): Promise<CreateBookingResult> {
-  if (params.quantity < 1) {
-    throw new Error('quantity must be at least 1');
+  // Must be a whole number: a fractional quantity (e.g. 1.4) would
+  // otherwise issue 2 tickets from the ticket loop below, charge 1.4x
+  // the price, and — because Postgres rounds `quota_remaining - 1.4`
+  // back to an integer on assignment — decrement quota by only 1.
+  if (!Number.isInteger(params.quantity) || params.quantity < 1) {
+    throw new BookingValidationError('Quantity must be a whole number of at least 1');
   }
 
   return sequelize.transaction(async (t) => {
@@ -102,6 +125,19 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
       transaction: t,
     });
     if (!ticketCategory) throw new NotFoundError('Ticket category not found for this event');
+
+    // The public site only ever links to published, upcoming events —
+    // but this endpoint is callable directly, so the same rule has to
+    // hold here too, not just in the UI.
+    if (event.status !== 'published') {
+      throw new BookingValidationError('This event is not open for booking');
+    }
+    if (event.eventDate.getTime() <= Date.now()) {
+      throw new BookingValidationError('This event has already started — booking is closed');
+    }
+    if (params.quantity > ticketCategory.maxPerBooking) {
+      throw new BookingValidationError(`You can book at most ${ticketCategory.maxPerBooking} ticket(s) of this type in one booking`);
+    }
 
     // Checked before any quota is reserved — a doomed booking (wrong or
     // missing gender for a restricted event) should never lock stock
@@ -152,7 +188,9 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         bookingReference: generateBookingReference(),
         primaryContactName: params.primaryContactName,
         primaryContactWhatsapp: params.primaryContactWhatsapp,
-        primaryContactEmail: params.primaryContactEmail,
+        // Normalized once, here, so every later email-keyed lookup
+        // (customer login, "my bookings") can match exactly.
+        primaryContactEmail: params.primaryContactEmail.trim().toLowerCase(),
         primaryContactCity: params.primaryContactCity ?? null,
         // Reservation happens now, at booking creation, so two people can
         // never both reach checkout for the last ticket. A genuinely free
@@ -210,7 +248,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         venueAddress: event.venueAddress,
         organizerName: organizer?.name ?? 'Event Organizer',
         customerName: params.primaryContactName,
-        customerEmail: params.primaryContactEmail,
+        customerEmail: params.primaryContactEmail.trim().toLowerCase(),
         tierName: ticketCategory.name,
         unitPricePaise: ticketCategory.pricePaise,
         quantity: params.quantity,

@@ -39,6 +39,8 @@ export interface PublicEventDetail {
   tagline: string | null;
   description: string | null;
   eventDate: string;
+  // When the gate / reporting opens, if the organizer set one.
+  gateOpenTime: string | null;
   venueAddress: string | null;
   venueMapUrl: string | null;
   bannerUrl: string | null;
@@ -143,6 +145,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     tagline: event.tagline,
     description: event.description,
     eventDate: event.eventDate.toISOString(),
+    gateOpenTime: event.gateOpenTime?.toISOString() ?? null,
     venueAddress: event.venueAddress,
     venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude),
     bannerUrl: event.bannerUrl ?? firstPhoto?.url ?? null,

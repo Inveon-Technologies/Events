@@ -122,12 +122,34 @@ describe('App routing', () => {
     }
   });
 
-  it('renders event details for a known mock event', async () => {
+  it('an event the API does not know shows the unavailable page, never a fabricated mock event', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, json: async () => ({ error: 'Event not found' }) }));
+
     renderApp('/events/rajgad-sunrise-trek-2026');
-    // EventDetailsPage now loads asynchronously (tries the real API first,
-    // falls back to the mock template) — wait for it instead of asserting
-    // synchronously against the loading spinner.
-    await waitFor(() => expect(screen.getAllByText(/Rajgad Sunrise Trek/i).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByText(/Event reference:/i)).toBeInTheDocument());
+    expect(screen.queryByText(/Rajgad Sunrise Trek/i)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('a failed event request offers a retry instead of showing mock content', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error('network down')).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-retry-1', slug: 'retry-event', name: 'Retry Test Event', tagline: null, description: null,
+        eventDate: '2027-01-10T09:00:00.000Z', venueAddress: 'Pune', venueMapUrl: null, bannerUrl: null,
+        media: [], organizerName: 'Retry Org', organizerSlug: 'retry-org', scheduleItems: null, packingChecklist: null,
+        faqItems: null, ticketCategories: [], ratingSummary: { averageRating: null, reviewCount: 0 },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-retry-1');
+    await userEvent.setup().click(await screen.findByText('Try again'));
+    await waitFor(() => expect(screen.getAllByText('Retry Test Event').length).toBeGreaterThan(0));
+
+    vi.unstubAllGlobals();
   });
 
   it('event details page shows real uploaded photos and a real video, not the mock gallery', async () => {
@@ -177,7 +199,7 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
-  it('event details page falls back to the mock gallery when a real event has no uploaded photos, and shows no video element at all', async () => {
+  it('event details page shows no stock gallery photos or video element when a real event has no uploaded media', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -208,6 +230,11 @@ describe('App routing', () => {
 
     renderApp('/events/evt-no-media-1');
     await waitFor(() => expect(screen.getAllByText('No Media Test Event').length).toBeGreaterThan(0));
+
+    // No stock photos standing in for the organizer's own.
+    expect(document.querySelector('img[src*="unsplash"], img[alt*="Rajgad"], img[alt*="trek" i]')).toBeNull();
+    // No fabricated trek leader, organizer stats, or directions.
+    expect(screen.queryByText(/Example Adventures|99\.2%|Nasrapur/)).not.toBeInTheDocument();
 
     // No video element should render at all when the event has none.
     expect(document.querySelector('video')).toBeNull();
@@ -623,6 +650,66 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('checkout books the ticket type the customer chose, with blank attendee forms and the real event details', async () => {
+    const user = userEvent.setup();
+    const bookingBodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn().mockImplementation((url, init) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/bookings')) {
+        bookingBodies.push(JSON.parse(String(init?.body)));
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ bookingId: 'booking-free-1', bookingReference: 'INV-BKG-2026-ABCD2345' }) });
+      }
+      if (urlStr.includes('/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ status: 'confirmed', bookingReference: 'INV-BKG-2026-ABCD2345', eventName: 'Two Tier Event' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-two-tier', slug: 'two-tier', name: 'Two Tier Event', tagline: null, description: 'Real description.',
+          eventDate: '2027-02-14T04:30:00.000Z', venueAddress: 'Real Venue, Nashik', venueMapUrl: null, bannerUrl: null,
+          media: [], organizerName: 'Two Tier Org', organizerSlug: 'two-tier-org', scheduleItems: null, packingChecklist: null,
+          faqItems: null, allowSelfServiceCancellation: false, refundCutoffDays: null, refundPercentage: null,
+          ticketCategories: [
+            { id: 'tier-general', name: 'General', description: null, pricePaise: 0, maxPerBooking: 4, available: 50 },
+            { id: 'tier-vip', name: 'Backstage', description: null, pricePaise: 0, maxPerBooking: 2, available: 5 },
+          ],
+          ratingSummary: { averageRating: null, reviewCount: 0 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-two-tier/checkout');
+    await waitFor(() => expect(screen.getAllByText('Two Tier Event').length).toBeGreaterThan(0));
+    expect(screen.getAllByText(/Real Venue, Nashik/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Rajgad|20 September 2026|₹499/)).not.toBeInTheDocument();
+
+    // Switch from the default (1 General) to 2 Backstage.
+    await user.click(screen.getByLabelText('Add one Backstage ticket'));
+    await user.click(screen.getByLabelText('Add one Backstage ticket'));
+    // Backstage allows at most 2 per booking.
+    await user.click(screen.getByLabelText('Add one Backstage ticket'));
+
+    await user.click(screen.getAllByText('CONTINUE TO PARTICIPANTS')[0]);
+    const nameInputs = await screen.findAllByPlaceholderText('e.g. Rahul Sharma');
+    expect(nameInputs).toHaveLength(2);
+    nameInputs.forEach((input) => expect(input).toHaveValue(''));
+
+    await user.type(nameInputs[0], 'Asha');
+    await user.type(nameInputs[1], 'Ravi');
+    await user.type(screen.getAllByPlaceholderText('name@example.com')[0], 'asha@example.com');
+    await user.type(screen.getAllByPlaceholderText('9876543210')[0], '9000000001');
+    await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+
+    await waitFor(() => expect(bookingBodies).toHaveLength(1));
+    expect(bookingBodies[0]).toMatchObject({ ticketCategoryId: 'tier-vip', quantity: 2, attendeeNames: ['Asha', 'Ravi'] });
+    // Lands on the real confirmation page, which reads the server's status.
+    await waitFor(() => expect(screen.getByText('INV-BKG-2026-ABCD2345')).toBeInTheDocument());
+
+    vi.unstubAllGlobals();
+  });
+
   it('checkout shows a real, accurate refund policy trust line — "No Refund" for a non-cancellable event, never the old fake "Free cancellation up to 48 hours"', async () => {
     const fetchMock = vi.fn().mockImplementation((url) => {
       const urlStr = String(url);
@@ -866,6 +953,13 @@ describe('App routing', () => {
     expect(screen.queryByText('Booking Confirmed!')).not.toBeInTheDocument();
 
     vi.unstubAllGlobals();
+  });
+
+  it('a bare /bookings/<reference> link goes to the real, email-verified manage page — never a mock "Paid" booking', async () => {
+    renderApp('/bookings/INV-BKG-2026-ABCDEFGH');
+    expect(screen.getByRole('heading', { name: /manage your booking/i })).toBeInTheDocument();
+    expect(screen.queryByText(/^Paid$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Rajgad/i)).not.toBeInTheDocument();
   });
 
   it('ManageBookingPage requires booking reference + email before showing anything real', async () => {

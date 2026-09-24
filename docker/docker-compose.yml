@@ -31,9 +31,14 @@ services:
       - ../apps/api/.env
     environment:
       - NODE_ENV=production
+    # Wait for Postgres to actually accept connections, not just for its
+    # container to exist — otherwise the API's first queries (and the
+    # migration step) race the database's startup.
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 15s
@@ -57,6 +62,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d inveon_events"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   redis:

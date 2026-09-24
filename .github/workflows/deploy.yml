@@ -29,7 +29,13 @@ jobs:
 
       - name: Set image tag
         id: vars
-        run: echo "tag=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
+        # The commit CI actually tested (and that was checked out above) —
+        # not GITHUB_SHA, which for a workflow_run trigger is whatever is
+        # newest on main when this run starts, and can name a different
+        # commit than the one being built if merges land close together.
+        env:
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: echo "tag=${HEAD_SHA::8}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -2,7 +2,6 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
-import { rajgadTrek } from '../mockData/rajgadTrek';
 import { formatINR } from '../lib/format';
 
 export function PaymentFailedPage() {
@@ -12,7 +11,7 @@ export function PaymentFailedPage() {
   const state = (location.state as { totalAmount?: number; quantities?: Record<string, number>; eventName?: string } | null) ?? {};
 
   function handleRetry() {
-    navigate(`/events/${eventId ?? rajgadTrek.id}/checkout`, { state: { quantities: state.quantities } });
+    navigate(eventId ? `/events/${eventId}/checkout` : '/events', { state: { quantities: state.quantities } });
   }
 
   return (
@@ -32,7 +31,7 @@ export function PaymentFailedPage() {
           <div className="bg-surface-sunken rounded-xl p-4 text-left mb-6">
             <p className="text-xs uppercase tracking-wide text-ink-muted mb-2">Booking Summary</p>
             <div className="flex justify-between text-sm">
-              <span className="text-ink-body">{state.eventName ?? rajgadTrek.name}</span>
+              <span className="text-ink-body">{state.eventName ?? 'Your booking'}</span>
               <span className="font-semibold text-ink">{formatINR(state.totalAmount ?? 0)}</span>
             </div>
           </div>

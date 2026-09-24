@@ -73,7 +73,27 @@ export async function checkInTicket(params: {
     );
   }
 
-  await ticket.update({ status: 'checked_in', checkedInAt: new Date(), checkedInByUserId: params.checkedInByUserId });
+  // Conditional on the ticket still being 'valid' at write time, not
+  // just when it was read above — two gates scanning the same QR at the
+  // same moment would otherwise both pass the check and both admit it.
+  // Exactly one UPDATE matches; the other gets the same rejection as a
+  // plain duplicate scan.
+  const checkedInAt = new Date();
+  const [count] = await Ticket.update(
+    { status: 'checked_in', checkedInAt, checkedInByUserId: params.checkedInByUserId },
+    { where: { id: ticket.id, status: 'valid' } },
+  );
+  if (count === 0) {
+    const current = await Ticket.findByPk(ticket.id);
+    if (current?.status === 'cancelled') {
+      throw new RejectedError('This ticket has been cancelled and is no longer valid for entry', 'cancelled');
+    }
+    throw new RejectedError(
+      `This ticket was already checked in at ${current?.checkedInAt?.toISOString()}`,
+      'already_checked_in',
+      { checkedInAt: current?.checkedInAt?.toISOString() },
+    );
+  }
 
   const tier = await TicketCategory.findByPk(ticket.ticketCategoryId);
 
@@ -82,7 +102,7 @@ export async function checkInTicket(params: {
     attendeeName: ticket.attendeeName,
     tierName: tier?.name ?? 'General',
     bookingReference: booking.bookingReference,
-    checkedInAt: ticket.checkedInAt!.toISOString(),
+    checkedInAt: checkedInAt.toISOString(),
   };
 }
 
@@ -105,6 +125,12 @@ export async function undoCheckIn(eventId: string, organizerId: string, ticketId
     throw new RejectedError('This ticket was not checked in', 'already_checked_in');
   }
 
-  await ticket.update({ status: 'valid', checkedInAt: null, checkedInByUserId: null });
+  const [count] = await Ticket.update(
+    { status: 'valid', checkedInAt: null, checkedInByUserId: null },
+    { where: { id: ticket.id, status: 'checked_in' } },
+  );
+  if (count === 0) {
+    throw new RejectedError('This ticket was not checked in', 'already_checked_in');
+  }
   return { ticketId: ticket.id };
 }

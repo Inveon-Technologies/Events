@@ -1,9 +1,16 @@
 import { sequelize } from '../db/connection';
-import { Organizer, Booking, Payment, Ticket } from '../models';
-import { cashfreeCreateOrder } from './cashfreeClient';
+import { Organizer, Booking, Payment, Event } from '../models';
+import { cashfreeCreateOrder, cashfreeCreateRefund } from './cashfreeClient';
+import { releaseBookingTickets, reserveBookingTickets } from './bookingTickets';
 import { buildBookingEmailPayload, sendBookingConfirmationEmail } from './bookingEmails';
 
 const PLATFORM_FEE_PERCENT = Number(process.env.PLATFORM_FEE_PERCENT) || 5;
+
+// How long a customer has to finish paying once checkout starts. The
+// Cashfree session is set to expire at this point, and the pending-
+// booking sweep (pendingBookingExpiry.ts) releases unpaid tickets a
+// little after it. Cashfree's minimum is 15 minutes.
+export const ONLINE_PAYMENT_WINDOW_MS = 20 * 60 * 1000;
 
 export class NotFoundError extends Error {}
 
@@ -55,6 +62,7 @@ export async function createCashfreeOrderForBooking(params: CreateOrderForBookin
     vendorSplit: { vendorId: organizer.cashfreeVendorId, amountRupees: vendorShareRupees },
     returnUrl: params.returnUrl,
     notifyUrl: `${apiPublicUrl}/api/webhooks/cashfree`,
+    expiresAt: new Date(Date.now() + ONLINE_PAYMENT_WINDOW_MS),
   });
 
   await Payment.update({ gatewayReference: orderResponse.order_id }, { where: { bookingId: params.bookingId } });
@@ -67,15 +75,157 @@ export type CashfreeWebhookType = 'PAYMENT_SUCCESS_WEBHOOK' | 'PAYMENT_FAILED_WE
 export interface CashfreeWebhookPayload {
   type: string;
   data: {
-    order: { order_id: string };
+    order: { order_id: string; order_amount?: number };
+    payment?: { payment_amount?: number; cf_payment_id?: string | number };
   };
 }
 
-// Idempotent by design: a webhook can be retried or duplicated by
-// Cashfree, and this only ever acts when the booking is still 'pending'
-// — a second delivery of the same event finds the booking already
-// confirmed/cancelled and does nothing further, rather than double-
-// processing (e.g. releasing quota twice).
+// The amount Cashfree says was actually paid, in paise — null when the
+// payload doesn't carry one (older webhook versions), in which case
+// there's nothing to compare against.
+function paidAmountPaise(payload: CashfreeWebhookPayload): number | null {
+  const amount = payload.data?.payment?.payment_amount ?? payload.data?.order?.order_amount;
+  return typeof amount === 'number' && Number.isFinite(amount) ? Math.round(amount * 100) : null;
+}
+
+// Marks a booking paid and confirmed. Idempotent and race-safe: the
+// status change is a single conditional UPDATE (pending -> confirmed),
+// so of any number of concurrent or repeated deliveries exactly one
+// wins; the rest change nothing. Returns whether this call won.
+export async function confirmPendingOnlineBooking(payment: Payment): Promise<boolean> {
+  const confirmed = await sequelize.transaction(async (t) => {
+    const [count] = await Booking.update(
+      { status: 'confirmed' },
+      { where: { id: payment.bookingId, status: 'pending' }, transaction: t },
+    );
+    if (count === 0) return false;
+    await Payment.update({ status: 'paid' }, { where: { id: payment.id }, transaction: t });
+    return true;
+  });
+
+  if (confirmed) {
+    // Only now — a "confirmation" email for a booking that was still
+    // pending payment would tell the customer they're booked before
+    // they've actually paid. Fire-and-forget: the payment is already
+    // committed, so a failed or slow email must never be treated as
+    // this webhook having failed (Cashfree would just retry it).
+    const emailPayload = await buildBookingEmailPayload(payment.bookingId);
+    if (emailPayload) void sendBookingConfirmationEmail(emailPayload);
+  }
+  return confirmed;
+}
+
+// Cancels a still-pending online booking whose payment failed, was
+// abandoned, or expired, and returns its tickets to sale. Same
+// conditional-UPDATE guarantee as above: tickets are released at most
+// once no matter how many deliveries (or the expiry sweep) race here.
+export async function cancelPendingOnlineBooking(payment: Payment, reason: string): Promise<boolean> {
+  return sequelize.transaction(async (t) => {
+    const [count] = await Booking.update(
+      { status: 'cancelled', cancellationReason: reason },
+      { where: { id: payment.bookingId, status: 'pending' }, transaction: t },
+    );
+    if (count === 0) return false;
+    await Payment.update({ status: 'failed' }, { where: { id: payment.id }, transaction: t });
+    await releaseBookingTickets(payment.bookingId, t);
+    return true;
+  });
+}
+
+class NoStockToReinstateError extends Error {}
+
+export type LatePaymentOutcome = 'reinstated' | 'refunded' | 'refund_failed' | 'not_applicable';
+
+// A success webhook for a booking that's no longer pending. The only
+// case that needs action is money arriving for a booking this system
+// already gave up on — a payment that failed/was dropped and was then
+// retried and completed in the same Cashfree session, or one that
+// landed after the expiry sweep released the tickets. Silently ignoring
+// it (the old behavior) left a customer charged with a cancelled
+// booking and nobody told.
+//
+// Recognized by the payment row: still 'pending' or 'failed' means this
+// system never recorded receiving this money. Anything else ('paid',
+// 'refunded') means it was already handled — duplicate delivery, no-op.
+export async function handleLateOnlinePayment(paymentId: string): Promise<LatePaymentOutcome> {
+  let decision: 'reinstated' | 'refund' | 'not_applicable';
+  try {
+    decision = await sequelize.transaction(async (t) => {
+      const payment = await Payment.findByPk(paymentId, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!payment || (payment.status !== 'pending' && payment.status !== 'failed')) return 'not_applicable';
+      const booking = await Booking.findByPk(payment.bookingId, { transaction: t, lock: t.LOCK.UPDATE });
+      if (!booking || booking.status !== 'cancelled') return 'not_applicable';
+      const event = await Event.findByPk(booking.eventId, { transaction: t });
+
+      const eventStillOn = !!event && event.status === 'published' && event.eventDate.getTime() > Date.now();
+      if (!eventStillOn) return 'refund';
+      if (!(await reserveBookingTickets(booking.id, t))) {
+        // reserveBookingTickets may have decremented part of the stock
+        // before finding a category short — roll all of it back.
+        throw new NoStockToReinstateError();
+      }
+      await booking.update(
+        { status: 'confirmed', cancellationReason: null, cancelledBy: null, refundAmountPaise: null, refundStatus: null },
+        { transaction: t },
+      );
+      await payment.update({ status: 'paid' }, { transaction: t });
+      return 'reinstated';
+    });
+  } catch (err) {
+    if (!(err instanceof NoStockToReinstateError)) throw err;
+    decision = 'refund';
+  }
+
+  if (decision === 'not_applicable') return 'not_applicable';
+
+  if (decision === 'reinstated') {
+    const payment = await Payment.findByPk(paymentId);
+    const emailPayload = payment ? await buildBookingEmailPayload(payment.bookingId) : null;
+    if (emailPayload) void sendBookingConfirmationEmail(emailPayload);
+    return 'reinstated';
+  }
+
+  // Can't honor it (sold out meanwhile, or the event is cancelled/over):
+  // record the money as received, keep the booking cancelled, and give
+  // it all back.
+  const toRefund = await sequelize.transaction(async (t) => {
+    const payment = await Payment.findByPk(paymentId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!payment || (payment.status !== 'pending' && payment.status !== 'failed')) return null;
+    const booking = await Booking.findByPk(payment.bookingId, { transaction: t, lock: t.LOCK.UPDATE });
+    if (!booking) return null;
+    await payment.update({ status: 'paid' }, { transaction: t });
+    await booking.update(
+      {
+        cancellationReason:
+          booking.cancellationReason ?? 'Payment was received after this booking had expired — refunded in full',
+        refundAmountPaise: booking.totalAmountPaise,
+        refundStatus: 'pending',
+      },
+      { transaction: t },
+    );
+    return { payment, booking };
+  });
+  if (!toRefund) return 'not_applicable';
+
+  const { payment, booking } = toRefund;
+  try {
+    const refund = await cashfreeCreateRefund({
+      orderId: payment.gatewayReference ?? booking.bookingReference,
+      refundId: `${booking.bookingReference}-late-refund`,
+      refundAmountRupees: booking.totalAmountPaise / 100,
+      refundNote: 'Booking expired or was cancelled before payment completed',
+    });
+    await booking.update({ refundStatus: refund.refund_status });
+    if (refund.refund_status === 'SUCCESS') await payment.update({ status: 'refunded' });
+    return 'refunded';
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`Late payment for ${booking.bookingReference} could not be refunded automatically — needs manual follow-up:`, err);
+    await booking.update({ refundStatus: 'failed' });
+    return 'refund_failed';
+  }
+}
+
 export async function processCashfreeWebhook(payload: CashfreeWebhookPayload): Promise<void> {
   const orderId = payload.data?.order?.order_id;
   if (!orderId) return;
@@ -83,47 +233,26 @@ export async function processCashfreeWebhook(payload: CashfreeWebhookPayload): P
   const payment = await Payment.findOne({ where: { gatewayReference: orderId } });
   if (!payment) return; // Not one of our orders (or one we haven't recorded yet) — nothing to do.
 
-  const booking = await Booking.findByPk(payment.bookingId);
-  if (!booking || booking.status !== 'pending') return;
-
   if (payload.type === 'PAYMENT_SUCCESS_WEBHOOK') {
-    await sequelize.transaction(async (t) => {
-      await payment.update({ status: 'paid' }, { transaction: t });
-      await booking.update({ status: 'confirmed' }, { transaction: t });
-    });
-
-    // Only now — a "confirmation" email for a booking that was still
-    // pending payment would tell the customer they're booked before
-    // they've actually paid. Fire-and-forget like the cash/free path in
-    // publicBookings.ts: the payment is already confirmed and committed
-    // at this point, so a failed or slow email must never be treated as
-    // this webhook having failed (Cashfree would just retry it).
-    const emailPayload = await buildBookingEmailPayload(booking.id);
-    if (emailPayload) {
-      void sendBookingConfirmationEmail(emailPayload);
+    // The order amount is fixed by us at creation and the payload is
+    // signature-verified, so a mismatch shouldn't be possible — but if
+    // it ever happens, confirming the booking would hand out tickets
+    // for money that wasn't paid. Leave it for a human instead.
+    const paid = paidAmountPaise(payload);
+    if (paid !== null && paid !== payment.amountPaise) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `Cashfree payment amount mismatch for order ${orderId}: expected ${payment.amountPaise} paise, got ${paid} — booking not confirmed`,
+      );
+      return;
     }
+
+    const confirmed = await confirmPendingOnlineBooking(payment);
+    if (!confirmed) await handleLateOnlinePayment(payment.id);
     return;
   }
 
   if (payload.type === 'PAYMENT_FAILED_WEBHOOK' || payload.type === 'PAYMENT_USER_DROPPED_WEBHOOK') {
-    await sequelize.transaction(async (t) => {
-      await payment.update({ status: 'failed' }, { transaction: t });
-      await booking.update({ status: 'cancelled' }, { transaction: t });
-
-      const tickets = await Ticket.findAll({ where: { bookingId: booking.id }, transaction: t });
-      for (const ticket of tickets) {
-        // eslint-disable-next-line no-await-in-loop
-        await ticket.update({ status: 'cancelled' }, { transaction: t });
-      }
-      // Release the reservation this booking took at creation time — an
-      // abandoned or failed online payment must not leave real stock
-      // permanently locked up for tickets nobody actually bought.
-      if (tickets.length > 0) {
-        await sequelize.query(
-          `UPDATE ticket_categories SET quota_remaining = quota_remaining + :qty, updated_at = NOW() WHERE id = :id`,
-          { replacements: { qty: tickets.length, id: tickets[0].ticketCategoryId }, transaction: t },
-        );
-      }
-    });
+    await cancelPendingOnlineBooking(payment, 'Online payment failed or was abandoned');
   }
 }

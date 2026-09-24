@@ -3,6 +3,8 @@ import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
+import { Op } from 'sequelize';
+import { sequelize } from '../db/connection';
 import { Event, EventMedia } from '../models';
 import { isS3Configured, uploadFileToS3, deleteFileFromS3, s3KeyFromUrl } from './s3Storage';
 
@@ -60,6 +62,29 @@ async function getVideoDurationSeconds(filePath: string): Promise<number> {
   }
 }
 
+// The browser-declared mimetype is just a claim — it's whatever the
+// client sent. Images are checked against their real file signature
+// (video already gets the same treatment via ffprobe above), so a file
+// that isn't actually a JPEG/PNG/WebP can never be stored and served
+// back from this platform's origin as if it were one.
+export async function sniffImageMimeType(filePath: string): Promise<string | null> {
+  const handle = await fs.open(filePath, 'r');
+  try {
+    const header = Buffer.alloc(12);
+    const { bytesRead } = await handle.read(header, 0, 12, 0);
+    if (bytesRead >= 3 && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff) return 'image/jpeg';
+    if (bytesRead >= 8 && header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+      return 'image/png';
+    }
+    if (bytesRead >= 12 && header.toString('ascii', 0, 4) === 'RIFF' && header.toString('ascii', 8, 12) === 'WEBP') {
+      return 'image/webp';
+    }
+    return null;
+  } finally {
+    await handle.close();
+  }
+}
+
 export interface UploadEventMediaParams {
   organizerId: string;
   eventId: string;
@@ -75,6 +100,39 @@ export interface EventMediaResult {
 }
 
 export async function uploadEventMedia(params: UploadEventMediaParams): Promise<EventMediaResult> {
+  try {
+    return await storeEventMedia(params);
+  } finally {
+    // Every exit path — validation failure included — leaves nothing
+    // behind in the temp dir. After a successful store the file has
+    // already been moved/deleted and this is a harmless no-op.
+    await fs.unlink(params.tempFilePath).catch(() => undefined);
+  }
+}
+
+function countFor(mediaType: 'photo' | 'video', media: EventMedia[]): number {
+  return media.filter((m) => m.mediaType === mediaType).length;
+}
+
+function assertUnderLimit(mediaType: 'photo' | 'video', existing: EventMedia[]): void {
+  if (mediaType === 'photo' && countFor('photo', existing) >= MAX_IMAGES_PER_EVENT) {
+    throw new MediaValidationError(`This event already has the maximum of ${MAX_IMAGES_PER_EVENT} images`);
+  }
+  if (mediaType === 'video' && countFor('video', existing) >= MAX_VIDEOS_PER_EVENT) {
+    throw new MediaValidationError(`This event already has a video — remove it first to upload a different one`);
+  }
+}
+
+async function removeStoredFile(url: string): Promise<void> {
+  const s3Key = s3KeyFromUrl(url);
+  if (s3Key) {
+    await deleteFileFromS3(s3Key).catch(() => undefined);
+  } else {
+    await fs.unlink(path.join(UPLOAD_DIR, url.replace(`${UPLOAD_URL_PREFIX}/`, ''))).catch(() => undefined);
+  }
+}
+
+async function storeEventMedia(params: UploadEventMediaParams): Promise<EventMediaResult> {
   const event = await Event.findByPk(params.eventId);
   if (!event) throw new NotFoundError('Event not found');
   if (event.organizerId !== params.organizerId) throw new ForbiddenError('This event does not belong to your organization');
@@ -89,17 +147,23 @@ export async function uploadEventMedia(params: UploadEventMediaParams): Promise<
     throw new MediaValidationError('Unsupported file type — images must be JPEG, PNG, or WebP, and video must be MP4 or WebM');
   }
 
+  // For images, the real type (from the file's own bytes) is what gets
+  // stored and served — never the client's claim.
+  let mimeType = params.mimeType;
+  if (isImage) {
+    const sniffed = await sniffImageMimeType(params.tempFilePath);
+    if (!sniffed) {
+      throw new MediaValidationError('This file is not a valid JPEG, PNG, or WebP image');
+    }
+    mimeType = sniffed;
+  }
+
   const mediaType: 'photo' | 'video' = isImage ? 'photo' : 'video';
   const existing = await EventMedia.findAll({ where: { eventId: params.eventId } });
-  const existingImageCount = existing.filter((m) => m.mediaType === 'photo').length;
-  const existingVideoCount = existing.filter((m) => m.mediaType === 'video').length;
 
-  if (mediaType === 'photo' && existingImageCount >= MAX_IMAGES_PER_EVENT) {
-    throw new MediaValidationError(`This event already has the maximum of ${MAX_IMAGES_PER_EVENT} images`);
-  }
-  if (mediaType === 'video' && existingVideoCount >= MAX_VIDEOS_PER_EVENT) {
-    throw new MediaValidationError(`This event already has a video — remove it first to upload a different one`);
-  }
+  // Early, cheap rejection before any file is stored; re-checked under
+  // a lock below, which is what actually enforces the limit.
+  assertUnderLimit(mediaType, existing);
 
   if (mediaType === 'video') {
     const duration = await getVideoDurationSeconds(params.tempFilePath);
@@ -110,7 +174,7 @@ export async function uploadEventMedia(params: UploadEventMediaParams): Promise<
     }
   }
 
-  const filename = `${crypto.randomUUID()}${extensionForMimeType(params.mimeType)}`;
+  const filename = `${crypto.randomUUID()}${extensionForMimeType(mimeType)}`;
   let url: string;
 
   if (isS3Configured()) {
@@ -120,7 +184,7 @@ export async function uploadEventMedia(params: UploadEventMediaParams): Promise<
     // below uses, so the two storage backends stay easy to reason
     // about side by side.
     const key = `events/${params.eventId}/${filename}`;
-    url = await uploadFileToS3(params.tempFilePath, key, params.mimeType);
+    url = await uploadFileToS3(params.tempFilePath, key, mimeType);
     await fs.unlink(params.tempFilePath).catch(() => {
       // Uploaded successfully — a leftover temp file is just disk
       // clutter, not a reason to fail the request.
@@ -133,9 +197,22 @@ export async function uploadEventMedia(params: UploadEventMediaParams): Promise<
     url = `${UPLOAD_URL_PREFIX}/events/${params.eventId}/${filename}`;
   }
 
-  const media = await EventMedia.create({ eventId: params.eventId, mediaType, url });
-
-  return { id: media.id, mediaType: media.mediaType, url: media.url };
+  // Concurrent uploads each passed the early check above against the
+  // same count, so the limit is enforced again here while holding the
+  // event row's lock — uploads to one event serialize on it, and only
+  // those that still fit get a row. A loser's stored file is removed.
+  try {
+    const media = await sequelize.transaction(async (t) => {
+      await Event.findByPk(params.eventId, { transaction: t, lock: t.LOCK.UPDATE });
+      const current = await EventMedia.findAll({ where: { eventId: params.eventId }, transaction: t });
+      assertUnderLimit(mediaType, current);
+      return EventMedia.create({ eventId: params.eventId, mediaType, url }, { transaction: t });
+    });
+    return { id: media.id, mediaType: media.mediaType, url: media.url };
+  } catch (err) {
+    await removeStoredFile(url);
+    throw err;
+  }
 }
 
 // Duplicating an event's media copies the database rows only, never
@@ -167,18 +244,14 @@ export async function deleteEventMedia(organizerId: string, eventId: string, med
   const media = await EventMedia.findOne({ where: { id: mediaId, eventId } });
   if (!media) throw new NotFoundError('Media not found');
 
-  const s3Key = s3KeyFromUrl(media.url);
-  if (s3Key) {
-    await deleteFileFromS3(s3Key).catch(() => {
-      // Already gone from S3 somehow — still remove the DB row below
-      // rather than leave a dangling reference to a missing object.
-    });
-  } else {
-    const relativePath = media.url.replace(`${UPLOAD_URL_PREFIX}/`, '');
-    const filePath = path.join(UPLOAD_DIR, relativePath);
-    await fs.unlink(filePath).catch(() => {
-      // File already gone from disk somehow — same reasoning as above.
-    });
+  // Duplicated events share their source's files (duplicateEventMedia
+  // copies rows, not bytes), so the file is only removed once no other
+  // media row — on this event or any other — still points at it.
+  // Deleting a photo from a duplicate used to delete it from the
+  // original event too.
+  const otherReferences = await EventMedia.count({ where: { url: media.url, id: { [Op.ne]: media.id } } });
+  if (otherReferences === 0) {
+    await removeStoredFile(media.url);
   }
   await media.destroy();
 }

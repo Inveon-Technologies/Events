@@ -3,6 +3,7 @@ import { User } from '../models';
 import { comparePassword } from '../auth/password';
 import { signAccessToken } from '../auth/jwt';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { rateLimit } from '../middleware/rateLimit';
 import {
   initiateSignup,
   verifySignup,
@@ -21,7 +22,17 @@ import {
 
 export const authRouter = Router();
 
-authRouter.post('/login', asyncHandler(async (req, res) => {
+const FIFTEEN_MINUTES = 15 * 60;
+// Password guessing.
+const loginLimit = rateLimit({ name: 'auth-login', windowSeconds: FIFTEEN_MINUTES, max: 10 });
+// Anything that sends an email — caps how much mail one client can
+// make this platform send.
+const emailSendLimit = rateLimit({ name: 'auth-email', windowSeconds: FIFTEEN_MINUTES, max: 5 });
+// Code guessing — the per-code attempt cap in otp.ts is the real
+// protection; this just stops one client hammering many emails.
+const codeVerifyLimit = rateLimit({ name: 'auth-verify', windowSeconds: FIFTEEN_MINUTES, max: 20 });
+
+authRouter.post('/login', loginLimit, asyncHandler(async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -55,7 +66,7 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   });
 }));
 
-authRouter.post('/signup', asyncHandler(async (req, res) => {
+authRouter.post('/signup', emailSendLimit, asyncHandler(async (req, res) => {
   const { fullName, email, phone, orgName, password } = req.body as Record<string, unknown>;
 
   if (
@@ -81,7 +92,7 @@ authRouter.post('/signup', asyncHandler(async (req, res) => {
   }
 }));
 
-authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
+authRouter.post('/verify-otp', codeVerifyLimit, asyncHandler(async (req, res) => {
   const { email, code } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || typeof code !== 'string') {
@@ -105,7 +116,7 @@ authRouter.post('/verify-otp', asyncHandler(async (req, res) => {
   }
 }));
 
-authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
+authRouter.post('/resend-otp', emailSendLimit, asyncHandler(async (req, res) => {
   const { email } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string') {
@@ -127,7 +138,7 @@ authRouter.post('/resend-otp', asyncHandler(async (req, res) => {
   }
 }));
 
-authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
+authRouter.post('/forgot-password', emailSendLimit, asyncHandler(async (req, res) => {
   const { email } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || !email.trim()) {
@@ -141,7 +152,7 @@ authRouter.post('/forgot-password', asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'If that email is registered, a verification code has been sent' });
 }));
 
-authRouter.post('/verify-reset-otp', asyncHandler(async (req, res) => {
+authRouter.post('/verify-reset-otp', codeVerifyLimit, asyncHandler(async (req, res) => {
   const { email, code } = req.body as Record<string, unknown>;
 
   if (typeof email !== 'string' || typeof code !== 'string') {
@@ -161,7 +172,7 @@ authRouter.post('/verify-reset-otp', asyncHandler(async (req, res) => {
   }
 }));
 
-authRouter.post('/reset-password', asyncHandler(async (req, res) => {
+authRouter.post('/reset-password', codeVerifyLimit, asyncHandler(async (req, res) => {
   const { resetToken, newPassword } = req.body as Record<string, unknown>;
 
   if (typeof resetToken !== 'string' || typeof newPassword !== 'string' || newPassword.length < 8) {

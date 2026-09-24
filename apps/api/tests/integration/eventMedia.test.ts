@@ -219,6 +219,52 @@ describe('event media upload (real DB, real ffprobe)', () => {
     expect(dbRow).toBeNull();
   });
 
+  it('rejects a file that claims to be an image but isn\'t one (real signature check, not the declared type)', async () => {
+    const event = await createTestEvent(`Fake Image Test ${suffix}`);
+    const fakePath = path.join(fixturesDir, 'fake.jpg');
+    await fs.writeFile(fakePath, '<html><script>alert(1)</script></html>');
+    const res = await request(app)
+      .post(`/api/organizer/events/${event.id}/media`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', fakePath, { contentType: 'image/jpeg' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not a valid JPEG, PNG, or WebP/i);
+    expect(await EventMedia.count({ where: { eventId: event.id } })).toBe(0);
+  });
+
+  it('enforces the 5-image limit even when uploads race each other', async () => {
+    const event = await createTestEvent(`Concurrent Upload Test ${suffix}`);
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        request(app).post(`/api/organizer/events/${event.id}/media`).set('Authorization', `Bearer ${token}`).attach('file', imagePath),
+      ),
+    );
+    expect(results.filter((r) => r.status === 201)).toHaveLength(5);
+    expect(await EventMedia.count({ where: { eventId: event.id } })).toBe(5);
+  });
+
+  it('deleting a photo from a duplicated event keeps the shared file for the original event', async () => {
+    const original = await createTestEvent(`Shared File Original ${suffix}`);
+    const upload = await request(app)
+      .post(`/api/organizer/events/${original.id}/media`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', imagePath);
+    const duplicateRes = await request(app)
+      .post(`/api/organizer/events/${original.id}/duplicate`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    const duplicateId = duplicateRes.body.id ?? duplicateRes.body.event?.id;
+    const duplicateMedia = await EventMedia.findOne({ where: { eventId: duplicateId } });
+    expect(duplicateMedia!.url).toBe(upload.body.url);
+
+    await request(app)
+      .delete(`/api/organizer/events/${duplicateId}/media/${duplicateMedia!.id}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    const served = await request(app).get(upload.body.url);
+    expect(served.status).toBe(200);
+  });
+
   it('an event with no media returns an empty array, not null or an error', async () => {
     const event = await createTestEvent(`No Media Test ${suffix}`);
     const res = await request(app).get(`/api/events/${event.id}`);

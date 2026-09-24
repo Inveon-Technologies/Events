@@ -18,14 +18,12 @@ import {
 import { useEvents } from '../../context/EventsContext';
 import { useNotifications } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
+import EventLookupState from '../../components/common/EventLookupState';
 
-export default function EventPreview() {
-  const { id } = useParams();
-  const { events } = useEvents();
-  const { showToast } = useNotifications();
+function EventPreviewContent({ event }) {
+    const { showToast } = useNotifications();
   const navigate = useNavigate();
 
-  const event = events.find(e => e.id === id) || events[0];
   const [selectedTier, setSelectedTier] = useState(event?.ticketTiers?.[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
 
@@ -254,4 +252,12 @@ export default function EventPreview() {
       </div>
     </div>
   );
+}
+
+export default function EventPreview() {
+  const { id } = useParams();
+  const { events, eventsLoaded, eventsLoadError } = useEvents();
+  const event = events.find((e) => e.id === id);
+  if (!event) return <EventLookupState loaded={eventsLoaded} error={eventsLoadError} />;
+  return <EventPreviewContent event={event} />;
 }

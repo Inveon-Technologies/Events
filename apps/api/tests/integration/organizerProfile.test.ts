@@ -116,6 +116,20 @@ describe('real organizer profile + logo upload (real DB)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a non-image file even when it claims to be image/png', async () => {
+    const tmpFile = path.join(os.tmpdir(), `test-logo-fake-${suffix}.png`);
+    fs.writeFileSync(tmpFile, '<svg onload="alert(1)"></svg>');
+
+    const res = await request(app)
+      .post('/api/organizer/profile/logo')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', tmpFile, { filename: 'logo.png', contentType: 'image/png' });
+    fs.unlinkSync(tmpFile);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/not a valid JPEG, PNG, or WebP/i);
+  });
+
   it('scopes the profile to the token\'s own organizer, never another organizer\'s data', async () => {
     const getRes = await request(app).get('/api/organizer/profile').set('Authorization', `Bearer ${otherToken}`);
     expect(getRes.body.name).toBe(`Other Profile Org ${suffix}`);
