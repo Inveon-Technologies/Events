@@ -8,6 +8,7 @@ import { Ticket } from './Ticket';
 import { Payment } from './Payment';
 import { Cancellation } from './Cancellation';
 import { EventReview } from './EventReview';
+import { ApiCredential } from './ApiCredential';
 
 // event_custom_questions, ticket_custom_answers, event_media, and
 // certificates exist as tables (see the migration) but deliberately have
@@ -59,5 +60,8 @@ EventReview.belongsTo(Event, { foreignKey: 'eventId' });
 Organizer.hasMany(EventReview, { foreignKey: 'organizerId' });
 EventReview.belongsTo(Organizer, { foreignKey: 'organizerId' });
 
-export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview };
+Organizer.hasMany(ApiCredential, { foreignKey: 'organizerId' });
+ApiCredential.belongsTo(Organizer, { foreignKey: 'organizerId' });
+
+export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview, ApiCredential };
 export type { EventScheduleItem, EventPackingItem, EventFaqItem };

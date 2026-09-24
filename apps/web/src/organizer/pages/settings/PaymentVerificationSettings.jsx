@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, ShieldAlert, Clock, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import SettingsTabs from '../../components/common/SettingsTabs';
 
 const STATUS_META = {
   not_started: { label: 'Not started', tone: 'bg-slate-100 text-slate-600', icon: ShieldAlert },
@@ -85,13 +86,7 @@ export default function PaymentVerificationSettings() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-slate-200 pb-2">
-        <NavLink to="/organizer/settings/account" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Account Profile</NavLink>
-        <NavLink to="/organizer/settings/verification" className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Payment Verification</NavLink>
-        <NavLink to="/organizer/settings/organization" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Organization & Team</NavLink>
-        <NavLink to="/organizer/settings/security" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Security & 2FA</NavLink>
-        <NavLink to="/organizer/settings/notifications" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Notification Alerts</NavLink>
-      </div>
+      <SettingsTabs />
 
       <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-5">
         {loading ? (

@@ -63,6 +63,13 @@ import {
   ForbiddenError as EventForbiddenError,
 } from '../services/eventManagement';
 import {
+  listApiCredentials,
+  createApiCredential,
+  revokeApiCredential,
+  ValidationError as CredentialValidationError,
+  NotFoundError as CredentialNotFoundError,
+} from '../services/apiCredentials';
+import {
   setEventGallery,
   ValidationError as GalleryValidationError,
   NotFoundError as GalleryNotFoundError,
@@ -932,6 +939,44 @@ organizerRouter.put('/events/:eventId/gallery', asyncHandler(async (req, res) =>
     }
     if (err instanceof GalleryForbiddenError) {
       res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+// Settings → Integrations: app key + secret pairs for the organizer's
+// own website/app to read their events through /api/v1. Owner-only —
+// a key grants access to all of the organization's event data.
+organizerRouter.get('/integrations/keys', ownerOnly, asyncHandler(async (req, res) => {
+  res.status(200).json({ keys: await listApiCredentials(req.user!.organizerId!) });
+}));
+
+organizerRouter.post('/integrations/keys', ownerOnly, asyncHandler(async (req, res) => {
+  const { name } = req.body as Record<string, unknown>;
+  try {
+    const created = await createApiCredential({
+      organizerId: req.user!.organizerId!,
+      userId: req.user!.sub,
+      name: typeof name === 'string' ? name : '',
+    });
+    res.status(201).json(created);
+  } catch (err) {
+    if (err instanceof CredentialValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.delete('/integrations/keys/:keyId', ownerOnly, asyncHandler(async (req, res) => {
+  try {
+    await revokeApiCredential(req.user!.organizerId!, req.params.keyId);
+    res.status(204).send();
+  } catch (err) {
+    if (err instanceof CredentialNotFoundError) {
+      res.status(404).json({ error: err.message });
       return;
     }
     throw err;

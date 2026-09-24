@@ -3,6 +3,7 @@ import { authRouter } from './routes/auth';
 import { organizerRouter } from './routes/organizer';
 import { publicBookingsRouter } from './routes/publicBookings';
 import { webhooksRouter } from './routes/webhooks';
+import { integrationApiRouter } from './routes/integrationApi';
 import { UPLOAD_DIR } from './services/eventMedia';
 
 export function createApp(): Express {
@@ -43,6 +44,7 @@ export function createApp(): Express {
   // reachable through the public domain without a separate nginx change.
   app.use('/api/uploads', express.static(UPLOAD_DIR));
 
+  app.use('/api/v1', integrationApiRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/organizer', organizerRouter);
   app.use('/api', publicBookingsRouter);

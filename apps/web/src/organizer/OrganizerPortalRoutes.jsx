@@ -44,6 +44,7 @@ import PaymentVerificationSettings from './pages/settings/PaymentVerificationSet
 import OrganizationSettings from './pages/settings/OrganizationSettings';
 import SecuritySettings from './pages/settings/SecuritySettings';
 import NotificationSettings from './pages/settings/NotificationSettings';
+import IntegrationsSettings from './pages/settings/IntegrationsSettings';
 
 // Mounted under /organizer/* in the main app's router (see
 // apps/web/src/App.tsx) — every path below is relative to that mount
@@ -113,6 +114,7 @@ export default function OrganizerPortalRoutes() {
         <Route path="settings/organization" element={<OrganizationSettings />} />
         <Route path="settings/security" element={<SecuritySettings />} />
         <Route path="settings/notifications" element={<NotificationSettings />} />
+        <Route path="settings/integrations" element={<IntegrationsSettings />} />
 
         {/* 404 Fallback within the organizer portal */}
         <Route path="*" element={<Navigate to="/organizer/dashboard" replace />} />

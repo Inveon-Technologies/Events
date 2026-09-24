@@ -32,7 +32,7 @@ export interface OrganizerEventsParams {
 // published event whose date has passed. Mirrors the bookings service's
 // partially_cancelled derivation for the same reason: this can never drift
 // out of sync with reality the way a manually-set status could.
-function deriveEventStatus(status: string, eventDate: Date, now: Date): DisplayEventStatus {
+export function deriveEventStatus(status: string, eventDate: Date, now: Date): DisplayEventStatus {
   if (status === 'draft') return 'draft';
   if (status === 'cancelled') return 'cancelled';
   // status === 'published' or legacy 'closed'
