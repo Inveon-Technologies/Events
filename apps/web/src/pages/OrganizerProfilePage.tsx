@@ -24,7 +24,10 @@ interface OrganizerDetail {
   ratingSummary: { averageRating: number | null; reviewCount: number };
 }
 
-const PLACEHOLDER_EVENT_IMAGE = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80';
+// Neutral placeholder for an event without photos — never a stock photo
+// that could pass for the organizer's own.
+const PLACEHOLDER_EVENT_IMAGE =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 450'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23dbeafe'/><stop offset='1' stop-color='%23e2e8f0'/></linearGradient></defs><rect width='800' height='450' fill='url(%23g)'/></svg>";
 
 export function OrganizerProfilePage() {
   const { organizerSlug } = useParams();
@@ -119,13 +122,6 @@ export function OrganizerProfilePage() {
         {/* HERO BANNER SECTION */}
         <section className="relative overflow-hidden bg-gradient-to-r from-[#d9e6fc] via-[#eaf2ff] to-[#d6e7ff] border-y border-slate-200/80">
 
-          <div className="absolute inset-0 opacity-40 pointer-events-none">
-            <img
-              src="https://images.unsplash.com/photo-1544216428-d0e10da5ee56?q=80&w=1600&auto=format&fit=crop"
-              alt=""
-              className="w-full h-full object-cover object-right"
-            />
-          </div>
 
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 relative z-10">
             <div className="flex flex-col md:flex-row items-start md:items-center gap-6 sm:gap-8">

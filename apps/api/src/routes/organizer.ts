@@ -33,12 +33,14 @@ import {
 } from '../services/bookingCancellation';
 import {
   checkInTicket,
+  checkInTicketById,
   undoCheckIn,
   NotFoundError as CheckInNotFoundError,
   ForbiddenError as CheckInForbiddenError,
   RejectedError as CheckInRejectedError,
 } from '../services/ticketCheckIn';
 import { getOrganizerTickets } from '../services/organizerTickets';
+import { getOrganizerNotifications } from '../services/organizerNotifications';
 import { getOrganizerPayments } from '../services/organizerPayments';
 import { searchVenues, reverseGeocode, VenueSearchError } from '../services/venueSearch';
 import {
@@ -172,6 +174,7 @@ const GATE_VOLUNTEER_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/events\/?$/ },
   { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/?$/ },
   { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/[^/]+\/undo\/?$/ },
+  { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/ticket\/[^/]+\/?$/ },
 ];
 
 organizerRouter.use(authenticate, (req, res, next) => {
@@ -690,6 +693,37 @@ organizerRouter.post('/events/:eventId/checkin', asyncHandler(async (req, res) =
   }
 }));
 
+organizerRouter.post('/events/:eventId/checkin/ticket/:ticketId', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  try {
+    const result = await checkInTicketById({
+      eventId: req.params.eventId,
+      organizerId,
+      ticketId: req.params.ticketId,
+      checkedInByUserId: req.user!.sub,
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CheckInNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInRejectedError) {
+      res.status(409).json({ error: err.message, reasonCode: err.reasonCode, details: err.details });
+      return;
+    }
+    throw err;
+  }
+}));
+
 organizerRouter.post('/events/:eventId/checkin/:ticketId/undo', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
@@ -1013,4 +1047,15 @@ organizerRouter.delete('/integrations/keys/:keyId', ownerOnly, asyncHandler(asyn
     }
     throw err;
   }
+}));
+
+// Activity feed for the header bell and Notifications page, derived from
+// real bookings, cancellations, refunds and events.
+organizerRouter.get('/notifications', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  res.status(200).json({ notifications: await getOrganizerNotifications(organizerId) });
 }));

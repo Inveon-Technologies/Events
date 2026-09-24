@@ -1,7 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { INITIAL_PARTICIPANTS } from '../data/mockParticipants';
-import { INITIAL_PAYMENTS } from '../data/mockPayments';
-import { INITIAL_SETTINGS } from '../data/mockSettings';
 import { useNotifications } from './NotificationContext';
 import { useAuth } from './AuthContext';
 import { apiRequest, ApiError } from '../lib/api';
@@ -14,9 +11,8 @@ const PLACEHOLDER_BANNER =
   "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 600'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23dbeafe'/><stop offset='1' stop-color='%23e2e8f0'/></linearGradient></defs><rect width='1200' height='600' fill='url(%23g)'/><text x='600' y='315' font-family='sans-serif' font-size='40' fill='%2394a3b8' text-anchor='middle'>No cover photo yet</text></svg>";
 
 // Maps GET /api/organizer/events (see apps/api/src/services/organizerEvents.ts)
-// onto the richer shape every page in this portal already expects (see
-// data/mockEvents.js). This backend doesn't track everything the mock shape
-// has room for yet (category, short/long description, venue city/state/
+// onto the shape every page in this portal expects. This backend doesn't
+// track everything that shape has room for yet (category, short/long description, venue city/state/
 // pincode, timezone) — those come through blank rather than fabricated.
 // displayStatus's values (draft/published/completed/cancelled) already match
 // the shape's `status` field exactly, so that one's a straight passthrough.
@@ -43,13 +39,13 @@ function apiEventToMockShape(e) {
     bannerImage: e.bannerUrl || PLACEHOLDER_BANNER,
     totalCapacity: e.capacity,
     ticketsSold: e.ticketsSold,
-    checkedInCount: 0,
+    checkedInCount: e.checkedInCount ?? 0,
     grossRevenue: Math.round(e.revenuePaise / 100),
   };
 }
 
 // Maps GET /api/organizer/bookings?eventId=all onto the shape every page
-// reading `bookings` already expects (see data/mockBookings.js). ticketIds
+// reading `bookings` expects. ticketIds
 // and notes aren't tracked by this backend — they come through empty
 // rather than fabricated.
 function apiBookingToMockShape(b) {
@@ -125,30 +121,6 @@ export function EventsProvider({ children }) {
   const [events, setEvents] = useState([]);
   const [bookings, setBookings] = useState([]);
 
-  const [participants, setParticipants] = useState(() => {
-    const saved = localStorage.getItem('inveon_participants');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore corrupted localStorage, fall back to default */ }
-    }
-    return INITIAL_PARTICIPANTS;
-  });
-
-  const [payments, setPayments] = useState(() => {
-    const saved = localStorage.getItem('inveon_payments');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore corrupted localStorage, fall back to default */ }
-    }
-    return INITIAL_PAYMENTS;
-  });
-
-  const [settings, setSettings] = useState(() => {
-    const saved = localStorage.getItem('inveon_settings');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore corrupted localStorage, fall back to default */ }
-    }
-    return INITIAL_SETTINGS;
-  });
-
   const [eventsLoadError, setEventsLoadError] = useState(null);
   // False until the first events request for this session settles —
   // lets pages tell "still loading" apart from "no such event".
@@ -156,9 +128,8 @@ export function EventsProvider({ children }) {
   const [bookingsLoadError, setBookingsLoadError] = useState(null);
 
   // Real data: events and bookings (across every event this organizer
-  // owns). Participants/payments/settings stay on the mock/localStorage
-  // layer above — those need their own backend domains this project
-  // doesn't have yet.
+  // owns). Attendees, payments and settings are loaded by their own pages
+  // straight from the API; nothing here is mock data any more.
   const refreshEvents = useCallback(() => {
     if (!user?.isLoggedIn || !user?.token) return Promise.resolve();
     return apiRequest('/organizer/events', { token: user.token })
@@ -213,19 +184,6 @@ export function EventsProvider({ children }) {
       cancelled = true;
     };
   }, [user?.isLoggedIn, user?.token]);
-
-  // Sync to localStorage (only the mock-backed domains — see above)
-  useEffect(() => {
-    localStorage.setItem('inveon_participants', JSON.stringify(participants));
-  }, [participants]);
-
-  useEffect(() => {
-    localStorage.setItem('inveon_payments', JSON.stringify(payments));
-  }, [payments]);
-
-  useEffect(() => {
-    localStorage.setItem('inveon_settings', JSON.stringify(settings));
-  }, [settings]);
 
   // Event actions
   const addEvent = async (newEvent) => {
@@ -396,148 +354,6 @@ export function EventsProvider({ children }) {
     }
   };
 
-  // Participant actions & Real-time Check-In with Unpaid / Cancelled Validation
-  const checkInParticipant = (ticketCodeOrId) => {
-    const query = (ticketCodeOrId || '').trim().toLowerCase();
-    const target = participants.find(
-      (p) =>
-        p.id.toLowerCase() === query ||
-        p.ticketCode.toLowerCase() === query ||
-        p.fullName.toLowerCase() === query
-    );
-
-    if (!target) {
-      showToast(`❌ REJECTED: Ticket not found for "${ticketCodeOrId}"`, 'error');
-      return {
-        success: false,
-        reason: 'NOT_FOUND',
-        title: '⛔ SCAN REJECTED — TICKET NOT FOUND',
-        message: `No active ticket or reservation found matching "${ticketCodeOrId}". Please verify ticket code.`
-      };
-    }
-
-    const booking = bookings.find((b) => b.id === target.bookingId);
-
-    // 1. Cancelled / Refunded validation check
-    if (
-      target.checkInStatus === 'cancelled' ||
-      booking?.bookingStatus === 'cancelled' ||
-      booking?.paymentStatus === 'refunded'
-    ) {
-      showToast(`⛔ REJECTED: Ticket for ${target.fullName} is CANCELLED`, 'error');
-      return {
-        success: false,
-        reason: 'CANCELLED',
-        title: '⛔ SCAN REJECTED — TICKET CANCELLED',
-        message: `Ticket pass for ${target.fullName} has been CANCELLED / REFUNDED (Order #${target.bookingId}). Entry strictly denied.`,
-        participant: target,
-        booking: booking
-      };
-    }
-
-    // 2. Unpaid / Pending Payment validation check
-    if (
-      target.checkInStatus === 'pending' ||
-      booking?.paymentStatus === 'pending' ||
-      booking?.paymentStatus === 'failed' ||
-      booking?.paymentStatus === 'unpaid' ||
-      booking?.bookingStatus === 'pending'
-    ) {
-      showToast(`⚠️ REJECTED: Ticket is UNPAID (Order #${target.bookingId})`, 'error');
-      return {
-        success: false,
-        reason: 'UNPAID',
-        title: '⚠️ SCAN REJECTED — PAYMENT UNPAID / PENDING',
-        message: `Ticket for ${target.fullName} has NOT been paid (Order #${target.bookingId} - ₹${booking?.amount || target.tierPrice}). Payment status is "${booking?.paymentStatus || 'pending'}". Direct attendee to Helpdesk for payment settlement.`,
-        participant: target,
-        booking: booking
-      };
-    }
-
-    // 3. Already Checked-In validation check
-    if (target.checkInStatus === 'checked_in') {
-      showToast(`⚠️ REJECTED: ${target.fullName} is already checked in`, 'info');
-      return {
-        success: false,
-        reason: 'ALREADY_CHECKED_IN',
-        title: '⚠️ SCAN REJECTED — ALREADY CHECKED IN',
-        message: `Ticket pass for ${target.fullName} was ALREADY scanned & admitted at ${target.checkInTime || 'earlier'}. Duplicate admission blocked!`,
-        participant: target,
-        booking: booking
-      };
-    }
-
-    // 4. Approved & Admitted
-    const nowStr = new Date().toLocaleString();
-    const updated = {
-      ...target,
-      checkInStatus: 'checked_in',
-      checkInTime: nowStr
-    };
-
-    setParticipants((prev) =>
-      prev.map((p) => (p.id === target.id ? updated : p))
-    );
-
-    // Update event checked-in count
-    setEvents((prev) =>
-      prev.map((evt) =>
-        evt.id === target.eventId
-          ? { ...evt, checkedInCount: (evt.checkedInCount || 0) + 1 }
-          : evt
-      )
-    );
-
-    showToast(`✓ SCAN APPROVED: ${target.fullName} admitted (${target.tierName})`, 'success');
-    return {
-      success: true,
-      reason: 'APPROVED',
-      title: '✓ SCAN APPROVED & ADMITTED',
-      message: `Welcome, ${target.fullName}! Validated for ${target.tierName} (Order #${target.bookingId}).`,
-      participant: updated,
-      booking: booking
-    };
-  };
-
-  const undoCheckIn = (participantId) => {
-    const target = participants.find((p) => p.id === participantId);
-    if (!target || target.checkInStatus !== 'checked_in') return;
-
-    setParticipants((prev) =>
-      prev.map((p) =>
-        p.id === participantId
-          ? { ...p, checkInStatus: 'confirmed', checkInTime: null }
-          : p
-      )
-    );
-
-    setEvents((prev) =>
-      prev.map((evt) =>
-        evt.id === target.eventId
-          ? { ...evt, checkedInCount: Math.max(0, (evt.checkedInCount || 1) - 1) }
-          : evt
-      )
-    );
-
-    showToast(`Check-in undone for ${target.fullName}`, 'info');
-  };
-
-  // Booking actions
-  const updateBookingStatus = (bookingId, newStatus, newPaymentStatus) => {
-    setBookings((prev) =>
-      prev.map((b) =>
-        b.id === bookingId
-          ? {
-              ...b,
-              bookingStatus: newStatus,
-              paymentStatus: newPaymentStatus || b.paymentStatus
-            }
-          : b
-      )
-    );
-    showToast(`Booking ${bookingId} updated to ${newStatus}`, 'success');
-  };
-
   const cancelBooking = async (bookingId, reason) => {
     try {
       const result = await apiRequest(`/organizer/bookings/${bookingId}/cancel`, {
@@ -554,27 +370,6 @@ export function EventsProvider({ children }) {
     }
   };
 
-  // Settings actions
-  const updateAccountSettings = (newAcc) => {
-    setSettings((prev) => ({ ...prev, account: { ...prev.account, ...newAcc } }));
-    showToast('Account details saved successfully!', 'success');
-  };
-
-  const updateOrgSettings = (newOrg) => {
-    setSettings((prev) => ({ ...prev, organization: { ...prev.organization, ...newOrg } }));
-    showToast('Organization settings updated!', 'success');
-  };
-
-  const updateSecuritySettings = (newSec) => {
-    setSettings((prev) => ({ ...prev, security: { ...prev.security, ...newSec } }));
-    showToast('Security preferences updated!', 'success');
-  };
-
-  const updateNotificationSettings = (newNotif) => {
-    setSettings((prev) => ({ ...prev, notifications: { ...prev.notifications, ...newNotif } }));
-    showToast('Notification channels updated!', 'success');
-  };
-
   return (
     <EventsContext.Provider
       value={{
@@ -583,9 +378,6 @@ export function EventsProvider({ children }) {
         eventsLoadError,
         bookingsLoadError,
         bookings,
-        participants,
-        payments,
-        settings,
         addEvent,
         updateEvent,
         duplicateEvent,
@@ -593,14 +385,7 @@ export function EventsProvider({ children }) {
         toggleEventStatus,
         cancelEvent,
         updateEventFull,
-        checkInParticipant,
-        undoCheckIn,
-        updateBookingStatus,
         cancelBooking,
-        updateAccountSettings,
-        updateOrgSettings,
-        updateSecuritySettings,
-        updateNotificationSettings
       }}
     >
       {children}

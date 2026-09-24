@@ -13,6 +13,7 @@ export interface OrganizerEventRow {
   bannerUrl: string | null;
   capacity: number;
   ticketsSold: number;
+  checkedInCount: number;
   revenuePaise: number;
   displayStatus: DisplayEventStatus;
 }
@@ -120,10 +121,14 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
 
   const rows: OrganizerEventRow[] = await Promise.all(
     events.map(async (event) => {
-      const [ticketsSold, revenueRow] = await Promise.all([
+      const [ticketsSold, checkedInCount, revenueRow] = await Promise.all([
         Ticket.count({
           include: [{ model: Booking, attributes: [], where: { eventId: event.id } }],
           where: { status: { [Op.ne]: 'cancelled' } },
+        }),
+        Ticket.count({
+          include: [{ model: Booking, attributes: [], where: { eventId: event.id } }],
+          where: { status: 'checked_in' },
         }),
         Payment.findOne({
           attributes: [[Payment.sequelize!.fn('COALESCE', Payment.sequelize!.fn('SUM', Payment.sequelize!.col('Payment.amount_paise')), 0), 'total']],
@@ -142,6 +147,7 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
         bannerUrl: coverUrls.get(event.id) ?? null,
         capacity: event.capacity,
         ticketsSold,
+        checkedInCount,
         revenuePaise: Number((revenueRow as unknown as { total: string } | null)?.total ?? 0),
         displayStatus: deriveEventStatus(event.status, event.eventDate, now),
       };

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { apiRequest, ApiError } from '../../lib/api';
 import StatusBadge from '../../components/common/StatusBadge';
+import { downloadCsv, ATTENDEE_CSV_COLUMNS } from '../../lib/csv';
 
 export default function Participants() {
   const { user } = useAuth();
@@ -71,7 +72,8 @@ export default function Participants() {
         </div>
 
         <button
-          onClick={() => showToast('CSV export is not built yet.')}
+          onClick={() => downloadCsv('attendees.csv', ATTENDEE_CSV_COLUMNS, filtered)}
+          disabled={filtered.length === 0}
           className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 shadow-xs"
         >
           <Download className="w-3.5 h-3.5" />

@@ -19,8 +19,11 @@ import { useEvents } from '../../context/EventsContext';
 import { useNotifications } from '../../context/NotificationContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import EventLookupState from '../../components/common/EventLookupState';
+import UserAvatar from '../../components/common/UserAvatar';
+import { useAuth } from '../../context/AuthContext';
 
 function EventPreviewContent({ event }) {
+  const { user } = useAuth();
     const { showToast } = useNotifications();
   const navigate = useNavigate();
 
@@ -153,15 +156,10 @@ function EventPreviewContent({ event }) {
           {/* Organizer Bio */}
           <div className="bg-white p-6 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
-              <img
-                src={event.organizer?.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80"}
-                alt={event.organizer?.name}
-                className="w-12 h-12 rounded-full object-cover ring-2 ring-brand-100"
-              />
+              <UserAvatar src={user?.avatar} name={user?.orgName || user?.name} className="w-12 h-12 text-sm ring-2 ring-brand-100" />
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Hosted by</span>
-                <h4 className="text-sm font-bold text-slate-900">{event.organizer?.name}</h4>
-                <p className="text-xs text-slate-500">{event.organizer?.email}</p>
+                <h4 className="text-sm font-bold text-slate-900">{user?.orgName || user?.name}</h4>
               </div>
             </div>
 

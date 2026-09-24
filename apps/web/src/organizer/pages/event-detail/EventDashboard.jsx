@@ -1,20 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, NavLink, useNavigate } from 'react-router-dom';
 import {
   Calendar,
-  Clock,
   MapPin,
   Users,
   Ticket,
   CreditCard,
   QrCode,
   ExternalLink,
-  ChevronRight,
-  TrendingUp,
-  ShieldCheck,
-  Share2,
   Edit,
-  CheckCircle2,
   XCircle
 } from 'lucide-react';
 import StatCard from '../../components/common/StatCard';
@@ -22,17 +16,58 @@ import StatusBadge from '../../components/common/StatusBadge';
 import { useEvents } from '../../context/EventsContext';
 import EventLookupState from '../../components/common/EventLookupState';
 import EventGalleryCard from '../../components/EventGalleryCard';
+import UserAvatar from '../../components/common/UserAvatar';
+import { useAuth } from '../../context/AuthContext';
+import { apiRequest } from '../../lib/api';
+
+function formatRupees(paise) {
+  return `₹${Math.round((paise || 0) / 100).toLocaleString('en-IN')}`;
+}
 
 function EventDashboardContent({ event }) {
-  const { participants, bookings, cancelEvent } = useEvents();
+  const { bookings, cancelEvent } = useEvents();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
+  // Everything on this page comes from the real API: the event's tiers
+  // (with real sold counts), its tickets (check-ins and recent arrivals)
+  // and its financials. Previously the tier list was always empty (the
+  // events list never carries tiers), check-ins came from a mock roster,
+  // and "Average order: ₹2,450" was hardcoded.
+  const [detail, setDetail] = useState(null);
+  const [ticketData, setTicketData] = useState(null);
+  const [financials, setFinancials] = useState(null);
 
-  const eventParticipants = participants.filter((p) => p.eventId === event.id);
+  useEffect(() => {
+    let cancelled = false;
+    const token = user?.token;
+    Promise.allSettled([
+      apiRequest(`/organizer/events/${event.id}`, { token }),
+      apiRequest(`/organizer/tickets?eventId=${event.id}`, { token }),
+      apiRequest(`/organizer/events/${event.id}/financials`, { token }),
+    ]).then(([d, t, f]) => {
+      if (cancelled) return;
+      if (d.status === 'fulfilled') setDetail(d.value);
+      if (t.status === 'fulfilled') setTicketData(t.value);
+      if (f.status === 'fulfilled') setFinancials(f.value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [event.id, user?.token]);
+
   const eventBookings = bookings.filter((b) => b.eventId === event.id);
-  const checkedInCount = eventParticipants.filter((p) => p.checkInStatus === 'checked_in').length;
-  const capacityPercent = Math.min(100, Math.round((event.ticketsSold / (event.totalCapacity || 1)) * 100));
-  const checkInPercent = event.ticketsSold > 0 ? Math.round((checkedInCount / event.ticketsSold) * 100) : 0;
+  const paidBookings = eventBookings.filter((b) => b.amount > 0 && b.bookingStatus !== 'cancelled');
+  const averageOrder = paidBookings.length ? paidBookings.reduce((sum, b) => sum + b.amount, 0) / paidBookings.length : 0;
+  const ticketsSold = event.ticketsSold;
+  const checkedInCount = ticketData?.counts?.checked_in ?? event.checkedInCount ?? 0;
+  const capacityPercent = Math.min(100, Math.round((ticketsSold / (event.totalCapacity || 1)) * 100));
+  const checkInPercent = ticketsSold > 0 ? Math.round((checkedInCount / ticketsSold) * 100) : 0;
+  const recentCheckIns = (Array.isArray(ticketData?.tickets) ? ticketData.tickets : [])
+    .filter((t) => t.status === 'checked_in')
+    .sort((a, b) => (b.checkedInAt || '').localeCompare(a.checkedInAt || ''))
+    .slice(0, 5);
+  const tiers = Array.isArray(detail?.ticketTiers) ? detail.ticketTiers : [];
 
   return (
     <div className="space-y-6">
@@ -57,7 +92,7 @@ function EventDashboardContent({ event }) {
               </span>
               <span className="flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                <span>{event.venueName}, {event.city}</span>
+                <span>{[event.venueName, event.city].filter(Boolean).join(', ') || 'Venue not set'}</span>
               </span>
             </div>
           </div>
@@ -135,7 +170,7 @@ function EventDashboardContent({ event }) {
             }`
           }
         >
-          Attendee Roster ({eventParticipants.length})
+          Attendee Roster ({ticketsSold})
         </NavLink>
         <NavLink
           to={`/organizer/events/${event.id}/payments`}
@@ -164,14 +199,14 @@ function EventDashboardContent({ event }) {
         <StatCard
           title="Gross Ticket Revenue"
           value={`₹${(event.grossRevenue || 0).toLocaleString('en-IN')}`}
-          subtitle="Net payout in calculation"
+          subtitle={financials ? `Your payout: ${formatRupees(financials.netPayoutPaise)} after ${financials.platformFeePercent}% fee` : 'Paid bookings only'}
           icon={CreditCard}
           iconBg="bg-blue-50 text-brand-600"
           onClick={() => navigate(`/organizer/events/${event.id}/payments`)}
         />
         <StatCard
           title="Capacity Filled"
-          value={`${event.ticketsSold} / ${event.totalCapacity}`}
+          value={`${ticketsSold} / ${event.totalCapacity}`}
           subtitle={`${capacityPercent}% total allocation`}
           icon={Ticket}
           iconBg="bg-purple-50 text-purple-600"
@@ -179,10 +214,8 @@ function EventDashboardContent({ event }) {
         />
         <StatCard
           title="Live Verified Attendees"
-          value={`${checkedInCount} / ${event.ticketsSold}`}
+          value={`${checkedInCount} / ${ticketsSold}`}
           subtitle={`${checkInPercent}% checked in`}
-          change={`${checkedInCount} verified`}
-          isPositive={true}
           icon={QrCode}
           iconBg="bg-emerald-50 text-emerald-600"
           onClick={() => navigate('/organizer/check-in')}
@@ -190,7 +223,7 @@ function EventDashboardContent({ event }) {
         <StatCard
           title="Total Orders / Bookings"
           value={eventBookings.length}
-          subtitle="Average order: ₹2,450"
+          subtitle={paidBookings.length ? `Average paid order: ₹${Math.round(averageOrder).toLocaleString('en-IN')}` : 'No paid orders yet'}
           icon={Users}
           iconBg="bg-cyan-50 text-cyan-600"
           onClick={() => navigate(`/organizer/events/${event.id}/bookings`)}
@@ -213,8 +246,10 @@ function EventDashboardContent({ event }) {
             </div>
 
             <div className="space-y-4">
-              {event.ticketTiers?.map((tier) => {
-                const tierPercent = Math.round((tier.sold / tier.quantity) * 100);
+              {!detail && <p className="text-xs text-slate-400">Loading tiers…</p>}
+              {detail && tiers.length === 0 && <p className="text-xs text-slate-500">No ticket tiers yet.</p>}
+              {tiers.map((tier) => {
+                const tierPercent = tier.quantity > 0 ? Math.round((tier.sold / tier.quantity) * 100) : 0;
                 return (
                   <div key={tier.id} className="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
                     <div className="flex items-center justify-between">
@@ -256,20 +291,22 @@ function EventDashboardContent({ event }) {
             </div>
 
             <div className="divide-y divide-slate-100">
-              {eventParticipants.slice(0, 4).map((part) => (
-                <div key={part.id} className="py-3 flex items-center justify-between gap-3">
+              {!ticketData && <p className="py-3 text-xs text-slate-400">Loading…</p>}
+              {ticketData && recentCheckIns.length === 0 && (
+                <p className="py-3 text-xs text-slate-500">No one has checked in yet.</p>
+              )}
+              {recentCheckIns.map((t) => (
+                <div key={t.id} className="py-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <img
-                      src={part.avatar}
-                      alt={part.fullName}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
+                    <UserAvatar name={t.attendeeName} className="w-8 h-8 text-[11px]" />
                     <div>
-                      <p className="text-xs font-bold text-slate-900">{part.fullName}</p>
-                      <p className="text-[10px] text-slate-500">{part.tierName}</p>
+                      <p className="text-xs font-bold text-slate-900">{t.attendeeName}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {t.tierName} · {new Date(t.checkedInAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}
+                      </p>
                     </div>
                   </div>
-                  <StatusBadge status={part.checkInStatus} />
+                  <StatusBadge status="checked_in" />
                 </div>
               ))}
             </div>
