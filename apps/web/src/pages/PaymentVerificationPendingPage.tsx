@@ -3,7 +3,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Badge } from '../components/Badge';
-import { rajgadTrek } from '../mockData/rajgadTrek';
 import { formatINR } from '../lib/format';
 
 export function PaymentVerificationPendingPage() {
@@ -35,7 +34,7 @@ export function PaymentVerificationPendingPage() {
 
           <div className="bg-surface-sunken rounded-xl p-4 text-left mb-6">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm text-ink-body">{state.eventName ?? rajgadTrek.name}</span>
+              <span className="text-sm text-ink-body">{state.eventName ?? 'Your booking'}</span>
               <Badge tone="warning">Verification Pending</Badge>
             </div>
             <div className="flex justify-between text-sm">

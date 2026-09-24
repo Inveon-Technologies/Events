@@ -170,7 +170,7 @@ export function HomePage() {
 
                   {/* Step 1 Thumbnail Card */}
                   <Link
-                    to="/events/rajgad-sunrise-trek-2026"
+                    to="/events"
                     className="absolute left-2 sm:left-4 bottom-4 sm:bottom-10 pointer-events-auto bg-white/95 backdrop-blur-md p-2 sm:p-2.5 rounded-xl sm:rounded-2xl shadow-xl border border-white/60 w-36 sm:w-48 transform -rotate-2 hover:rotate-0 hover:scale-105 transition-all duration-300 block"
                   >
                     <div className="h-16 sm:h-24 rounded-lg sm:rounded-xl overflow-hidden mb-1.5 sm:mb-2 relative">

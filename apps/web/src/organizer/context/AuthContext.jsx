@@ -1,9 +1,21 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiRequest, ApiError } from '../lib/api';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { apiRequest, ApiError, SESSION_EXPIRED_EVENT } from '../lib/api';
 
 const AuthContext = createContext();
 
 const STORAGE_KEY = 'inveon_user';
+// Everything the organizer portal keeps in this browser for the logged-in
+// organizer — cleared on logout so the next person using the same
+// browser never sees it.
+const ORGANIZER_STORAGE_KEYS = [
+  STORAGE_KEY,
+  'inveon_events',
+  'inveon_bookings',
+  'inveon_participants',
+  'inveon_payments',
+  'inveon_settings',
+  'inveon_notifications',
+];
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
 
 function buildUserFromAuthResponse(data) {
@@ -63,9 +75,18 @@ export function AuthProvider({ children }) {
     return updated;
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
+    ORGANIZER_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
     setUser({ isLoggedIn: false });
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleExpired = () => {
+      if (user?.isLoggedIn) logout();
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
+  }, [user?.isLoggedIn, logout]);
 
   // Real POST /api/auth/signup. Does NOT log the user in — the account
   // exists but is unverified until the OTP step succeeds, matching the

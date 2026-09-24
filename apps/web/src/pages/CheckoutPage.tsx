@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useLocation, useParams, Link } from 'react-router-dom';
+import { useLocation, useParams, useNavigate, Link } from 'react-router-dom';
 import { load as loadCashfree } from '@cashfreepayments/cashfree-js';
-import { fetchEventData, EventDetails } from '../mockData/rajgadTrek';
+import { fetchEventData, EventDetails, EventNotFoundError } from '../lib/eventDetails';
+import { EventUnavailablePage } from './EventUnavailablePage';
 import { formatINR } from '../lib/format';
 import { apiRequest, ApiError } from '../organizer/lib/api';
 
@@ -21,135 +22,66 @@ export function CheckoutPage() {
   const [event, setEvent] = useState<EventDetails | null>(null);
   const location = useLocation();
 
+  const navigate = useNavigate();
+  const [loadError, setLoadError] = useState<'not_found' | 'failed' | null>(null);
+
   useEffect(() => {
     let cancelled = false;
-    fetchEventData(eventId).then((data) => {
-      if (!cancelled) setEvent(data);
-    });
+    fetchEventData(eventId)
+      .then((data) => {
+        if (!cancelled) setEvent(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setLoadError(err instanceof EventNotFoundError ? 'not_found' : 'failed');
+      });
     return () => {
       cancelled = true;
     };
   }, [eventId]);
 
-  // Initial quantities from navigation state or defaults (General: 2, VIP: 1, Premium: 0 as in mockup)
-  const initialQuantities: Record<string, number> = useMemo(() => {
-    const passed = (location.state as { quantities?: Record<string, number> } | null)?.quantities;
-    if (passed && Object.values(passed).some((q) => q > 0)) {
-      return {
-        general: passed.general ?? 0,
-        vip: passed.vip ?? 0,
-        premium: passed.premium ?? 0,
-        ...passed,
-      };
+  // One ticket type per booking — that's what the backend books (a
+  // booking belongs to exactly one ticket category). Quantities are
+  // keyed by the event's real tier ids, starting from whatever the
+  // event page passed in (clamped to what that tier actually allows),
+  // or 1 of the first tier with seats left.
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!event) return;
+    const passed = (location.state as { quantities?: Record<string, number> } | null)?.quantities ?? {};
+    const requested = event.ticketCategories.find((t) => (passed[t.id] ?? 0) > 0);
+    const tier = requested ?? event.ticketCategories.find((t) => t.available > 0);
+    if (!tier) {
+      setQuantities({});
+      return;
     }
-    return {
-      general: 2,
-      vip: 1,
-      premium: 0,
-    };
-  }, [location.state]);
+    const limit = Math.min(tier.maxPerBooking, tier.available);
+    const qty = Math.max(0, Math.min(requested ? passed[tier.id] : 1, limit));
+    setQuantities({ [tier.id]: qty });
+  }, [event, location.state]);
 
-  const [quantities, setQuantities] = useState<Record<string, number>>(initialQuantities);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
-  const [selectedModalAttendee, setSelectedModalAttendee] = useState<Attendee | null>(null);
-  const [isDigitalPassOpen, setIsDigitalPassOpen] = useState(false);
   const [isEventInfoOpen, setIsEventInfoOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Default sample attendees
-  const sampleAttendees: Attendee[] = useMemo(
-    () => [
-      {
-        name: 'Rohit Deshmukh',
-        email: 'rohit@example.com',
-        phone: '9876543210',
-        gender: '',
-        emergencyName: 'Sneha Deshmukh',
-        emergencyPhone: '9876509876',
-        tier: 'General Ticket',
-        tierId: 'general',
-      },
-      {
-        name: 'Priya Patil',
-        email: 'priya@example.com',
-        phone: '8765432109',
-        gender: '',
-        emergencyName: 'Amit Patil',
-        emergencyPhone: '9765401234',
-        tier: 'General Ticket',
-        tierId: 'general',
-      },
-      {
-        name: 'Karan Sharma',
-        email: 'karan@example.com',
-        phone: '7654321098',
-        gender: '',
-        emergencyName: 'Neha Sharma',
-        emergencyPhone: '7654309876',
-        tier: 'VIP Ticket',
-        tierId: 'vip',
-      },
-    ],
-    [],
-  );
-
-  // Sync attendee list with selected ticket quantities
+  // Sync attendee list with the selected ticket quantity — existing
+  // entries are kept as the count changes, new rows start empty.
   useEffect(() => {
-    const totalCount = Object.values(quantities).reduce((a, b) => a + b, 0);
-    const assignedList: Attendee[] = [];
-
-    let gCount = quantities.general ?? 0;
-    let vCount = quantities.vip ?? 0;
-    let pCount = quantities.premium ?? 0;
-
-    for (let i = 0; i < totalCount; i++) {
-      let assignedTier = 'General Ticket';
-      let assignedTierId = 'general';
-
-      if (gCount > 0) {
-        assignedTier = 'General Ticket';
-        assignedTierId = 'general';
-        gCount--;
-      } else if (vCount > 0) {
-        assignedTier = 'VIP Ticket';
-        assignedTierId = 'vip';
-        vCount--;
-      } else {
-        assignedTier = 'Premium Summit Pass';
-        assignedTierId = 'premium';
-        pCount--;
-      }
-
-      const existing = attendees[i] || sampleAttendees[i];
-      if (existing) {
-        assignedList.push({
-          name: existing.name || '',
-          email: existing.email || '',
-          phone: existing.phone || '',
-          gender: existing.gender || '',
-          emergencyName: existing.emergencyName || '',
-          emergencyPhone: existing.emergencyPhone || '',
-          tier: assignedTier,
-          tierId: assignedTierId,
-        });
-      } else {
-        assignedList.push({
-          name: '',
-          email: '',
-          phone: '',
-          gender: '',
-          emergencyName: '',
-          emergencyPhone: '',
-          tier: assignedTier,
-          tierId: assignedTierId,
-        });
-      }
-    }
-
-    setAttendees(assignedList);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quantities]);
+    const tier = event?.ticketCategories.find((t) => (quantities[t.id] ?? 0) > 0);
+    const count = tier ? quantities[tier.id] : 0;
+    setAttendees((prev) =>
+      Array.from({ length: count }, (_, i) => ({
+        name: prev[i]?.name ?? '',
+        email: prev[i]?.email ?? '',
+        phone: prev[i]?.phone ?? '',
+        gender: prev[i]?.gender ?? '',
+        emergencyName: prev[i]?.emergencyName ?? '',
+        emergencyPhone: prev[i]?.emergencyPhone ?? '',
+        tier: tier?.name ?? '',
+        tierId: tier?.id ?? '',
+      })),
+    );
+  }, [quantities, event]);
 
   const totalTickets = Object.values(quantities).reduce((a, b) => a + b, 0);
 
@@ -161,9 +93,24 @@ export function CheckoutPage() {
     );
   }, [quantities, event]);
 
-  const [bookingId, setBookingId] = useState('INV-BKG-1001');
+  const selectedTier = event?.ticketCategories.find((t) => (quantities[t.id] ?? 0) > 0) ?? null;
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+
+  if (loadError === 'not_found') {
+    return <EventUnavailablePage reference={eventId ?? '404'} />;
+  }
+
+  if (loadError === 'failed') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-4 text-center">
+        <p className="font-semibold text-on-surface">We couldn't load this event right now.</p>
+        <button type="button" className="px-4 py-2 bg-primary text-on-primary rounded-lg" onClick={() => window.location.reload()}>
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (!event) {
     return (
@@ -180,14 +127,22 @@ export function CheckoutPage() {
     }, 2800);
   }
 
-  function updateQty(tierKey: string, delta: number) {
-    const currentQty = quantities[tierKey] ?? 0;
-    if (delta > 0 && totalTickets >= 10) {
-      showToast('Maximum limit is 10 tickets per order.');
+  function updateQty(tierId: string, delta: number) {
+    const tier = event!.ticketCategories.find((t) => t.id === tierId);
+    if (!tier) return;
+    const limit = Math.min(tier.maxPerBooking, tier.available);
+    const currentQty = quantities[tierId] ?? 0;
+    if (delta > 0 && currentQty >= limit) {
+      showToast(
+        tier.available <= currentQty
+          ? `Only ${tier.available} ${tier.name} ticket${tier.available === 1 ? '' : 's'} left.`
+          : `You can book at most ${tier.maxPerBooking} ${tier.name} tickets per booking.`,
+      );
       return;
     }
     const newQty = Math.max(0, currentQty + delta);
-    setQuantities((prev) => ({ ...prev, [tierKey]: newQty }));
+    // Choosing a different ticket type replaces the current selection.
+    setQuantities({ [tierId]: newQty });
   }
 
   function updateAttendeeField(index: number, field: keyof Attendee, val: string) {
@@ -196,7 +151,7 @@ export function CheckoutPage() {
     );
   }
 
-  function goToStep(step: 1 | 2 | 3) {
+  function goToStep(step: 1 | 2) {
     if (step > 1 && totalTickets === 0) {
       showToast('Please select at least 1 ticket to proceed.');
       return;
@@ -232,9 +187,8 @@ export function CheckoutPage() {
       return;
     }
 
-    const primaryTier = event!.ticketCategories[0];
-    if (!primaryTier) {
-      showToast('This event has no ticket categories available.');
+    if (!selectedTier) {
+      showToast('Please select at least 1 ticket.');
       return;
     }
 
@@ -247,7 +201,7 @@ export function CheckoutPage() {
         {
           method: 'POST',
           body: {
-            ticketCategoryId: primaryTier.id,
+            ticketCategoryId: selectedTier.id,
             quantity: totalTickets,
             primaryContactName: lead.name,
             primaryContactWhatsapp: lead.phone,
@@ -258,8 +212,6 @@ export function CheckoutPage() {
           },
         },
       );
-
-      setBookingId(result.bookingReference);
 
       if (result.paymentSessionId) {
         // A real paid booking: hand off to Cashfree's own hosted checkout
@@ -284,10 +236,11 @@ export function CheckoutPage() {
         return;
       }
 
-      // No payment session — a genuinely free ticket, confirmed
-      // immediately with nothing to pay.
-      showToast('Booking confirmed!');
-      setTimeout(() => goToStep(3), 350);
+      // No payment session — a free ticket (confirmed immediately) or a
+      // cash booking. The real confirmation page shows whichever status
+      // the server actually recorded, rather than this page claiming
+      // success on its own.
+      navigate(`/bookings/${result.bookingId}/confirmed`);
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Something went wrong creating your booking. Please try again.';
       setBookingError(message);
@@ -296,19 +249,6 @@ export function CheckoutPage() {
       setIsSubmittingBooking(false);
     }
   }
-
-  function copyBookingId() {
-    navigator.clipboard?.writeText(bookingId).then(() => {
-      showToast(`Booking ID copied to clipboard: ${bookingId}`);
-    });
-  }
-
-  function openPassModal(att?: Attendee) {
-    setSelectedModalAttendee(att || attendees[0] || sampleAttendees[0]);
-    setIsDigitalPassOpen(true);
-  }
-
-  const leadAttendee = attendees[0] || sampleAttendees[0];
 
   return (
     <div className="bg-background font-body-md text-on-surface antialiased min-h-screen flex flex-col justify-between">
@@ -409,7 +349,7 @@ export function CheckoutPage() {
                 className={`flex items-center space-x-2 font-label-md transition-all focus:outline-none ${
                   currentStep === 3 ? 'text-tertiary font-bold' : 'text-on-surface-variant'
                 }`}
-                onClick={() => totalTickets > 0 && goToStep(3)}
+                disabled
                 type="button"
               >
                 <span
@@ -441,14 +381,13 @@ export function CheckoutPage() {
                 <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm transition-all hover:shadow-md">
                   <div className="flex flex-col sm:flex-row gap-space-md items-start sm:items-center">
                     <div className="relative w-full sm:w-48 h-32 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                      <img
-                        className="w-full h-full object-cover"
-                        alt="High-resolution dramatic sunrise over Rajgad Fort peaks in Maharashtra"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuDb3kLEyre--DvykOTt1Z23K1GJIONOJXU56YD8x50r33WBhBT58rgeyQWDT32BFwKXAUxQkZweqycw2vUZNRyyGXOk94zpZwzMivFrdaJt6BpV_T7K-XR5h2-Sjcj7zqLiWovK3nOGq0iScQD5fCRJWdCDImXt5KmfZIbwGHkVC_0XS8cllxOLC97r4ePSKxwiBY3K5nVZNQEu4k3IztMPuWSMrXz-O5d8en0GRQ9e"
-                      />
-                      <span className="absolute top-2 left-2 bg-inverse-surface/80 backdrop-blur-md text-inverse-on-surface font-label-badge uppercase px-2 py-0.5 rounded-full">
-                        Featured Trek
-                      </span>
+                      {event.galleryImages[0] ? (
+                        <img className="w-full h-full object-cover" alt={event.galleryImages[0].alt} src={event.galleryImages[0].src} />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="material-symbols-outlined text-on-surface-variant text-headline-xl">event</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex-1 min-w-0">
@@ -468,21 +407,26 @@ export function CheckoutPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 my-2 text-body-sm text-on-surface-variant">
                         <div className="flex items-center gap-1.5">
                           <span className="material-symbols-outlined text-primary text-headline-sm">calendar_month</span>
-                          <span>20 September 2026</span>
+                          <span>{event.date}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="material-symbols-outlined text-primary text-headline-sm">schedule</span>
-                          <span>5:30 AM – 11:30 AM IST</span>
+                          <span>{event.time} IST</span>
                         </div>
                         <div className="flex items-center gap-1.5 sm:col-span-2">
                           <span className="material-symbols-outlined text-primary text-headline-sm">location_on</span>
-                          <span className="truncate">Rajgad Fort Foothills, Pune, Maharashtra</span>
+                          <span className="truncate">{event.venue || 'Venue to be announced'}</span>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 pt-2 border-t-0">
                         <div className="w-6 h-6 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-headline-sm text-xs font-bold">
-                          EA
+                          {event.organizer.name
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .map((w) => w[0]?.toUpperCase())
+                            .join('')}
                         </div>
                         <span className="font-label-sm text-on-surface font-medium">{event.organizer.name}</span>
                         <span className="bg-tertiary-container text-on-tertiary-container px-2 py-0.5 rounded-full font-label-badge flex items-center gap-0.5">
@@ -502,182 +446,73 @@ export function CheckoutPage() {
                     <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
                       <div className="flex items-center justify-between mb-1">
                         <h2 className="font-headline-lg text-on-surface">Select Your Tickets</h2>
-                        <span className="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
-                          Max 10 tickets per order
-                        </span>
+                        {selectedTier && (
+                          <span className="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
+                            Max {selectedTier.maxPerBooking} per booking
+                          </span>
+                        )}
                       </div>
                       <p className="text-body-md text-on-surface-variant mb-space-md">
-                        Choose your desired category and passenger quantity for this adventure.
+                        Choose your ticket type and how many people are coming.
                       </p>
 
-                      {/* TICKET TIER LIST */}
+                      {/* TICKET TIER LIST — the event's real tiers */}
                       <div className="space-y-space-sm">
-                        {/* Tier 1: General */}
-                        <div className="p-space-md rounded-xl bg-surface-container-low transition-all duration-200 hover:bg-surface-container">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-start space-x-space-sm">
-                              <div className="w-12 h-12 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center shrink-0 shadow-sm">
-                                <span className="material-symbols-outlined text-headline-lg">confirmation_number</span>
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-headline-md text-on-surface">General</h3>
-                                  <span className="font-label-badge text-tertiary-container bg-on-tertiary-container px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-tertiary-container animate-pulse" /> 42 seats available
-                                  </span>
+                        {event.ticketCategories.length === 0 && (
+                          <p className="text-body-md text-on-surface-variant">No tickets are on sale for this event.</p>
+                        )}
+                        {event.ticketCategories.map((tier) => {
+                          const qty = quantities[tier.id] ?? 0;
+                          const limit = Math.min(tier.maxPerBooking, tier.available);
+                          return (
+                            <div key={tier.id} className="p-space-md rounded-xl bg-surface-container-low transition-all duration-200 hover:bg-surface-container">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-start space-x-space-sm">
+                                  <div className="w-12 h-12 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center shrink-0 shadow-sm">
+                                    <span className="material-symbols-outlined text-headline-lg">confirmation_number</span>
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h3 className="font-headline-md text-on-surface">{tier.name}</h3>
+                                      <span className="font-label-badge text-tertiary-container bg-on-tertiary-container px-2 py-0.5 rounded-full">
+                                        {tier.available > 0 ? `${tier.available} seats available` : 'Sold out'}
+                                      </span>
+                                    </div>
+                                    <div className="font-headline-md text-primary mt-0.5">
+                                      {formatINR(tier.price)} <span className="text-body-sm font-normal text-on-surface-variant">/ person</span>
+                                    </div>
+                                    <p className="text-body-sm text-on-surface-variant mt-1">{tier.description}</p>
+                                  </div>
                                 </div>
-                                <div className="font-headline-md text-primary mt-0.5">
-                                  ₹499 <span className="text-body-sm font-normal text-on-surface-variant">/ person</span>
-                                </div>
-                                <p className="text-body-sm text-on-surface-variant mt-1">
-                                  Standard mountain trek pass with basecamp breakfast and basic first-aid guide support.
-                                </p>
-                              </div>
-                            </div>
 
-                            {/* Stepper */}
-                            <div className="flex items-center justify-end space-x-3 bg-surface-container-lowest px-3 py-1.5 rounded-lg shadow-sm w-fit self-end sm:self-center">
-                              <button
-                                aria-label="Decrease General Tickets"
-                                className="w-8 h-8 rounded bg-surface-container hover:bg-surface-variant text-on-surface flex items-center justify-center transition active:scale-95 disabled:opacity-40"
-                                onClick={() => updateQty('general', -1)}
-                                disabled={(quantities.general ?? 0) === 0}
-                                type="button"
-                              >
-                                <span className="material-symbols-outlined text-headline-sm">remove</span>
-                              </button>
-                              <span className="font-headline-md w-6 text-center text-on-surface">
-                                {quantities.general ?? 0}
-                              </span>
-                              <button
-                                aria-label="Increase General Tickets"
-                                className="w-8 h-8 rounded bg-primary hover:bg-primary-fixed text-on-primary flex items-center justify-center transition active:scale-95 disabled:opacity-40"
-                                onClick={() => updateQty('general', 1)}
-                                disabled={totalTickets >= 10}
-                                type="button"
-                              >
-                                <span className="material-symbols-outlined text-headline-sm">add</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Tier 2: VIP */}
-                        <div className="p-space-md rounded-xl bg-surface-container-low transition-all duration-200 hover:bg-surface-container">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-start space-x-space-sm">
-                              <div className="w-12 h-12 rounded-xl bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0 shadow-sm">
-                                <span className="material-symbols-outlined text-headline-lg">workspace_premium</span>
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-headline-md text-on-surface">VIP Experience</h3>
-                                  <span className="font-label-badge text-tertiary-container bg-on-tertiary-container px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-tertiary-container" /> 15 seats available
-                                  </span>
+                                <div className="flex items-center justify-end space-x-3 bg-surface-container-lowest px-3 py-1.5 rounded-lg shadow-sm w-fit self-end sm:self-center">
+                                  <button
+                                    aria-label={`Remove one ${tier.name} ticket`}
+                                    className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container disabled:opacity-40"
+                                    onClick={() => updateQty(tier.id, -1)}
+                                    disabled={qty === 0}
+                                    type="button"
+                                  >
+                                    <span className="material-symbols-outlined text-headline-sm">remove</span>
+                                  </button>
+                                  <span className="font-headline-md text-on-surface w-6 text-center">{qty}</span>
+                                  <button
+                                    aria-label={`Add one ${tier.name} ticket`}
+                                    className="w-8 h-8 rounded-full flex items-center justify-center text-primary hover:bg-surface-container disabled:opacity-40"
+                                    onClick={() => updateQty(tier.id, 1)}
+                                    disabled={limit === 0}
+                                    type="button"
+                                  >
+                                    <span className="material-symbols-outlined text-headline-sm">add</span>
+                                  </button>
                                 </div>
-                                <div className="font-headline-md text-primary mt-0.5">
-                                  ₹999 <span className="text-body-sm font-normal text-on-surface-variant">/ person</span>
-                                </div>
-                                <p className="text-body-sm text-on-surface-variant mt-1">
-                                  Priority ascent briefing, complimentary sunrise drone photography package, and energy snack kit.
-                                </p>
                               </div>
                             </div>
-
-                            {/* Stepper */}
-                            <div className="flex items-center justify-end space-x-3 bg-surface-container-lowest px-3 py-1.5 rounded-lg shadow-sm w-fit self-end sm:self-center">
-                              <button
-                                aria-label="Decrease VIP Tickets"
-                                className="w-8 h-8 rounded bg-surface-container hover:bg-surface-variant text-on-surface flex items-center justify-center transition active:scale-95 disabled:opacity-40"
-                                onClick={() => updateQty('vip', -1)}
-                                disabled={(quantities.vip ?? 0) === 0}
-                                type="button"
-                              >
-                                <span className="material-symbols-outlined text-headline-sm">remove</span>
-                              </button>
-                              <span className="font-headline-md w-6 text-center text-on-surface">
-                                {quantities.vip ?? 0}
-                              </span>
-                              <button
-                                aria-label="Increase VIP Tickets"
-                                className="w-8 h-8 rounded bg-primary hover:bg-primary-fixed text-on-primary flex items-center justify-center transition active:scale-95 disabled:opacity-40"
-                                onClick={() => updateQty('vip', 1)}
-                                disabled={totalTickets >= 10}
-                                type="button"
-                              >
-                                <span className="material-symbols-outlined text-headline-sm">add</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Tier 3: Premium Summit */}
-                        <div className="p-space-md rounded-xl bg-surface-container-low transition-all duration-200 hover:bg-surface-container">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-start space-x-space-sm">
-                              <div className="w-12 h-12 rounded-xl bg-surface-variant text-on-surface-variant flex items-center justify-center shrink-0 shadow-sm">
-                                <span className="material-symbols-outlined text-headline-lg">star</span>
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="font-headline-md text-on-surface">Premium Summit Explorer</h3>
-                                  <span className="font-label-badge text-tertiary-container bg-on-tertiary-container px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-tertiary-container" /> 8 seats left
-                                  </span>
-                                </div>
-                                <div className="font-headline-md text-primary mt-0.5">
-                                  ₹1,499 <span className="text-body-sm font-normal text-on-surface-variant">/ person</span>
-                                </div>
-                                <p className="text-body-sm text-on-surface-variant mt-1">
-                                  1-on-1 certified mountaineer guide, premium trail pack, professional souvenir badge, and Pune pickup.
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Stepper */}
-                            <div className="flex items-center justify-end space-x-3 bg-surface-container-lowest px-3 py-1.5 rounded-lg shadow-sm w-fit self-end sm:self-center">
-                              <button
-                                aria-label="Decrease Premium Tickets"
-                                className="w-8 h-8 rounded bg-surface-container hover:bg-surface-variant text-on-surface flex items-center justify-center transition active:scale-95 disabled:opacity-40"
-                                onClick={() => updateQty('premium', -1)}
-                                disabled={(quantities.premium ?? 0) === 0}
-                                type="button"
-                              >
-                                <span className="material-symbols-outlined text-headline-sm">remove</span>
-                              </button>
-                              <span className="font-headline-md w-6 text-center text-on-surface">
-                                {quantities.premium ?? 0}
-                              </span>
-                              <button
-                                aria-label="Increase Premium Tickets"
-                                className="w-8 h-8 rounded bg-primary hover:bg-primary-fixed text-on-primary flex items-center justify-center transition active:scale-95 disabled:opacity-40"
-                                onClick={() => updateQty('premium', 1)}
-                                disabled={totalTickets >= 10}
-                                type="button"
-                              >
-                                <span className="material-symbols-outlined text-headline-sm">add</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Motivational Banner Inside Step */}
-                      <div className="mt-space-lg p-space-md rounded-xl bg-surface-container flex items-center justify-between gap-4 overflow-hidden relative">
-                        <div className="flex items-center space-x-3 z-10">
-                          <div className="w-10 h-10 rounded-full bg-primary text-on-primary flex items-center justify-center shrink-0">
-                            <span className="material-symbols-outlined text-headline-md">landscape</span>
-                          </div>
-                          <div>
-                            <p className="font-headline-sm text-on-surface">You're one step closer to an amazing experience!</p>
-                            <p className="text-body-sm text-on-surface-variant">Lock your sunrise slot before early-bird batches fill up.</p>
-                          </div>
-                        </div>
-                        <div className="hidden sm:block text-right z-10">
-                          <span className="font-headline-sm italic text-primary-container block">Good Experiences</span>
-                          <span className="font-label-badge text-on-surface-variant tracking-wider uppercase">Go Further</span>
-                        </div>
+                          );
+                        })}
+                        {event.ticketCategories.length > 1 && (
+                          <p className="text-body-sm text-on-surface-variant">One ticket type per booking — choosing another type replaces your current selection.</p>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -698,7 +533,7 @@ export function CheckoutPage() {
                         </button>
                       </div>
                       <p className="text-body-md text-on-surface-variant mb-space-md">
-                        Please provide attendee identification for trek manifest and state safety permits.
+                        Please enter details for each attendee.
                       </p>
 
                       {/* DYNAMIC ATTENDEE FORMS CONTAINER */}
@@ -839,54 +674,28 @@ export function CheckoutPage() {
                   {/* Sidebar mini trek thumbnail */}
                   <div className="flex items-center space-x-3 p-2 bg-surface-container-low rounded-lg mb-space-sm">
                     <div className="w-14 h-14 rounded-md overflow-hidden bg-surface-container shrink-0">
-                      <img
-                        className="w-full h-full object-cover"
-                        alt="Trek silhouette with sunrise over mountain fortress"
-                        src="https://lh3.googleusercontent.com/aida-public/AB6AXuDutYI2Noglgo5BQ-weWqGyNHpHoMEAjvGN8KryzDwOabqTZzvyxW1eDXVntozFkq6cXhoYwNXXzkNVaHyi6z6WZb1hnuQhL4Hhm-mB3LAI3s6E7LcOxjLIF2BWi_B-E5ggtByifO-0KIeFuyOQaCy-j5BE2i5H7j4Ywc8A7p6gU4QnFVVuY-cOOIR6i4MPJZhRW0KzDWQTIGWkjVe0INEshmqbCZA9DBhxKgsWi_ES"
-                      />
+                      {event.galleryImages[0] && (
+                        <img className="w-full h-full object-cover" alt={event.galleryImages[0].alt} src={event.galleryImages[0].src} />
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="font-headline-sm text-on-surface truncate">{event.name}</p>
                       <p className="text-body-sm text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">calendar_today</span> 20 Sep 2026
+                        <span className="material-symbols-outlined text-xs">calendar_today</span> {event.date}
                       </p>
                     </div>
                   </div>
 
                   {/* LINE ITEMS */}
                   <div className="space-y-3 pt-2 text-body-sm">
-                    {(quantities.general ?? 0) > 0 && (
+                    {selectedTier && (
                       <div className="flex justify-between items-start font-body-md">
                         <div>
-                          <div className="font-headline-sm text-on-surface">General</div>
-                          <div className="text-body-sm text-on-surface-variant">₹499 × {quantities.general}</div>
+                          <div className="font-headline-sm text-on-surface">{selectedTier.name}</div>
+                          <div className="text-body-sm text-on-surface-variant">{formatINR(selectedTier.price)} × {quantities[selectedTier.id]}</div>
                         </div>
                         <div className="font-headline-sm text-on-surface">
-                          {formatINR(499 * (quantities.general ?? 0))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(quantities.vip ?? 0) > 0 && (
-                      <div className="flex justify-between items-start font-body-md">
-                        <div>
-                          <div className="font-headline-sm text-on-surface">VIP</div>
-                          <div className="text-body-sm text-on-surface-variant">₹999 × {quantities.vip}</div>
-                        </div>
-                        <div className="font-headline-sm text-on-surface">
-                          {formatINR(999 * (quantities.vip ?? 0))}
-                        </div>
-                      </div>
-                    )}
-
-                    {(quantities.premium ?? 0) > 0 && (
-                      <div className="flex justify-between items-start font-body-md">
-                        <div>
-                          <div className="font-headline-sm text-on-surface">Premium Summit</div>
-                          <div className="text-body-sm text-on-surface-variant">₹1,499 × {quantities.premium}</div>
-                        </div>
-                        <div className="font-headline-sm text-on-surface">
-                          {formatINR(1499 * (quantities.premium ?? 0))}
+                          {formatINR(selectedTier.price * (quantities[selectedTier.id] ?? 0))}
                         </div>
                       </div>
                     )}
@@ -989,287 +798,12 @@ export function CheckoutPage() {
             </div>
           )}
 
-          {/* STEP 3 / CONFIRMATION SUCCESS VIEW */}
-          {currentStep === 3 && (
-            <section className="flex flex-col space-y-space-md mb-space-2xl animate-in fade-in duration-300">
-              {/* CONGRATS HERO */}
-              <div className="bg-surface-container-lowest rounded-2xl p-space-lg text-center shadow-md max-w-4xl mx-auto w-full relative overflow-hidden">
-                <div className="w-16 h-16 rounded-full bg-tertiary text-on-tertiary flex items-center justify-center mx-auto mb-space-sm shadow-md animate-bounce">
-                  <span className="material-symbols-outlined text-headline-xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                    check
-                  </span>
-                </div>
-                <h2 className="font-headline-xl text-on-surface tracking-tight">Booking Confirmed!</h2>
-                <p className="text-body-lg text-on-surface-variant mt-1">
-                  Your booking for <strong className="text-on-surface">{event.name}</strong> has been successfully processed.
-                </p>
-                <p className="text-body-sm text-on-surface-variant">
-                  Your transaction was verified via Cashfree and digital passes are issued below.
-                </p>
-
-                {/* BOOKING METRIC STRIP */}
-                <div className="mt-space-md p-space-md bg-surface-container rounded-xl flex flex-wrap items-center justify-between gap-4 text-left">
-                  <div>
-                    <span className="font-label-badge uppercase tracking-wider text-on-surface-variant block">Booking Reference</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-headline-md text-on-surface font-mono">{bookingId}</span>
-                      <button
-                        className="text-primary hover:text-primary-container p-1 rounded hover:bg-surface transition"
-                        onClick={copyBookingId}
-                        title="Copy ID"
-                        type="button"
-                      >
-                        <span className="material-symbols-outlined text-sm">content_copy</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="font-label-badge uppercase tracking-wider text-on-surface-variant block">Payment Status</span>
-                    <span className="inline-flex items-center gap-1 font-label-badge text-on-tertiary-container bg-tertiary-container px-2.5 py-1 rounded-full uppercase font-bold">
-                      <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        verified
-                      </span>{' '}
-                      {formatINR(totalAmount)} Paid
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="font-label-badge uppercase tracking-wider text-on-surface-variant block">Date &amp; Reporting</span>
-                    <span className="font-headline-sm text-on-surface">20 Sep 2026, 05:30 AM</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="px-4 py-2 bg-surface-container-lowest text-on-surface font-label-md rounded-lg hover:bg-surface transition shadow-sm flex items-center gap-1.5"
-                      onClick={() => window.print()}
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined text-sm">print</span> Print
-                    </button>
-                    <button
-                      className="px-4 py-2 bg-primary text-on-primary font-label-md rounded-lg hover:bg-primary-container transition shadow-sm flex items-center gap-1.5"
-                      onClick={() => openPassModal(leadAttendee)}
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined text-sm">qr_code_2</span> View QR Pass
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* ISSUED PASSES LIST */}
-              <div className="max-w-4xl mx-auto w-full bg-surface-container-lowest rounded-2xl p-space-md shadow-sm">
-                <div className="flex items-center justify-between mb-space-sm">
-                  <h3 className="font-headline-md text-on-surface">Issued Attendee Tickets</h3>
-                  <span className="text-body-sm text-on-surface-variant">Show this QR code at the basecamp entrance</span>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md">
-                  {attendees.map((att, i) => (
-                    <div
-                      key={i}
-                      className="p-space-md rounded-xl bg-surface-container-low flex flex-col justify-between hover:bg-surface-container transition"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-label-badge bg-primary-container text-on-primary-container px-2 py-0.5 rounded font-mono font-bold">
-                            INV-TKT-100{i + 1}
-                          </span>
-                          <span className="text-tertiary text-xs flex items-center gap-1 font-label-sm font-semibold">
-                            <span className="w-1.5 h-1.5 rounded-full bg-tertiary" /> Valid
-                          </span>
-                        </div>
-                        <h4 className="font-headline-sm text-on-surface">{att.name || `Participant ${i + 1}`}</h4>
-                        <p className="text-body-sm text-on-surface-variant">{att.tier}</p>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-outline-variant/20 flex items-center justify-between">
-                        <span className="font-label-sm text-primary font-medium">Entry Pass QR</span>
-                        <button
-                          onClick={() => openPassModal(att)}
-                          className="px-2.5 py-1 rounded bg-surface-container hover:bg-surface text-on-surface text-body-sm flex items-center gap-1 transition"
-                          type="button"
-                        >
-                          <span className="material-symbols-outlined text-xs">visibility</span> View
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* POST-BOOKING CHECKLIST & INFO */}
-              <div className="max-w-4xl mx-auto w-full grid grid-cols-1 md:grid-cols-2 gap-space-md">
-                <div className="bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
-                  <div className="flex items-center space-x-2 text-primary font-headline-sm mb-2">
-                    <span className="material-symbols-outlined">forward_to_inbox</span>
-                    <span>Delivery Confirmation</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant mb-3">
-                    Confirmation email sent to <strong className="text-on-surface">{leadAttendee.email || 'rohit@example.com'}</strong> and
-                    WhatsApp voucher dispatched to registered numbers.
-                  </p>
-                  <div className="p-2.5 bg-surface-container-low rounded-lg text-body-sm flex items-center justify-between">
-                    <span className="text-on-surface-variant">SMS Status:</span>
-                    <span className="text-tertiary font-label-sm flex items-center gap-1 font-semibold">
-                      <span className="w-2 h-2 rounded-full bg-tertiary" /> Delivered
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
-                  <div className="flex items-center space-x-2 text-on-surface font-headline-sm mb-2">
-                    <span className="material-symbols-outlined text-primary">checklist</span>
-                    <span>Before You Attend</span>
-                  </div>
-                  <ul className="text-body-sm text-on-surface-variant space-y-1.5 list-disc list-inside">
-                    <li>Carry an original Government photo ID proof per participant.</li>
-                    <li>Wear sturdy trekking footwear with deep ankle grip.</li>
-                    <li>Arrive at Gunjavane base village strictly by 05:15 AM.</li>
-                  </ul>
-                </div>
-              </div>
-
-              {/* RESTART OR RETURN ACTIONS */}
-              <div className="max-w-4xl mx-auto w-full flex justify-between items-center py-space-sm">
-                <button
-                  className="px-5 py-2.5 rounded-lg bg-surface-container text-on-surface font-label-md hover:bg-surface-container-high transition"
-                  onClick={() => goToStep(1)}
-                  type="button"
-                >
-                  ← Book Another Event
-                </button>
-                <Link
-                  to={`/bookings/${bookingId}/manage`}
-                  className="px-6 py-2.5 rounded-lg bg-secondary-container text-on-secondary-container font-label-md hover:bg-surface-container-highest transition flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-sm">settings</span> Manage Reservation
-                </Link>
-              </div>
-            </section>
-          )}
-
-          {/* DIGITAL TICKET MODAL */}
-          {isDigitalPassOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 backdrop-blur-sm p-4">
-              <div className="bg-surface-container-lowest w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                {/* Modal Header */}
-                <div className="bg-primary p-space-md text-on-primary flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <span className="material-symbols-outlined">confirmation_number</span>
-                    <span className="font-headline-sm">Official Trek E-Pass</span>
-                  </div>
-                  <button
-                    className="text-on-primary hover:text-on-primary-container p-1 rounded-full bg-transparent border-0 cursor-pointer"
-                    onClick={() => setIsDigitalPassOpen(false)}
-                    type="button"
-                  >
-                    <span className="material-symbols-outlined">close</span>
-                  </button>
-                </div>
-
-                {/* Ticket Body styled like boarding pass */}
-                <div className="p-space-md space-y-space-md">
-                  <div className="text-center">
-                    <span className="font-label-badge uppercase tracking-wider text-on-surface-variant">Event</span>
-                    <h4 className="font-headline-lg text-on-surface">{event.name}</h4>
-                    <p className="text-body-sm text-on-surface-variant">Sunday, 20 September 2026 • 5:30 AM</p>
-                  </div>
-
-                  {/* QR Code Display Box */}
-                  <div className="bg-surface-container-low p-space-md rounded-xl flex flex-col items-center justify-center">
-                    <div className="w-44 h-44 bg-surface-container-lowest p-2 rounded-lg shadow-sm flex items-center justify-center">
-                      <svg className="w-full h-full text-on-surface" fill="currentColor" viewBox="0 0 100 100">
-                        {/* Corner Markers */}
-                        <rect fill="none" height="25" rx="3" stroke="currentColor" strokeWidth="4" width="25" x="5" y="5" />
-                        <rect fill="currentColor" height="11" width="11" x="12" y="12" />
-                        <rect fill="none" height="25" rx="3" stroke="currentColor" strokeWidth="4" width="25" x="70" y="5" />
-                        <rect fill="currentColor" height="11" width="11" x="77" y="12" />
-                        <rect fill="none" height="25" rx="3" stroke="currentColor" strokeWidth="4" width="25" x="5" y="70" />
-                        <rect fill="currentColor" height="11" width="11" x="12" y="77" />
-                        {/* Data Pixels Pattern */}
-                        <rect height="5" width="5" x="35" y="10" />
-                        <rect height="5" width="5" x="45" y="10" />
-                        <rect height="5" width="10" x="55" y="10" />
-                        <rect height="5" width="10" x="35" y="20" />
-                        <rect height="5" width="5" x="50" y="20" />
-                        <rect height="15" width="5" x="40" y="30" />
-                        <rect height="5" width="15" x="55" y="30" />
-                        <rect height="5" width="10" x="10" y="40" />
-                        <rect height="10" width="5" x="25" y="40" />
-                        <rect height="5" width="15" x="75" y="40" />
-                        <rect height="5" width="5" x="35" y="50" />
-                        <rect height="5" width="15" x="45" y="50" />
-                        <rect height="10" width="5" x="70" y="50" />
-                        <rect height="5" width="10" x="80" y="50" />
-                        <rect height="5" width="10" x="35" y="60" />
-                        <rect height="10" width="5" x="50" y="60" />
-                        <rect height="5" width="10" x="60" y="60" />
-                        <rect height="15" width="5" x="80" y="65" />
-                        <rect height="10" width="5" x="35" y="75" />
-                        <rect height="5" width="10" x="45" y="75" />
-                        <rect height="5" width="5" x="60" y="75" />
-                        <rect height="10" width="5" x="70" y="80" />
-                        <rect height="5" width="15" x="40" y="85" />
-                        <rect height="5" width="5" x="60" y="85" />
-                      </svg>
-                    </div>
-                    <p className="font-headline-sm font-mono mt-2 tracking-widest text-primary font-bold">INV-TKT-1001-A</p>
-                    <span className="font-label-badge text-tertiary-container bg-on-tertiary-container px-2 py-0.5 rounded-full mt-1 font-bold">
-                      VERIFIED ACTIVE
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 text-body-sm border-t border-dashed border-outline-variant/40 pt-3">
-                    <div>
-                      <span className="text-on-surface-variant font-label-badge uppercase block">Lead Attendee</span>
-                      <span className="font-headline-sm text-on-surface font-semibold">
-                        {selectedModalAttendee?.name || 'Rohit Deshmukh'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-on-surface-variant font-label-badge uppercase block">Tier Category</span>
-                      <span className="font-headline-sm text-on-surface font-semibold">
-                        {selectedModalAttendee?.tier || 'General Pass'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-on-surface-variant font-label-badge uppercase block">Reporting Point</span>
-                      <span className="text-on-surface">Gunjavane Base Fort Gate</span>
-                    </div>
-                    <div>
-                      <span className="text-on-surface-variant font-label-badge uppercase block">Emergency SOS</span>
-                      <span className="text-on-surface">+91 9876543210</span>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 pt-2">
-                    <button
-                      className="flex-1 py-2.5 bg-primary text-on-primary font-label-md rounded-lg flex items-center justify-center gap-1 hover:bg-primary-container transition"
-                      onClick={() => showToast('Digital pass PDF saved to downloads!')}
-                      type="button"
-                    >
-                      <span className="material-symbols-outlined text-sm">download</span> Save to Phone
-                    </button>
-                    <button
-                      className="px-4 py-2.5 bg-surface-container text-on-surface font-label-md rounded-lg hover:bg-surface-container-high transition"
-                      onClick={() => setIsDigitalPassOpen(false)}
-                      type="button"
-                    >
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* EVENT DETAILS QUICK INFO MODAL */}
           {isEventInfoOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 backdrop-blur-sm p-4">
               <div className="bg-surface-container-lowest w-full max-w-lg rounded-2xl p-space-md shadow-xl animate-in fade-in zoom-in-95 duration-200">
                 <div className="flex items-center justify-between pb-2 border-b border-outline-variant/30">
-                  <h3 className="font-headline-lg text-on-surface">About Rajgad Trek</h3>
+                  <h3 className="font-headline-lg text-on-surface">About {event.name}</h3>
                   <button
                     className="text-on-surface-variant hover:text-on-surface p-1 rounded-full bg-transparent border-0 cursor-pointer"
                     onClick={() => setIsEventInfoOpen(false)}
@@ -1280,19 +814,16 @@ export function CheckoutPage() {
                 </div>
 
                 <div className="py-space-md space-y-3 text-body-sm text-on-surface-variant">
-                  <p>
-                    Rajgad (Ruling Fort) was the capital of the Maratha Empire under Chhatrapati Shivaji Maharaj for over 26 years.
-                    Situated at 4,514 feet, this sunrise excursion offers breathtaking 360-degree panoramic views of Sahyadri ranges.
-                  </p>
+                  <p>{event.about || 'The organizer hasn\'t added a description for this event yet.'}</p>
                   <div className="p-3 bg-surface-container rounded-lg space-y-1">
                     <p>
-                      <strong className="text-on-surface font-semibold">Difficulty Grade:</strong> Moderate (approx 2.5 hours gradual climb).
+                      <strong className="text-on-surface font-semibold">When:</strong> {event.date}, {event.time} IST
                     </p>
                     <p>
-                      <strong className="text-on-surface font-semibold">Base Village:</strong> Gunjavane (approx 60km south from Pune).
+                      <strong className="text-on-surface font-semibold">Where:</strong> {event.venue || 'Venue to be announced'}
                     </p>
                     <p>
-                      <strong className="text-on-surface font-semibold">Included:</strong> Forest entry fees, professional trek leaders, safety harness for Balekilla peak segment, and breakfast.
+                      <strong className="text-on-surface font-semibold">Organizer:</strong> {event.organizer.name}
                     </p>
                   </div>
                 </div>
@@ -1309,36 +840,6 @@ export function CheckoutPage() {
               </div>
             </div>
           )}
-
-          {/* FLOATING PROTOTYPE NAVIGATOR BAR */}
-          <aside className="fixed bottom-6 right-6 z-40 flex items-center gap-3 bg-inverse-surface/85 text-inverse-on-surface backdrop-blur-md px-4 py-2.5 rounded-full shadow-xl border border-outline-variant/30 text-body-sm transition-all">
-            <div className="flex items-center gap-2 pr-2 border-r border-outline-variant/30">
-              <span className="w-2 h-2 rounded-full bg-tertiary-fixed animate-pulse" />
-              <span className="font-label-md text-xs sm:text-sm tracking-tight text-surface-container-lowest">
-                Attendee Flow: Step {currentStep === 1 ? '3 of 6 - Ticket Selection' : currentStep === 2 ? '4 of 6 - Participant Details' : '5 of 6 - Booking Confirmed'}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {currentStep > 1 && (
-                <button
-                  type="button"
-                  onClick={() => goToStep((currentStep - 1) as 1 | 2)}
-                  className="px-2.5 py-1 rounded-full bg-surface-container/20 hover:bg-surface-container/40 text-inverse-on-surface font-label-sm text-xs flex items-center gap-1 transition active:scale-95"
-                >
-                  <span className="material-symbols-outlined text-xs">arrow_back</span> Prev
-                </button>
-              )}
-              {currentStep < 3 && (
-                <button
-                  type="button"
-                  onClick={handlePrimaryAction}
-                  className="px-3 py-1 rounded-full bg-primary hover:bg-primary-container text-on-primary font-label-sm text-xs flex items-center gap-1 transition shadow-sm active:scale-95"
-                >
-                  Next <span className="material-symbols-outlined text-xs">arrow_forward</span>
-                </button>
-              )}
-            </div>
-          </aside>
 
           {/* FLOATING TOAST NOTIFICATION */}
           {toastMessage && (
@@ -1359,13 +860,16 @@ export function CheckoutPage() {
               <span>© 2026 Inveon Technologies. All rights reserved.</span>
             </div>
             <div className="flex items-center space-x-4">
-              <button onClick={() => showToast('Terms: Passes non-transferable on day of event.')} className="hover:text-primary transition bg-transparent border-0 cursor-pointer text-body-sm text-on-surface-variant">
-                Terms of Service
-              </button>
-              <button onClick={() => showToast('Privacy: Phone numbers are shared solely with trek commanders.')} className="hover:text-primary transition bg-transparent border-0 cursor-pointer text-body-sm text-on-surface-variant">
-                Privacy Policy
-              </button>
-              <button onClick={() => showToast('Cancellation: 100% refund up to 48 hours prior.')} className="hover:text-primary transition bg-transparent border-0 cursor-pointer text-body-sm text-on-surface-variant">
+              <button
+                onClick={() =>
+                  showToast(
+                    event.allowSelfServiceCancellation
+                      ? `Refund policy: ${event.refundPercentage}% refund up to ${event.refundCutoffDays} day(s) before the event.`
+                      : 'Refund policy: this event does not offer self-service cancellation or refunds — contact the organizer.',
+                  )
+                }
+                className="hover:text-primary transition bg-transparent border-0 cursor-pointer text-body-sm text-on-surface-variant"
+              >
                 Refund Policy
               </button>
               <a href="mailto:support@inveontechnologies.in" className="hover:text-primary transition text-body-sm text-on-surface-variant">

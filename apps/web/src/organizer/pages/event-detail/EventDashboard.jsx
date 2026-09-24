@@ -20,14 +20,12 @@ import {
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { useEvents } from '../../context/EventsContext';
+import EventLookupState from '../../components/common/EventLookupState';
 
-export default function EventDashboard() {
-  const { id } = useParams();
-  const { events, participants, bookings, cancelEvent } = useEvents();
+function EventDashboardContent({ event }) {
+  const { participants, bookings, cancelEvent } = useEvents();
   const navigate = useNavigate();
 
-  const eventId = id || 'rajgad-sunrise-trek';
-  const event = events.find((e) => e.id === eventId) || events[0];
 
   const eventParticipants = participants.filter((p) => p.eventId === event.id);
   const eventBookings = bookings.filter((b) => b.eventId === event.id);
@@ -276,4 +274,12 @@ export default function EventDashboard() {
       </div>
     </div>
   );
+}
+
+export default function EventDashboard() {
+  const { id } = useParams();
+  const { events, eventsLoaded, eventsLoadError } = useEvents();
+  const event = events.find((e) => e.id === id);
+  if (!event) return <EventLookupState loaded={eventsLoaded} error={eventsLoadError} />;
+  return <EventDashboardContent event={event} />;
 }

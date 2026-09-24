@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { INITIAL_EVENTS } from '../data/mockEvents';
-import { INITIAL_BOOKINGS } from '../data/mockBookings';
 import { INITIAL_PARTICIPANTS } from '../data/mockParticipants';
 import { INITIAL_PAYMENTS } from '../data/mockPayments';
 import { INITIAL_SETTINGS } from '../data/mockSettings';
@@ -77,26 +75,33 @@ function apiBookingToMockShape(b) {
   };
 }
 
+// The bookings endpoint caps pageSize at 100 — a single request (the
+// previous behavior) silently showed organizers with more bookings than
+// that an incomplete list. Pages through until every booking is loaded.
+const BOOKINGS_PAGE_SIZE = 100;
+async function fetchAllOrganizerBookings(token) {
+  const all = [];
+  for (let page = 1; ; page += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const data = await apiRequest(`/organizer/bookings?eventId=all&pageSize=${BOOKINGS_PAGE_SIZE}&page=${page}`, { token });
+    all.push(...data.bookings);
+    const total = data.pagination?.total ?? all.length;
+    if (data.bookings.length < BOOKINGS_PAGE_SIZE || all.length >= total) return all;
+  }
+}
+
 export function EventsProvider({ children }) {
   const { showToast } = useNotifications();
   const { user } = useAuth();
 
-  // Load state from localStorage or use defaults
-  const [events, setEvents] = useState(() => {
-    const saved = localStorage.getItem('inveon_events');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore corrupted localStorage, fall back to default */ }
-    }
-    return INITIAL_EVENTS;
-  });
-
-  const [bookings, setBookings] = useState(() => {
-    const saved = localStorage.getItem('inveon_bookings');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* ignore corrupted localStorage, fall back to default */ }
-    }
-    return INITIAL_BOOKINGS;
-  });
+  // Events and bookings are real, per-organizer data: they always come
+  // from the API for whoever is logged in, start empty, and are never
+  // cached in localStorage — a cache there outlived logout, so the next
+  // person on the same browser saw the previous organizer's events and
+  // customer bookings (and everyone briefly saw mock events before the
+  // real ones loaded).
+  const [events, setEvents] = useState([]);
+  const [bookings, setBookings] = useState([]);
 
   const [participants, setParticipants] = useState(() => {
     const saved = localStorage.getItem('inveon_participants');
@@ -123,6 +128,9 @@ export function EventsProvider({ children }) {
   });
 
   const [eventsLoadError, setEventsLoadError] = useState(null);
+  // False until the first events request for this session settles —
+  // lets pages tell "still loading" apart from "no such event".
+  const [eventsLoaded, setEventsLoaded] = useState(false);
   const [bookingsLoadError, setBookingsLoadError] = useState(null);
 
   // Real data: events and bookings (across every event this organizer
@@ -141,6 +149,17 @@ export function EventsProvider({ children }) {
       });
   }, [user?.isLoggedIn, user?.token]);
 
+  // Logging out (or a session expiring) drops the previous organizer's
+  // data from memory immediately, not just from storage.
+  useEffect(() => {
+    if (user?.isLoggedIn) return;
+    setEvents([]);
+    setBookings([]);
+    setEventsLoaded(false);
+    setEventsLoadError(null);
+    setBookingsLoadError(null);
+  }, [user?.isLoggedIn]);
+
   useEffect(() => {
     if (!user?.isLoggedIn || !user?.token) return;
     let cancelled = false;
@@ -150,15 +169,18 @@ export function EventsProvider({ children }) {
         if (cancelled) return;
         setEvents(data.events.map(apiEventToMockShape));
         setEventsLoadError(null);
+        setEventsLoaded(true);
       })
       .catch((err) => {
-        if (!cancelled) setEventsLoadError(err.message ?? 'Failed to load events');
+        if (cancelled) return;
+        setEventsLoadError(err.message ?? 'Failed to load events');
+        setEventsLoaded(true);
       });
 
-    apiRequest('/organizer/bookings?eventId=all&pageSize=100', { token: user.token })
-      .then((data) => {
+    fetchAllOrganizerBookings(user.token)
+      .then((allBookings) => {
         if (cancelled) return;
-        setBookings(data.bookings.map(apiBookingToMockShape));
+        setBookings(allBookings.map(apiBookingToMockShape));
         setBookingsLoadError(null);
       })
       .catch((err) => {
@@ -170,15 +192,7 @@ export function EventsProvider({ children }) {
     };
   }, [user?.isLoggedIn, user?.token]);
 
-  // Sync to localStorage
-  useEffect(() => {
-    localStorage.setItem('inveon_events', JSON.stringify(events));
-  }, [events]);
-
-  useEffect(() => {
-    localStorage.setItem('inveon_bookings', JSON.stringify(bookings));
-  }, [bookings]);
-
+  // Sync to localStorage (only the mock-backed domains — see above)
   useEffect(() => {
     localStorage.setItem('inveon_participants', JSON.stringify(participants));
   }, [participants]);
@@ -541,6 +555,7 @@ export function EventsProvider({ children }) {
     <EventsContext.Provider
       value={{
         events,
+        eventsLoaded,
         eventsLoadError,
         bookingsLoadError,
         bookings,

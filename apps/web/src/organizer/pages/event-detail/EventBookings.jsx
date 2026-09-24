@@ -4,13 +4,11 @@ import { Search, Filter, Download, MoreVertical, Eye, RotateCcw, CheckCircle, Fi
 import { useEvents } from '../../context/EventsContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
+import EventLookupState from '../../components/common/EventLookupState';
 
-export default function EventBookings() {
-  const { id } = useParams();
-  const { events, bookings, updateBookingStatus, cancelBooking } = useEvents();
+function EventBookingsContent({ event }) {
+  const { bookings, updateBookingStatus, cancelBooking } = useEvents();
 
-  const eventId = id || 'rajgad-sunrise-trek';
-  const event = events.find((e) => e.id === eventId) || events[0];
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -212,4 +210,12 @@ export default function EventBookings() {
       )}
     </div>
   );
+}
+
+export default function EventBookings() {
+  const { id } = useParams();
+  const { events, eventsLoaded, eventsLoadError } = useEvents();
+  const event = events.find((e) => e.id === id);
+  if (!event) return <EventLookupState loaded={eventsLoaded} error={eventsLoadError} />;
+  return <EventBookingsContent event={event} />;
 }
