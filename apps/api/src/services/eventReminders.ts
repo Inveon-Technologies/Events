@@ -43,7 +43,7 @@ export async function sendEventReminder(event: Event): Promise<ReminderSendResul
 
   if (isEmailConfigured()) {
     const bookings = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
-    const mapUrl = buildVenueMapUrl(event.venueAddress, event.venueMapUrl);
+    const mapUrl = buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude);
     const eventTimeLabel = event.eventDate.toLocaleString('en-IN', {
       weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata',
     });

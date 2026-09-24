@@ -101,7 +101,7 @@ export async function getBookingDetail(bookingReference: string, email: string):
     eventDate: event.eventDate.toISOString(),
     gateOpenTime: event.gateOpenTime?.toISOString() ?? null,
     venueAddress: event.venueAddress,
-    venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl),
+    venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude),
     bannerUrl: event.bannerUrl,
     organizerName: organizer?.name ?? 'Event Organizer',
     organizerContactEmail: organizer?.contactEmail ?? null,

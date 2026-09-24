@@ -40,6 +40,7 @@ import {
 } from '../services/ticketCheckIn';
 import { getOrganizerTickets } from '../services/organizerTickets';
 import { getOrganizerPayments } from '../services/organizerPayments';
+import { searchVenues, VenueSearchError } from '../services/venueSearch';
 import {
   getOrganizerProfile,
   updateOrganizerProfile,
@@ -247,6 +248,8 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       city: typeof body.city === 'string' ? body.city : undefined,
       state: typeof body.state === 'string' ? body.state : undefined,
       pincode: typeof body.pincode === 'string' ? body.pincode : undefined,
+      venueLatitude: typeof body.venueLatitude === 'number' ? body.venueLatitude : undefined,
+      venueLongitude: typeof body.venueLongitude === 'number' ? body.venueLongitude : undefined,
       bannerImage: typeof body.bannerImage === 'string' ? body.bannerImage : undefined,
       cancellationPolicyDescription: typeof body.cancellationPolicy === 'string' ? body.cancellationPolicy : undefined,
       allowSelfServiceCancellation: typeof body.allowSelfServiceCancellation === 'boolean' ? body.allowSelfServiceCancellation : undefined,
@@ -315,6 +318,8 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       city: typeof body.city === 'string' ? body.city : undefined,
       state: typeof body.state === 'string' ? body.state : undefined,
       pincode: typeof body.pincode === 'string' ? body.pincode : undefined,
+      venueLatitude: typeof body.venueLatitude === 'number' ? body.venueLatitude : undefined,
+      venueLongitude: typeof body.venueLongitude === 'number' ? body.venueLongitude : undefined,
       bannerImage: typeof body.bannerImage === 'string' ? body.bannerImage : undefined,
       cancellationPolicy: typeof body.cancellationPolicy === 'string' ? body.cancellationPolicy : undefined,
       allowSelfServiceCancellation: typeof body.allowSelfServiceCancellation === 'boolean' ? body.allowSelfServiceCancellation : undefined,
@@ -845,6 +850,20 @@ organizerRouter.post('/events/:eventId/duplicate', asyncHandler(async (req, res)
     }
     if (err instanceof EventCreationForbiddenError) {
       res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.get('/venue-search', asyncHandler(async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q : '';
+  try {
+    const results = await searchVenues(q);
+    res.status(200).json({ results });
+  } catch (err) {
+    if (err instanceof VenueSearchError) {
+      res.status(502).json({ error: err.message });
       return;
     }
     throw err;
