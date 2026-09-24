@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createBooking, SoldOutError, NotFoundError, OrganizerNotVerifiedError } from '../services/bookingCreation';
+import { createBooking, SoldOutError, GenderRestrictionError, NotFoundError, OrganizerNotVerifiedError } from '../services/bookingCreation';
 import { createCashfreeOrderForBooking, NotFoundError as OrderNotFoundError } from '../services/cashfreeOrders';
 import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
 import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
@@ -94,6 +94,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
     primaryContactCity,
     paymentMethod,
     attendeeNames,
+    attendeeGenders,
   } = req.body as Record<string, unknown>;
 
   if (
@@ -119,6 +120,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
       primaryContactCity: typeof primaryContactCity === 'string' ? primaryContactCity : undefined,
       paymentMethod,
       attendeeNames: Array.isArray(attendeeNames) ? attendeeNames.filter((n): n is string => typeof n === 'string') : undefined,
+      attendeeGenders: Array.isArray(attendeeGenders) ? attendeeGenders.filter((g): g is string => typeof g === 'string') : undefined,
     });
 
     // Online paid bookings start 'pending' — no confirmation email yet,
@@ -163,6 +165,10 @@ publicBookingsRouter.post('/events/:eventId/bookings', asyncHandler(async (req, 
   } catch (err) {
     if (err instanceof SoldOutError) {
       res.status(409).json({ error: err.message });
+      return;
+    }
+    if (err instanceof GenderRestrictionError) {
+      res.status(400).json({ error: err.message });
       return;
     }
     if (err instanceof NotFoundError || err instanceof OrderNotFoundError) {

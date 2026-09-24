@@ -30,6 +30,7 @@ export interface OrganizerEventDetail {
   allowSelfServiceCancellation: boolean;
   refundCutoffDays: number | null;
   refundPercentage: number | null;
+  genderRestriction: 'male' | 'female' | null;
   ticketTiers: {
     id: string;
     name: string;
@@ -61,6 +62,7 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     allowSelfServiceCancellation: event.allowSelfServiceCancellation,
     refundCutoffDays: event.refundCutoffDays,
     refundPercentage: event.refundPercentage,
+    genderRestriction: event.genderRestriction,
     ticketTiers: tiers.map((t) => ({
       id: t.id,
       name: t.name,
@@ -99,6 +101,7 @@ export interface UpdateEventParams {
   refundPercentage?: number;
   ticketTiers?: UpdateEventTicketTier[];
   status?: 'draft' | 'published' | 'closed';
+  genderRestriction?: 'male' | 'female' | null;
 }
 
 export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{ id: string; slug: string | null }> {
@@ -261,6 +264,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         refundPercentage: nextAllowSelfService ? nextRefundPercentage : null,
         status: nextStatus,
         capacity: totalCapacity,
+        genderRestriction: params.genderRestriction !== undefined ? params.genderRestriction : event.genderRestriction,
       },
       { transaction: t },
     );

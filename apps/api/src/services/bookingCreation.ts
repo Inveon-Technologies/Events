@@ -13,6 +13,7 @@ export interface CreateBookingParams {
   primaryContactCity?: string;
   paymentMethod: 'online' | 'cash';
   attendeeNames?: string[]; // one per ticket; falls back to the contact name
+  attendeeGenders?: string[]; // one per ticket; required to match the event's real genderRestriction when one is set, otherwise unused
 }
 
 export class SoldOutError extends Error {
@@ -20,6 +21,11 @@ export class SoldOutError extends Error {
     super('Not enough tickets remaining in this category');
   }
 }
+
+// Only ever thrown when the event's real genderRestriction is actually
+// set — an event with none (the default) never asks for or checks
+// gender at all, so this class exists purely for the restricted case.
+export class GenderRestrictionError extends Error {}
 
 export class NotFoundError extends Error {}
 
@@ -97,6 +103,22 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     });
     if (!ticketCategory) throw new NotFoundError('Ticket category not found for this event');
 
+    // Checked before any quota is reserved — a doomed booking (wrong or
+    // missing gender for a restricted event) should never lock stock
+    // away from someone who could actually complete it. An event with
+    // no restriction set (the default) skips this entirely, so nothing
+    // here ever runs, let alone asks, for the unrestricted case.
+    if (event.genderRestriction) {
+      for (let i = 0; i < params.quantity; i += 1) {
+        const gender = params.attendeeGenders?.[i];
+        if (gender !== event.genderRestriction) {
+          throw new GenderRestrictionError(
+            `This event is open to ${event.genderRestriction} attendees only. Please confirm each attendee's gender matches before booking.`,
+          );
+        }
+      }
+    }
+
     if (params.paymentMethod === 'online' && ticketCategory.pricePaise > 0) {
       const organizer = await Organizer.findByPk(event.organizerId, { transaction: t });
       if (!organizer || organizer.cashfreeVendorStatus !== 'active') {
@@ -165,6 +187,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
           bookingId: booking.id,
           ticketCategoryId: ticketCategory.id,
           attendeeName: params.attendeeNames?.[i] ?? params.primaryContactName,
+          attendeeGender: params.attendeeGenders?.[i] ?? null,
           qrToken: randomUUID(),
           status: 'valid',
         },
