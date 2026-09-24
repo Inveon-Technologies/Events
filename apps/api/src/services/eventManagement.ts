@@ -1,7 +1,8 @@
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Organizer, Booking, EventMedia } from '../models';
-import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem } from './eventCreation';
-import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems } from './eventCreation';
+import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem, CreateEventLocationPoint } from './eventCreation';
+import type { EventLocationPoint } from '../models/Event';
+import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems, sanitizeLocationPoints } from './eventCreation';
 
 export class NotFoundError extends Error {}
 export class ForbiddenError extends Error {}
@@ -28,6 +29,7 @@ export interface OrganizerEventDetail {
   scheduleItems: CreateEventScheduleItem[] | null;
   packingChecklist: CreateEventPackingItem[] | null;
   faqItems: CreateEventFaqItem[] | null;
+  locationPoints: EventLocationPoint[] | null;
   cancellationPolicy: string | null;
   allowSelfServiceCancellation: boolean;
   refundCutoffDays: number | null;
@@ -71,6 +73,7 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
+    locationPoints: event.locationPoints ?? null,
     cancellationPolicy: event.cancellationPolicy,
     allowSelfServiceCancellation: event.allowSelfServiceCancellation,
     refundCutoffDays: event.refundCutoffDays,
@@ -113,6 +116,7 @@ export interface UpdateEventParams {
   scheduleItems?: CreateEventScheduleItem[];
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
+  locationPoints?: CreateEventLocationPoint[];
   cancellationPolicy?: string;
   allowSelfServiceCancellation?: boolean;
   refundCutoffDays?: number;
@@ -285,6 +289,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         scheduleItems: params.scheduleItems !== undefined ? sanitizeScheduleItems(params.scheduleItems) : event.scheduleItems,
         packingChecklist: params.packingChecklist !== undefined ? sanitizePackingChecklist(params.packingChecklist) : event.packingChecklist,
         faqItems: params.faqItems !== undefined ? sanitizeFaqItems(params.faqItems) : event.faqItems,
+        locationPoints: params.locationPoints !== undefined ? sanitizeLocationPoints(params.locationPoints) : event.locationPoints,
         cancellationPolicy: params.cancellationPolicy !== undefined ? params.cancellationPolicy.trim() || null : event.cancellationPolicy,
         allowSelfServiceCancellation: nextAllowSelfService,
         refundCutoffDays: nextAllowSelfService ? nextRefundCutoffDays : null,

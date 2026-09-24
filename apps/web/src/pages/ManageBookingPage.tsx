@@ -3,6 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
+import { EventLocationMap } from '../components/map/EventLocationMap';
+import type { LocationPoint } from '../lib/mapPoints';
 
 function formatINR(paise: number) {
   return `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;
@@ -81,6 +83,7 @@ interface BookingDetail {
   refundCutoffPassed: boolean;
   tickets: TicketRow[];
   galleryUrl?: string | null;
+  locationPoints?: LocationPoint[] | null;
   galleryNote?: string | null;
 }
 
@@ -329,6 +332,16 @@ export function ManageBookingPage() {
                 >
                   View photos &amp; videos
                 </a>
+              </div>
+            )}
+
+            {/* Where to go: venue / pickup points with times, notes, directions */}
+            {detail.locationPoints && detail.locationPoints.length > 0 && detail.bookingStatus !== 'cancelled' && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="text-sm font-bold text-ink mb-3">
+                  {detail.locationPoints.some((p) => p.type === 'pickup') ? 'Pickup points & venue' : 'Location'}
+                </h3>
+                <EventLocationMap points={detail.locationPoints} />
               </div>
             )}
 

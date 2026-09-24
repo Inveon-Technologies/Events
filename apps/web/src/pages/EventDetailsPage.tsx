@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { fetchEventData, EventDetails, EventNotFoundError } from '../lib/eventDetails';
 import { EventUnavailablePage } from './EventUnavailablePage';
+import { EventLocationMap } from '../components/map/EventLocationMap';
 import { formatINR } from '../lib/format';
 
 export function EventDetailsPage() {
@@ -541,8 +542,11 @@ export function EventDetailsPage() {
               {/* TAB 4: Location & Map Panel */}
               {activeTab === 'location' && (
                 <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200/80 shadow-sm space-y-4 animate-in fade-in duration-200">
-                  <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Base Camp Venue &amp; Directions</h3>
+                  <h3 className="text-lg font-bold text-[#0b1c30] tracking-tight">Location &amp; Directions</h3>
                   
+                  {event.locationPoints.length > 0 ? (
+                    <EventLocationMap points={event.locationPoints} />
+                  ) : (
                   <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50 flex items-start gap-3">
                     <span className="material-symbols-outlined text-primary text-[22px]">location_on</span>
                     <div>
@@ -550,6 +554,7 @@ export function EventDetailsPage() {
                       {event.locationCoords && <p className="text-xs text-slate-500 font-medium">{event.locationCoords}</p>}
                     </div>
                   </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 gap-3">
                     <div>

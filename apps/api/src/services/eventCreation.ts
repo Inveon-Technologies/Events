@@ -1,5 +1,6 @@
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Organizer } from '../models';
+import type { EventLocationPoint, EventLocationPointType } from '../models/Event';
 
 function slugify(input: string): string {
   return input
@@ -71,6 +72,7 @@ export interface CreateEventParams {
   scheduleItems?: CreateEventScheduleItem[];
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
+  locationPoints?: CreateEventLocationPoint[];
   status: 'draft' | 'published';
   genderRestriction?: 'male' | 'female' | null;
 }
@@ -97,6 +99,51 @@ export function sanitizePackingChecklist(items?: CreateEventPackingItem[]): { it
   const cleaned: { item: string; mandatory: boolean }[] = items
     .map((i) => ({ item: i.item?.trim() ?? '', mandatory: i.mandatory !== false }))
     .filter((i) => i.item);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+export const MAX_LOCATION_POINTS = 20;
+const LOCATION_POINT_TYPES: EventLocationPointType[] = ['venue', 'pickup', 'drop', 'meeting', 'stop'];
+
+export interface CreateEventLocationPoint {
+  type?: string;
+  label?: string;
+  address?: string | null;
+  latitude?: number;
+  longitude?: number;
+  time?: string | null;
+  note?: string | null;
+}
+
+// Map pins (venue, group pickup points, drop point, …). Unlike the
+// free-text lists above, a point with bad coordinates is rejected rather
+// than silently dropped — a pickup point quietly vanishing would strand
+// attendees at a place the organizer thinks is listed.
+export function sanitizeLocationPoints(points?: CreateEventLocationPoint[]): EventLocationPoint[] | null {
+  if (!points) return null;
+  if (points.length > MAX_LOCATION_POINTS) {
+    throw new ValidationError(`An event can have at most ${MAX_LOCATION_POINTS} map points`);
+  }
+  const cleaned = points.map((p, i) => {
+    const n = i + 1;
+    const latitude = Number(p.latitude);
+    const longitude = Number(p.longitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      throw new ValidationError(`Map point ${n} has an invalid location — pick it on the map again`);
+    }
+    const type = LOCATION_POINT_TYPES.includes(p.type as EventLocationPointType) ? (p.type as EventLocationPointType) : 'pickup';
+    const label = (p.label ?? '').trim().slice(0, 100) || (type === 'venue' ? 'Venue' : `Point ${n}`);
+    const time = typeof p.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(p.time.trim()) ? p.time.trim() : null;
+    return {
+      type,
+      label,
+      address: p.address?.trim().slice(0, 300) || null,
+      latitude: Math.round(latitude * 1e6) / 1e6,
+      longitude: Math.round(longitude * 1e6) / 1e6,
+      time,
+      note: p.note?.trim().slice(0, 300) || null,
+    };
+  });
   return cleaned.length > 0 ? cleaned : null;
 }
 
@@ -188,6 +235,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         scheduleItems: sanitizeScheduleItems(params.scheduleItems),
         packingChecklist: sanitizePackingChecklist(params.packingChecklist),
         faqItems: sanitizeFaqItems(params.faqItems),
+        locationPoints: sanitizeLocationPoints(params.locationPoints),
         status: params.status,
         capacity: totalCapacity,
         genderRestriction: params.genderRestriction || null,
@@ -258,6 +306,7 @@ export async function duplicateEvent(eventId: string, organizerId: string): Prom
         scheduleItems: source.scheduleItems,
         packingChecklist: source.packingChecklist,
         faqItems: source.faqItems,
+        locationPoints: source.locationPoints ?? null,
         status: 'draft',
         capacity: source.capacity,
         genderRestriction: source.genderRestriction,

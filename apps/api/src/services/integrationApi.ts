@@ -85,6 +85,7 @@ export interface IntegrationEventDetail extends IntegrationEventSummary {
   scheduleItems: unknown[] | null;
   packingChecklist: unknown[] | null;
   faqItems: unknown[] | null;
+  locationPoints: unknown[] | null;
   termsAndConditions: string | null;
   cancellationPolicy: string | null;
   refundPolicy: { selfServiceCancellation: boolean; refundCutoffDays: number | null; refundPercentage: number | null };
@@ -181,6 +182,7 @@ export async function getIntegrationEvent(organizerId: string, idOrSlug: string,
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
+    locationPoints: event.locationPoints ?? null,
     termsAndConditions: event.termsAndConditions,
     cancellationPolicy: event.cancellationPolicy,
     refundPolicy: {

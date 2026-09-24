@@ -1,6 +1,6 @@
 import { Organizer } from './Organizer';
 import { User } from './User';
-import { Event, EventScheduleItem, EventPackingItem, EventFaqItem } from './Event';
+import { Event, EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint } from './Event';
 import { EventMedia } from './EventMedia';
 import { TicketCategory } from './TicketCategory';
 import { Booking } from './Booking';
@@ -64,4 +64,4 @@ Organizer.hasMany(ApiCredential, { foreignKey: 'organizerId' });
 ApiCredential.belongsTo(Organizer, { foreignKey: 'organizerId' });
 
 export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview, ApiCredential };
-export type { EventScheduleItem, EventPackingItem, EventFaqItem };
+export type { EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint };

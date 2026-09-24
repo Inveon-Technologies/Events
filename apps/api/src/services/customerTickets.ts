@@ -1,4 +1,5 @@
 import { Booking, Event, Organizer, Payment, Ticket, TicketCategory } from '../models';
+import type { EventLocationPoint } from '../models/Event';
 import { generateTicketQrPng } from './qrCode';
 import { buildVenueMapUrl } from './mapsUrl';
 
@@ -35,6 +36,7 @@ export interface CustomerBookingDetail {
   organizerContactEmail: string | null;
   organizerContactPhone: string | null;
   packingChecklist: { item: string; mandatory: boolean }[] | null;
+  locationPoints: EventLocationPoint[] | null;
   cancellationPolicyText: string | null;
   primaryContactName: string;
   primaryContactEmail: string;
@@ -111,6 +113,7 @@ export async function getBookingDetail(bookingReference: string, email: string):
     organizerContactEmail: organizer?.contactEmail ?? null,
     organizerContactPhone: organizer?.contactPhone ?? null,
     packingChecklist: event.packingChecklist,
+    locationPoints: event.locationPoints ?? null,
     cancellationPolicyText: event.cancellationPolicy,
     primaryContactName: booking.primaryContactName,
     primaryContactEmail: booking.primaryContactEmail,

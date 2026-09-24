@@ -77,6 +77,26 @@ function apiBookingToMockShape(b) {
   };
 }
 
+// Map pins as the API expects them (without the geocoding helper fields
+// LocationPicker keeps for filling the address form), plus the main
+// venue's coordinates — the venue point, or the only point.
+function locationPayload(points) {
+  const cleaned = (points || []).map((p) => ({
+    type: p.type,
+    label: p.label,
+    address: p.address || null,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    time: p.time || null,
+    note: p.note || null,
+  }));
+  const primary = cleaned.find((p) => p.type === 'venue') ?? (cleaned.length === 1 ? cleaned[0] : null);
+  return {
+    locationPoints: cleaned,
+    ...(primary ? { venueLatitude: primary.latitude, venueLongitude: primary.longitude } : {}),
+  };
+}
+
 // The bookings endpoint caps pageSize at 100 — a single request (the
 // previous behavior) silently showed organizers with more bookings than
 // that an incomplete list. Pages through until every booking is loaded.
@@ -223,6 +243,7 @@ export function EventsProvider({ children }) {
         city: newEvent.city,
         state: newEvent.state,
         pincode: newEvent.pincode,
+        ...locationPayload(newEvent.locationPoints),
         bannerImage: newEvent.bannerImage,
         genderRestriction: newEvent.genderRestriction || null,
         cancellationPolicy: newEvent.cancellationPolicy?.description || undefined,
@@ -302,6 +323,7 @@ export function EventsProvider({ children }) {
           city: formData.city,
           state: formData.state,
           pincode: formData.pincode,
+          ...locationPayload(formData.locationPoints),
           bannerImage: formData.bannerImage,
           genderRestriction: formData.genderRestriction || null,
           cancellationPolicy: formData.cancellationPolicy?.description || undefined,

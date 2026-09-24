@@ -40,7 +40,7 @@ import {
 } from '../services/ticketCheckIn';
 import { getOrganizerTickets } from '../services/organizerTickets';
 import { getOrganizerPayments } from '../services/organizerPayments';
-import { searchVenues, VenueSearchError } from '../services/venueSearch';
+import { searchVenues, reverseGeocode, VenueSearchError } from '../services/venueSearch';
 import {
   getOrganizerProfile,
   updateOrganizerProfile,
@@ -131,6 +131,22 @@ function parseFaqItems(body: Record<string, unknown>) {
     return {
       question: typeof item.question === 'string' ? item.question : '',
       answer: typeof item.answer === 'string' ? item.answer : '',
+    };
+  });
+}
+
+function parseLocationPoints(body: Record<string, unknown>) {
+  const raw = Array.isArray(body.locationPoints) ? body.locationPoints : [];
+  return raw.map((p) => {
+    const point = (p ?? {}) as Record<string, unknown>;
+    return {
+      type: typeof point.type === 'string' ? point.type : undefined,
+      label: typeof point.label === 'string' ? point.label : undefined,
+      address: typeof point.address === 'string' ? point.address : null,
+      latitude: typeof point.latitude === 'number' ? point.latitude : Number.NaN,
+      longitude: typeof point.longitude === 'number' ? point.longitude : Number.NaN,
+      time: typeof point.time === 'string' ? point.time : null,
+      note: typeof point.note === 'string' ? point.note : null,
     };
   });
 }
@@ -274,6 +290,7 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
   const scheduleItems = parseScheduleItems(body);
   const packingChecklist = parsePackingChecklist(body);
   const faqItems = parseFaqItems(body);
+  const locationPoints = parseLocationPoints(body);
 
   try {
     const created = await createOrganizerEvent({
@@ -299,6 +316,7 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       scheduleItems,
       packingChecklist,
       faqItems,
+      locationPoints,
       status,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -369,6 +387,7 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       scheduleItems: body.scheduleItems !== undefined ? parseScheduleItems(body) : undefined,
       packingChecklist: body.packingChecklist !== undefined ? parsePackingChecklist(body) : undefined,
       faqItems: body.faqItems !== undefined ? parseFaqItems(body) : undefined,
+      locationPoints: body.locationPoints !== undefined ? parseLocationPoints(body) : undefined,
       status: body.status === 'draft' || body.status === 'published' || body.status === 'closed' ? body.status : undefined,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -904,6 +923,19 @@ organizerRouter.get('/venue-search', asyncHandler(async (req, res) => {
   } catch (err) {
     if (err instanceof VenueSearchError) {
       res.status(502).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.get('/venue-reverse', asyncHandler(async (req, res) => {
+  try {
+    const result = await reverseGeocode(Number(req.query.lat), Number(req.query.lng));
+    res.status(200).json({ result });
+  } catch (err) {
+    if (err instanceof VenueSearchError) {
+      res.status(err.message === 'Invalid coordinates' ? 400 : 502).json({ error: err.message });
       return;
     }
     throw err;

@@ -15,6 +15,18 @@ export interface EventPackingItem {
   mandatory: boolean;
 }
 
+export type EventLocationPointType = 'venue' | 'pickup' | 'drop' | 'meeting' | 'stop';
+
+export interface EventLocationPoint {
+  type: EventLocationPointType;
+  label: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  time: string | null; // "HH:MM", local (IST) time of day
+  note: string | null;
+}
+
 export interface EventFaqItem {
   question: string;
   answer: string;
@@ -48,6 +60,7 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare scheduleItems: EventScheduleItem[] | null;
   declare packingChecklist: EventPackingItem[] | null;
   declare faqItems: EventFaqItem[] | null;
+  declare locationPoints: CreationOptional<EventLocationPoint[] | null>;
   declare status: CreationOptional<EventStatus>;
   declare capacity: number;
   declare readonly createdAt: CreationOptional<Date>;
@@ -83,6 +96,7 @@ Event.init(
     scheduleItems: { type: DataTypes.JSONB, allowNull: true },
     packingChecklist: { type: DataTypes.JSONB, allowNull: true },
     faqItems: { type: DataTypes.JSONB, allowNull: true },
+    locationPoints: { type: DataTypes.JSONB, allowNull: true },
     status: { type: DataTypes.ENUM('draft', 'published', 'closed', 'cancelled'), allowNull: false, defaultValue: 'draft' },
     capacity: { type: DataTypes.INTEGER, allowNull: false },
     createdAt: DataTypes.DATE,

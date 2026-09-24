@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Organizer, Event, TicketCategory, EventMedia, EventScheduleItem, EventPackingItem, EventFaqItem } from '../models';
+import { Organizer, Event, TicketCategory, EventMedia, EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint } from '../models';
 import { getEventRatingSummary, RatingSummary } from './eventReviews';
 import { buildVenueMapUrl } from './mapsUrl';
 
@@ -42,6 +42,8 @@ export interface PublicEventDetail {
   // When the gate / reporting opens, if the organizer set one.
   gateOpenTime: string | null;
   venueAddress: string | null;
+  venueLatitude: number | null;
+  venueLongitude: number | null;
   venueMapUrl: string | null;
   bannerUrl: string | null;
   termsAndConditions: string | null;
@@ -53,6 +55,7 @@ export interface PublicEventDetail {
   scheduleItems: EventScheduleItem[] | null;
   packingChecklist: EventPackingItem[] | null;
   faqItems: EventFaqItem[] | null;
+  locationPoints: EventLocationPoint[] | null;
   media: PublicEventMedia[];
   organizerName: string;
   organizerSlug: string;
@@ -147,6 +150,8 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     eventDate: event.eventDate.toISOString(),
     gateOpenTime: event.gateOpenTime?.toISOString() ?? null,
     venueAddress: event.venueAddress,
+    venueLatitude: event.venueLatitude !== null ? Number(event.venueLatitude) : null,
+    venueLongitude: event.venueLongitude !== null ? Number(event.venueLongitude) : null,
     venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude),
     bannerUrl: event.bannerUrl ?? firstPhoto?.url ?? null,
     termsAndConditions: event.termsAndConditions,
@@ -158,6 +163,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
+    locationPoints: event.locationPoints ?? null,
     media: media.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url })),
     organizerName: organizer.name,
     organizerSlug: organizer.slug,
