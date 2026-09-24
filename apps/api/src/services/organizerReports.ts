@@ -94,17 +94,19 @@ export async function getOrganizerReport(params: ReportParams): Promise<Organize
     if (range) Object.assign(where, { createdAt: range });
     const bookings = eventIds.length
       ? await Booking.findAll({
-        where,
-        include: [
-          { model: Ticket, attributes: ['id', 'status', 'ticketCategoryId'] },
-          { model: Payment, attributes: ['status', 'method', 'createdAt'] },
-        ],
-        order: [['createdAt', 'DESC']],
-        limit: MAX_ROWS,
-      })
+          where,
+          include: [
+            { model: Ticket, attributes: ['id', 'status', 'ticketCategoryId'] },
+            { model: Payment, attributes: ['status', 'method', 'createdAt'] },
+          ],
+          order: [['createdAt', 'DESC']],
+          limit: MAX_ROWS,
+        })
       : [];
     const categoryIds = Array.from(new Set(bookings.flatMap((b) => (b.get('Tickets') as Ticket[]).map((t) => t.ticketCategoryId))));
-    const categories = categoryIds.length ? await TicketCategory.findAll({ where: { id: { [Op.in]: categoryIds } }, attributes: ['id', 'name'] }) : [];
+    const categories = categoryIds.length
+      ? await TicketCategory.findAll({ where: { id: { [Op.in]: categoryIds } }, attributes: ['id', 'name'] })
+      : [];
     const categoryName = new Map(categories.map((c) => [c.id, c.name]));
 
     let gross = 0;
@@ -113,11 +115,14 @@ export async function getOrganizerReport(params: ReportParams): Promise<Organize
     const rows = bookings.map((b) => {
       const tickets = b.get('Tickets') as Ticket[];
       const payments = (b.get('Payments') as Payment[]).slice().sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime());
-      const tiers = Array.from(new Set(tickets.map((t) => categoryName.get(t.ticketCategoryId) ?? ''))).filter(Boolean).join(', ');
-      const collected = b.status === 'confirmed' || (b.status === 'cancelled' && payments.some((p) => ['paid', 'refunded'].includes(p.status)));
+      const tiers = Array.from(new Set(tickets.map((t) => categoryName.get(t.ticketCategoryId) ?? '')))
+        .filter(Boolean)
+        .join(', ');
+      const collected =
+        b.status === 'confirmed' || (b.status === 'cancelled' && payments.some((p) => ['paid', 'refunded'].includes(p.status)));
       if (collected) gross += b.totalAmountPaise;
       if (b.status === 'confirmed') ticketsSold += tickets.filter((t) => t.status !== 'cancelled').length;
-      refunded += b.refundStatus && ['SUCCESS', 'success'].includes(b.refundStatus) ? b.refundAmountPaise ?? 0 : 0;
+      refunded += b.refundStatus && ['SUCCESS', 'success'].includes(b.refundStatus) ? (b.refundAmountPaise ?? 0) : 0;
       return {
         bookedAt: istLabel(b.createdAt),
         bookingReference: b.bookingReference,
@@ -174,14 +179,16 @@ export async function getOrganizerReport(params: ReportParams): Promise<Organize
   }
   const tickets = eventIds.length
     ? await Ticket.findAll({
-      where: ticketWhere,
-      include: [{ model: Booking, required: true, where: bookingWhere }],
-      order: params.type === 'checkins' ? [['checkedInAt', 'ASC']] : [['createdAt', 'ASC']],
-      limit: MAX_ROWS,
-    })
+        where: ticketWhere,
+        include: [{ model: Booking, required: true, where: bookingWhere }],
+        order: params.type === 'checkins' ? [['checkedInAt', 'ASC']] : [['createdAt', 'ASC']],
+        limit: MAX_ROWS,
+      })
     : [];
   const categoryIds = Array.from(new Set(tickets.map((t) => t.ticketCategoryId)));
-  const categories = categoryIds.length ? await TicketCategory.findAll({ where: { id: { [Op.in]: categoryIds } }, attributes: ['id', 'name'] }) : [];
+  const categories = categoryIds.length
+    ? await TicketCategory.findAll({ where: { id: { [Op.in]: categoryIds } }, attributes: ['id', 'name'] })
+    : [];
   const categoryName = new Map(categories.map((c) => [c.id, c.name]));
 
   if (params.type === 'checkins') {
@@ -192,9 +199,9 @@ export async function getOrganizerReport(params: ReportParams): Promise<Organize
     // Per-event progress: checked in vs. all active tickets.
     const activeCounts = eventIds.length
       ? ((await Ticket.count({
-        where: { status: { [Op.ne]: 'cancelled' } },
-        include: [{ model: Booking, required: true, where: { eventId: { [Op.in]: eventIds }, status: 'confirmed' }, attributes: [] }],
-      })) as number)
+          where: { status: { [Op.ne]: 'cancelled' } },
+          include: [{ model: Booking, required: true, where: { eventId: { [Op.in]: eventIds }, status: 'confirmed' }, attributes: [] }],
+        })) as number)
       : 0;
     const rows = tickets.map((t) => {
       const booking = t.get('Booking') as Booking;
@@ -205,7 +212,7 @@ export async function getOrganizerReport(params: ReportParams): Promise<Organize
         ticketType: categoryName.get(t.ticketCategoryId) ?? '',
         bookingReference: booking.bookingReference,
         customerPhone: booking.primaryContactWhatsapp,
-        checkedInBy: t.checkedInByUserId ? staffName.get(t.checkedInByUserId) ?? '' : '',
+        checkedInBy: t.checkedInByUserId ? (staffName.get(t.checkedInByUserId) ?? '') : '',
       };
     });
     const checkedIn = tickets.filter((t) => t.status === 'checked_in').length;

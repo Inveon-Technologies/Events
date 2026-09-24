@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -40,6 +42,21 @@ jobs:
       - name: Type check
         working-directory: apps/${{ matrix.app }}
         run: npm run typecheck --if-present
+
+      # Prettier (.prettierrc.json) is enforced on files a PR ADDS, so new
+      # code follows it without a repo-wide reformat that would conflict
+      # with every open branch. Run `npm run format` to reformat an app
+      # wholesale once nothing is in flight.
+      - name: Format check (new files)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/${{ matrix.app }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          files="$(git diff --relative --name-only --diff-filter=A "$BASE_SHA"...HEAD -- . \
+            | grep -E '\.(ts|tsx|js|jsx|css|json)$' || true)"
+          if [ -z "$files" ]; then echo "No new files to check."; exit 0; fi
+          echo "$files" | xargs npx prettier --check --ignore-path ../../.prettierignore
 
       # Each app's own `test` script decides how it wants to run in CI (e.g.
       # the api bakes `--ci` into its Jest script) since api (Jest) and web

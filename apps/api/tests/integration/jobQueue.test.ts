@@ -5,13 +5,7 @@ import { Organizer, User, Event, TicketCategory, Booking, Payment, Ticket } from
 import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
 import { sendEmail, isEmailConfigured } from '../../src/services/email';
-import {
-  closeQueues,
-  enqueueNotification,
-  getNotificationsQueueForTests,
-  registerJobHandler,
-  startQueueWorkers,
-} from '../../src/queue';
+import { closeQueues, enqueueNotification, getNotificationsQueueForTests, registerJobHandler, startQueueWorkers } from '../../src/queue';
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');

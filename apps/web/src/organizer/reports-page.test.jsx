@@ -10,26 +10,45 @@ function setLoggedIn() {
   localStorage.setItem(
     'inveon_user',
     JSON.stringify({
-      id: 'u1', email: 'owner@example.com', role: 'organizer_owner', organizerId: 'org-1',
-      token: 'fake-token', name: 'owner', orgName: null, avatar: 'https://example.com/a.png', isLoggedIn: true,
+      id: 'u1',
+      email: 'owner@example.com',
+      role: 'organizer_owner',
+      organizerId: 'org-1',
+      token: 'fake-token',
+      name: 'owner',
+      orgName: null,
+      avatar: 'https://example.com/a.png',
+      isLoggedIn: true,
     }),
   );
 }
 
-const events = [{ id: 'evt-1', name: 'Sunrise Trek' }, { id: 'evt-2', name: 'Night Walk' }];
+const events = [
+  { id: 'evt-1', name: 'Sunrise Trek' },
+  { id: 'evt-2', name: 'Night Walk' },
+];
 
 function reportFor(url) {
   if (url.includes('/reports/sales')) {
     return {
-      type: 'sales', events,
-      columns: [{ key: 'bookingReference', label: 'Booking reference' }, { key: 'customerName', label: 'Customer' }, { key: 'amountRupees', label: 'Amount (INR)' }],
+      type: 'sales',
+      events,
+      columns: [
+        { key: 'bookingReference', label: 'Booking reference' },
+        { key: 'customerName', label: 'Customer' },
+        { key: 'amountRupees', label: 'Amount (INR)' },
+      ],
       rows: [{ bookingReference: 'INV-BKG-2026-SALE1', customerName: '=Evil()', amountRupees: 1000 }],
       summary: [{ label: 'Gross collected', value: '₹1,000.00' }],
     };
   }
   return {
-    type: 'attendees', events,
-    columns: [{ key: 'attendeeName', label: 'Attendee' }, { key: 'event', label: 'Event' }],
+    type: 'attendees',
+    events,
+    columns: [
+      { key: 'attendeeName', label: 'Attendee' },
+      { key: 'event', label: 'Event' },
+    ],
     rows: [{ attendeeName: 'Real Attendee', event: 'Sunrise Trek' }],
     summary: [{ label: 'Tickets', value: 1 }],
   };
@@ -44,7 +63,9 @@ describe('organizer Reports page (#64)', () => {
 
   it('loads real report data, filters by event and downloads a formula-safe CSV', async () => {
     setLoggedIn();
-    const fetchMock = vi.fn().mockImplementation((url) => Promise.resolve({ ok: true, status: 200, json: async () => reportFor(String(url)) }));
+    const fetchMock = vi
+      .fn()
+      .mockImplementation((url) => Promise.resolve({ ok: true, status: 200, json: async () => reportFor(String(url)) }));
     vi.stubGlobal('fetch', fetchMock);
     let csvBlob = null;
     URL.createObjectURL = vi.fn((blob) => {
@@ -89,7 +110,10 @@ describe('organizer Reports page (#64)', () => {
 
   it('shows the API error instead of an empty table', async () => {
     setLoggedIn();
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'Dates must be in YYYY-MM-DD format' }) }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, status: 400, json: async () => ({ error: 'Dates must be in YYYY-MM-DD format' }) }),
+    );
     render(
       <MemoryRouter>
         <AuthProvider>

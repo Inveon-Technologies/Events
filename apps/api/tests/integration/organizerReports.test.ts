@@ -57,14 +57,16 @@ describe('organizer reports', () => {
 
   async function book(eventId: string, name: string, quantity: number, confirm: boolean) {
     const tier = (await TicketCategory.findOne({ where: { eventId } }))!;
-    const res = await request(app).post(`/api/events/${eventId}/bookings`).send({
-      ticketCategoryId: tier.id,
-      quantity,
-      primaryContactName: name,
-      primaryContactWhatsapp: '+919000000001',
-      primaryContactEmail: `${name.toLowerCase().replace(/\W+/g, '-')}-${suffix}@example.com`,
-      paymentMethod: 'cash',
-    });
+    const res = await request(app)
+      .post(`/api/events/${eventId}/bookings`)
+      .send({
+        ticketCategoryId: tier.id,
+        quantity,
+        primaryContactName: name,
+        primaryContactWhatsapp: '+919000000001',
+        primaryContactEmail: `${name.toLowerCase().replace(/\W+/g, '-')}-${suffix}@example.com`,
+        paymentMethod: 'cash',
+      });
     if (confirm) {
       await Booking.update({ status: 'confirmed' }, { where: { id: res.body.bookingId } });
       await Payment.update({ status: 'paid' }, { where: { bookingId: res.body.bookingId } });
@@ -107,9 +109,10 @@ describe('organizer reports', () => {
     await sequelize.close();
   });
 
-  const get = (path: string, authToken = token) => request(app).get(`/api/organizer/reports/${path}`).set('Authorization', `Bearer ${authToken}`);
+  const get = (path: string, authToken = token) =>
+    request(app).get(`/api/organizer/reports/${path}`).set('Authorization', `Bearer ${authToken}`);
 
-  it('sales: one row per booking across all events, with real totals — never another organizer\'s', async () => {
+  it("sales: one row per booking across all events, with real totals — never another organizer's", async () => {
     const res = await get('sales');
     expect(res.status).toBe(200);
     expect(res.body.rows).toHaveLength(3);
@@ -119,7 +122,13 @@ describe('organizer reports', () => {
     expect(summary['Tickets sold']).toBe(3);
     expect(summary['Gross collected']).toBe('₹2,000.00'); // 2 × 500 + 1 × 1000; the pending one isn't collected
     const alice = res.body.rows.find((r: { customerName: string }) => r.customerName === '=Alice');
-    expect(alice).toMatchObject({ tickets: 2, amountRupees: 1000, paymentStatus: 'paid', bookingStatus: 'confirmed', ticketTypes: 'General' });
+    expect(alice).toMatchObject({
+      tickets: 2,
+      amountRupees: 1000,
+      paymentStatus: 'paid',
+      bookingStatus: 'confirmed',
+      ticketTypes: 'General',
+    });
     expect(res.body.events.map((e: { id: string }) => e.id).sort()).toEqual([eventA, eventB].sort());
   });
 

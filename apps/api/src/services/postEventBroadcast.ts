@@ -61,10 +61,7 @@ export interface PostEventBroadcastResult {
 export async function sendPostEventBroadcast(event: Event): Promise<PostEventBroadcastResult> {
   const result: PostEventBroadcastResult = { eventId: event.id, emailsSent: 0 };
 
-  const [claimed] = await Event.update(
-    { postEventEmailSentAt: new Date() },
-    { where: { id: event.id, postEventEmailSentAt: null } },
-  );
+  const [claimed] = await Event.update({ postEventEmailSentAt: new Date() }, { where: { id: event.id, postEventEmailSentAt: null } });
   if (claimed === 0 || !isEmailConfigured()) return result;
 
   await event.reload();

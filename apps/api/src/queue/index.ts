@@ -120,16 +120,14 @@ export interface ScheduledTask {
 export async function startQueueWorkers(scheduled: ScheduledTask[]): Promise<void> {
   const concurrency = Number(process.env.QUEUE_CONCURRENCY) || 5;
 
-  const notificationWorker = new Worker(
-    NOTIFICATIONS_QUEUE,
-    async (job: Job) => getHandler(job.name)(job.data),
-    { connection: getConnection(), concurrency },
-  );
-  const scheduledWorker = new Worker(
-    SCHEDULED_QUEUE,
-    async (job: Job) => getHandler(job.name)(job.data ?? {}),
-    { connection: getConnection(), concurrency: 1 },
-  );
+  const notificationWorker = new Worker(NOTIFICATIONS_QUEUE, async (job: Job) => getHandler(job.name)(job.data), {
+    connection: getConnection(),
+    concurrency,
+  });
+  const scheduledWorker = new Worker(SCHEDULED_QUEUE, async (job: Job) => getHandler(job.name)(job.data ?? {}), {
+    connection: getConnection(),
+    concurrency: 1,
+  });
   for (const worker of [notificationWorker, scheduledWorker]) {
     worker.on('failed', (job, err) =>
       logger.error({ err, job: job?.name, jobId: job?.id, attemptsMade: job?.attemptsMade }, 'Background job failed'),
@@ -141,11 +139,15 @@ export async function startQueueWorkers(scheduled: ScheduledTask[]): Promise<voi
   const queue = getScheduledQueue();
   for (const task of scheduled) {
     // eslint-disable-next-line no-await-in-loop
-    await queue.upsertJobScheduler(task.name, { every: task.everyMs }, {
-      name: task.name,
-      data: {},
-      opts: { removeOnComplete: { count: 100 }, removeOnFail: { count: 100 } },
-    });
+    await queue.upsertJobScheduler(
+      task.name,
+      { every: task.everyMs },
+      {
+        name: task.name,
+        data: {},
+        opts: { removeOnComplete: { count: 100 }, removeOnFail: { count: 100 } },
+      },
+    );
   }
   logger.info({ scheduled: scheduled.map((t) => t.name) }, 'Background job workers started');
 }

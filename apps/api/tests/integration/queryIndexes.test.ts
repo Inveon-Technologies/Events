@@ -18,10 +18,26 @@ describe('query indexes (real Postgres planner)', () => {
   });
 
   it.each([
-    ['payment webhook lookup by gateway order id', "SELECT * FROM payments WHERE gateway_reference = 'INV-BKG-2026-X'", 'payments_gateway_reference'],
-    ['customer "My bookings" by email (case-insensitive)', "SELECT * FROM bookings WHERE lower(primary_contact_email) = 'a@example.com'", 'bookings_lower_primary_contact_email'],
-    ['unpaid online booking sweep', "SELECT * FROM bookings WHERE status = 'pending' AND payment_method = 'online' AND created_at < now() ORDER BY created_at LIMIT 200", 'bookings_pending_online_created_at'],
-    ['public events list / reminders', "SELECT * FROM events WHERE status = 'published' AND event_date >= now()", 'events_status_event_date'],
+    [
+      'payment webhook lookup by gateway order id',
+      "SELECT * FROM payments WHERE gateway_reference = 'INV-BKG-2026-X'",
+      'payments_gateway_reference',
+    ],
+    [
+      'customer "My bookings" by email (case-insensitive)',
+      "SELECT * FROM bookings WHERE lower(primary_contact_email) = 'a@example.com'",
+      'bookings_lower_primary_contact_email',
+    ],
+    [
+      'unpaid online booking sweep',
+      "SELECT * FROM bookings WHERE status = 'pending' AND payment_method = 'online' AND created_at < now() ORDER BY created_at LIMIT 200",
+      'bookings_pending_online_created_at',
+    ],
+    [
+      'public events list / reminders',
+      "SELECT * FROM events WHERE status = 'published' AND event_date >= now()",
+      'events_status_event_date',
+    ],
     ['QR check-in', "SELECT * FROM tickets WHERE qr_token = 'x'", 'qr_token'],
     ['booking by reference', "SELECT * FROM bookings WHERE booking_reference = 'x'", 'booking_reference'],
     ['organizer team lookup', "SELECT * FROM users WHERE organizer_id = '00000000-0000-0000-0000-000000000000'", 'users_organizer_id'],

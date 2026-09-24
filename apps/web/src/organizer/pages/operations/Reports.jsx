@@ -13,7 +13,10 @@ const REPORTS = [
 const PREVIEW_ROWS = 50;
 
 function slug(text) {
-  return text.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
+  return text
+    .replace(/[^a-z0-9]+/gi, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
 }
 
 // Reports (#64): pick a report, filter by event and dates, preview it,
@@ -74,7 +77,9 @@ export default function Reports() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Reports</h1>
-          <p className="text-xs text-slate-500 mt-1">Export your attendees, sales and check-ins as CSV — opens in Excel or Google Sheets.</p>
+          <p className="text-xs text-slate-500 mt-1">
+            Export your attendees, sales and check-ins as CSV — opens in Excel or Google Sheets.
+          </p>
         </div>
         <button
           type="button"
@@ -120,17 +125,31 @@ export default function Reports() {
           >
             <option value="all">All events</option>
             {events.map((e) => (
-              <option key={e.id} value={e.id}>{e.name}</option>
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
             ))}
           </select>
         </label>
         <label className="text-xs font-semibold text-slate-600">
           {type === 'checkins' ? 'Checked in from' : 'Booked from'}
-          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+          <input
+            type="date"
+            value={from}
+            max={to || undefined}
+            onChange={(e) => setFrom(e.target.value)}
+            className="mt-1 block w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+          />
         </label>
         <label className="text-xs font-semibold text-slate-600">
           To
-          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+          <input
+            type="date"
+            value={to}
+            min={from || undefined}
+            onChange={(e) => setTo(e.target.value)}
+            className="mt-1 block w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+          />
         </label>
         {(from || to || eventId !== 'all') && (
           <button
@@ -147,7 +166,11 @@ export default function Reports() {
         )}
       </div>
 
-      {error && <p className="text-xs text-red-600" role="alert">{error}</p>}
+      {error && (
+        <p className="text-xs text-red-600" role="alert">
+          {error}
+        </p>
+      )}
 
       {report && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -172,7 +195,9 @@ export default function Reports() {
                 <thead className="bg-slate-50">
                   <tr>
                     {report.columns.map((c) => (
-                      <th key={c.key} className="text-left px-3 py-2 font-semibold text-slate-600 whitespace-nowrap">{c.label}</th>
+                      <th key={c.key} className="text-left px-3 py-2 font-semibold text-slate-600 whitespace-nowrap">
+                        {c.label}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -180,7 +205,9 @@ export default function Reports() {
                   {report.rows.slice(0, PREVIEW_ROWS).map((row, i) => (
                     <tr key={i} className="border-t border-slate-100">
                       {report.columns.map((c) => (
-                        <td key={c.key} className="px-3 py-2 text-slate-700 whitespace-nowrap">{row[c.key] ?? ''}</td>
+                        <td key={c.key} className="px-3 py-2 text-slate-700 whitespace-nowrap">
+                          {row[c.key] ?? ''}
+                        </td>
                       ))}
                     </tr>
                   ))}

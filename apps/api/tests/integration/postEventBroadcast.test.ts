@@ -5,11 +5,7 @@ import { Organizer, User, Event, TicketCategory, Booking, Payment, Ticket } from
 import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
 import { sendEmail, isEmailConfigured } from '../../src/services/email';
-import {
-  checkAndSendPostEventBroadcasts,
-  findEventsNeedingPostEventEmail,
-  postEventSendTime,
-} from '../../src/services/postEventBroadcast';
+import { checkAndSendPostEventBroadcasts, findEventsNeedingPostEventEmail, postEventSendTime } from '../../src/services/postEventBroadcast';
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');

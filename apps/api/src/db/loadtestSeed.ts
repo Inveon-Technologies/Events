@@ -46,7 +46,11 @@ async function seedGateEvent(organizerId: string, name: string, ticketCount: num
     capacity: ticketCount,
   } as never);
   const tier = await TicketCategory.create({
-    eventId: event.id, name: 'General', pricePaise: 50000, quotaTotal: ticketCount, quotaRemaining: 0,
+    eventId: event.id,
+    name: 'General',
+    pricePaise: 50000,
+    quotaTotal: ticketCount,
+    quotaRemaining: 0,
   } as never);
 
   const qrTokens: string[] = [];
@@ -73,7 +77,9 @@ async function seedGateEvent(organizerId: string, name: string, ticketCount: num
     await sequelize.transaction(async (transaction) => {
       await Booking.bulkCreate(bookings, { transaction });
       await Ticket.bulkCreate(tickets as never[], { transaction });
-      await Payment.bulkCreate(bookings.map((b) => ({ bookingId: b.id, amountPaise: 50000, method: 'cash', status: 'paid' })) as never[], { transaction });
+      await Payment.bulkCreate(bookings.map((b) => ({ bookingId: b.id, amountPaise: 50000, method: 'cash', status: 'paid' })) as never[], {
+        transaction,
+      });
     });
   }
   return { eventId: event.id, qrTokens };
@@ -111,7 +117,12 @@ async function seed(ticketCount: number, quota: number, out: string) {
     capacity: quota,
   } as never);
   const salesTier = await TicketCategory.create({
-    eventId: salesEvent.id, name: 'General', pricePaise: 50000, quotaTotal: quota, quotaRemaining: quota, maxPerBooking: 10,
+    eventId: salesEvent.id,
+    name: 'General',
+    pricePaise: 50000,
+    quotaTotal: quota,
+    quotaRemaining: quota,
+    maxPerBooking: 10,
   } as never);
 
   const result = {
@@ -127,7 +138,9 @@ async function seed(ticketCount: number, quota: number, out: string) {
     bookingQuota: quota,
   };
   writeFileSync(out, JSON.stringify(result));
-  console.log(`Seeded organizer ${email}: ${checkin.qrTokens.length} + ${rush.qrTokens.length} tickets to scan, booking quota ${quota}. Wrote ${out}.`);
+  console.log(
+    `Seeded organizer ${email}: ${checkin.qrTokens.length} + ${rush.qrTokens.length} tickets to scan, booking quota ${quota}. Wrote ${out}.`,
+  );
 }
 
 async function main() {

@@ -21,13 +21,27 @@ describe('structured logging', () => {
   it('writes JSON lines with level, time, service and message', () => {
     const { log, lines } = captureLogger();
     log.info({ bookingReference: 'INV-BKG-2026-ABCD2345' }, 'Booking confirmed');
-    expect(lines[0]).toMatchObject({ level: 30, service: 'inveon-events-api', msg: 'Booking confirmed', bookingReference: 'INV-BKG-2026-ABCD2345' });
+    expect(lines[0]).toMatchObject({
+      level: 30,
+      service: 'inveon-events-api',
+      msg: 'Booking confirmed',
+      bookingReference: 'INV-BKG-2026-ABCD2345',
+    });
     expect(typeof lines[0].time).toBe('string');
   });
 
   it('redacts secrets and credentials', () => {
     const { log, lines } = captureLogger();
-    log.info({ password: 'hunter2', appSecret: 'isk_x', code: '123456', body: { password: 'p', bankAccountNumber: '1234567890' }, req: { headers: { authorization: 'Bearer abc' } } }, 'x');
+    log.info(
+      {
+        password: 'hunter2',
+        appSecret: 'isk_x',
+        code: '123456',
+        body: { password: 'p', bankAccountNumber: '1234567890' },
+        req: { headers: { authorization: 'Bearer abc' } },
+      },
+      'x',
+    );
     const text = JSON.stringify(lines[0]);
     for (const secret of ['hunter2', 'isk_x', '123456', '1234567890', 'Bearer abc']) expect(text).not.toContain(secret);
   });
