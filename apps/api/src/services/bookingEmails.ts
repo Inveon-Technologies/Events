@@ -4,6 +4,7 @@ import { generateInvoicePdf } from './invoice';
 import { bookingConfirmationEmail } from '../emails/templates';
 import type { CreateBookingResult } from './bookingCreation';
 import { Booking, Event, Organizer, Ticket, TicketCategory } from '../models';
+import { logger } from '../logger';
 
 // Re-derives the same shape createBooking() returns directly, for the
 // one case that doesn't have it in hand already: the Cashfree webhook
@@ -59,8 +60,7 @@ export async function sendBookingConfirmationEmail(result: CreateBookingResult):
   const { email } = result;
 
   if (!isEmailConfigured()) {
-    // eslint-disable-next-line no-console
-    console.warn(`Email not configured — skipping booking confirmation for ${result.bookingReference}`);
+    logger.warn({ bookingReference: result.bookingReference }, 'Email not configured — booking confirmation skipped');
     return;
   }
 
@@ -113,7 +113,6 @@ export async function sendBookingConfirmationEmail(result: CreateBookingResult):
       ],
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error(`Failed to send booking confirmation email for ${result.bookingReference}:`, err);
+    logger.error({ err, bookingReference: result.bookingReference }, 'Failed to send booking confirmation email');
   }
 }

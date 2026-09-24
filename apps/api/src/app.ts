@@ -5,6 +5,8 @@ import { publicBookingsRouter } from './routes/publicBookings';
 import { webhooksRouter } from './routes/webhooks';
 import { integrationApiRouter } from './routes/integrationApi';
 import { UPLOAD_DIR } from './services/eventMedia';
+import { logger } from './logger';
+import { requestLogger } from './middleware/requestLogger';
 
 export function createApp(): Express {
   const app = express();
@@ -15,6 +17,10 @@ export function createApp(): Express {
   // every generated URL says http:// and every client shares the proxy's
   // IP for rate limiting. Configurable for other topologies.
   app.set('trust proxy', process.env.TRUST_PROXY_HOPS ? Number(process.env.TRUST_PROXY_HOPS) : 2);
+
+  // First, so every request — webhooks included — gets a request id and
+  // one structured log line (see middleware/requestLogger.ts).
+  app.use(requestLogger);
 
   // Mounted with express.raw(), and before the global express.json()
   // below — webhook signature verification needs the exact raw bytes
@@ -56,9 +62,8 @@ export function createApp(): Express {
   // JSON 500, not a crash-restart loop. Deliberately doesn't leak `err`
   // details to the client — logged server-side instead.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
-    // eslint-disable-next-line no-console
-    console.error('Unhandled error in request:', err);
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    (req.log ?? logger).error({ err }, 'Unhandled error in request');
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   });
 

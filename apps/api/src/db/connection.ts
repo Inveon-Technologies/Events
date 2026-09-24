@@ -1,4 +1,5 @@
 import { Sequelize } from 'sequelize';
+import { logger } from '../logger';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -11,8 +12,7 @@ if (!DATABASE_URL) {
   // database (e.g. the plain lint-test-build CI job, which has no
   // Postgres service). A real connection attempt against this placeholder
   // will fail loudly and obviously when something actually queries it.
-  // eslint-disable-next-line no-console
-  console.warn('DATABASE_URL is not set (see .env.example) — DB queries will fail');
+  logger.warn('DATABASE_URL is not set (see .env.example) — DB queries will fail');
 }
 
 export const sequelize = new Sequelize(

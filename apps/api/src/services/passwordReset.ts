@@ -5,6 +5,7 @@ import { issueOtp, verifyOtp, OTP_EXPIRY_MINUTES } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
 import { otpEmail } from '../emails/templates';
 import { redis } from '../db/redis';
+import { logger, logOtpForDevelopment } from '../logger';
 
 const RESET_TOKEN_TTL_SECONDS = 15 * 60; // 15 minutes
 const RESET_TOKEN_PREFIX = 'reset-token:';
@@ -28,8 +29,7 @@ export class InvalidResetTokenError extends Error {
 export async function initiateForgotPassword(email: string): Promise<void> {
   const user = await User.findOne({ where: { email } });
   if (!user) {
-    // eslint-disable-next-line no-console
-    console.warn(`Forgot-password requested for unregistered email: ${email}`);
+    logger.info('Forgot-password requested for an unregistered email');
     return;
   }
 
@@ -42,8 +42,7 @@ export async function initiateForgotPassword(email: string): Promise<void> {
       html: otpEmail({ recipientName: user.name ?? 'there', otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }),
     });
   } else {
-    // eslint-disable-next-line no-console
-    console.warn(`Email not configured — password reset OTP for ${email} was: ${code}`);
+    logOtpForDevelopment('password reset', email, code);
   }
 }
 

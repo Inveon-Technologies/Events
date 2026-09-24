@@ -932,8 +932,7 @@ organizerRouter.post('/events/:eventId/duplicate', asyncHandler(async (req, res)
     try {
       await duplicateEventMedia(req.params.eventId, result.id, organizerId);
     } catch (mediaErr) {
-      // eslint-disable-next-line no-console
-      console.error(`Failed to duplicate media for event ${req.params.eventId} -> ${result.id}:`, mediaErr);
+      req.log.error({ err: mediaErr, sourceEventId: req.params.eventId, newEventId: result.id }, 'Failed to duplicate media');
     }
     res.status(201).json(result);
   } catch (err) {

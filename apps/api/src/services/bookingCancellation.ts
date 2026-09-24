@@ -5,6 +5,7 @@ import { releaseBookingTickets } from './bookingTickets';
 import { cashfreeCreateRefund } from './cashfreeClient';
 import { sendEmail, isEmailConfigured } from './email';
 import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '../emails/templates';
+import { logger } from '../logger';
 
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
@@ -131,8 +132,7 @@ async function performCancellation(params: {
         html,
       });
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(`Failed to send cancellation email for ${booking.bookingReference}:`, err);
+      logger.error({ err, bookingReference: booking.bookingReference }, 'Failed to send cancellation email');
     }
   }
 
@@ -255,8 +255,7 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
       // DB hiccup) must not stop every other attendee from being
       // cancelled and refunded. The organizer can re-run this to retry.
       if (!(err instanceof ValidationError)) {
-        // eslint-disable-next-line no-console
-        console.error(`Failed to cancel booking ${booking.id} during event cancellation ${eventId}:`, err);
+        logger.error({ err, bookingId: booking.id, eventId }, 'Failed to cancel a booking during event cancellation');
         failedBookingIds.push(booking.id);
       }
     }
@@ -286,8 +285,7 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
         });
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(`Failed to send organizer cancellation summary for event ${eventId}:`, err);
+      logger.error({ err, eventId }, 'Failed to send organizer cancellation summary');
     }
   }
 

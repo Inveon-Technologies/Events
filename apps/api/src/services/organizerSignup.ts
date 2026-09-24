@@ -4,6 +4,7 @@ import { signAccessToken } from '../auth/jwt';
 import { issueOtp, verifyOtp as checkOtp, OTP_EXPIRY_MINUTES } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
 import { otpEmail, registrationSuccessEmail } from '../emails/templates';
+import { logger, logOtpForDevelopment } from '../logger';
 
 export class EmailInUseError extends Error {
   constructor() {
@@ -77,8 +78,7 @@ export async function initiateSignup(params: InitiateSignupParams): Promise<void
       html: otpEmail({ recipientName: params.fullName, otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }),
     });
   } else {
-    // eslint-disable-next-line no-console
-    console.warn(`Email not configured — signup OTP for ${params.email} was: ${code}`);
+    logOtpForDevelopment('signup', params.email, code);
   }
 }
 
@@ -95,8 +95,7 @@ export async function resendSignupOtp(email: string): Promise<void> {
       html: otpEmail({ recipientName: user.name ?? 'there', otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }),
     });
   } else {
-    // eslint-disable-next-line no-console
-    console.warn(`Email not configured — resent signup OTP for ${email} was: ${code}`);
+    logOtpForDevelopment('signup (resend)', email, code);
   }
 }
 
@@ -128,8 +127,7 @@ export async function verifySignup(email: string, code: string): Promise<VerifyS
         dashboardUrl: 'https://events.inveontechnologies.in/organizer/dashboard',
       }),
     }).catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error(`Failed to send registration-success email to ${email}:`, err);
+      logger.error({ err }, 'Failed to send registration-success email');
     });
   }
 

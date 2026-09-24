@@ -1,4 +1,5 @@
 import { createClient, RedisClientType } from 'redis';
+import { logger } from '../logger';
 
 const REDIS_URL = process.env.REDIS_URL;
 
@@ -6,8 +7,7 @@ if (!REDIS_URL) {
   // Same reasoning as connection.ts: don't throw at import time, since
   // that would break any code path that doesn't actually need Redis in
   // environments where it isn't configured (e.g. plain CI).
-  // eslint-disable-next-line no-console
-  console.warn('REDIS_URL is not set (see .env.example) — Redis calls will fail');
+  logger.warn('REDIS_URL is not set (see .env.example) — Redis calls will fail');
 }
 
 // A single shared client for now. If queue usage (BullMQ) is added later,
@@ -19,8 +19,7 @@ export const redis: RedisClientType = createClient({
 });
 
 redis.on('error', (err) => {
-  // eslint-disable-next-line no-console
-  console.error('Redis client error', err);
+  logger.error({ err }, 'Redis client error');
 });
 
 let connecting: Promise<void> | null = null;
