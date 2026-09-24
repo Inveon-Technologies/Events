@@ -2,12 +2,14 @@ import { createApp } from './app';
 import { connectRedis } from './db/redis';
 import { checkAndSendEventReminders } from './services/eventReminders';
 import { expireStalePendingOnlineBookings } from './services/pendingBookingExpiry';
+import { checkAndSendPostEventBroadcasts } from './services/postEventBroadcast';
 import { logger } from './logger';
 import { isQueueEnabled, startQueueWorkers, closeQueues } from './queue';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const REMINDER_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes — frequent enough that no event's real 3-hour mark is ever missed by more than this, without hammering the database
 const PENDING_EXPIRY_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const POST_EVENT_POLL_INTERVAL_MS = 15 * 60 * 1000;
 
 const app = createApp();
 
@@ -27,6 +29,7 @@ connectRedis().catch((err) => {
 const SCHEDULED_TASKS = [
   { name: 'event-reminders', everyMs: REMINDER_POLL_INTERVAL_MS },
   { name: 'pending-booking-expiry', everyMs: PENDING_EXPIRY_POLL_INTERVAL_MS },
+  { name: 'post-event-broadcast', everyMs: POST_EVENT_POLL_INTERVAL_MS },
 ];
 
 const fallbackTimers: NodeJS.Timeout[] = [];
@@ -47,6 +50,11 @@ function startIntervalFallback(): void {
           logger.error({ err }, 'Pending booking expiry sweep failed');
         });
     }, PENDING_EXPIRY_POLL_INTERVAL_MS),
+    setInterval(() => {
+      checkAndSendPostEventBroadcasts().catch((err) => {
+        logger.error({ err }, 'Post-event broadcast check failed');
+      });
+    }, POST_EVENT_POLL_INTERVAL_MS),
   );
 }
 

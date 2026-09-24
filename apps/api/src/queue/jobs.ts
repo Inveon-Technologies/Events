@@ -3,6 +3,7 @@ import { buildBookingEmailPayload, deliverBookingConfirmationEmail } from '../se
 import { deliverBookingCancellationEmail } from '../services/bookingCancellation';
 import { checkAndSendEventReminders } from '../services/eventReminders';
 import { expireStalePendingOnlineBookings } from '../services/pendingBookingExpiry';
+import { checkAndSendPostEventBroadcasts } from '../services/postEventBroadcast';
 import { logger } from '../logger';
 
 function requireString(data: Record<string, unknown>, key: string): string {
@@ -31,4 +32,8 @@ registerJobHandler('event-reminders', async () => {
 registerJobHandler('pending-booking-expiry', async () => {
   const result = await expireStalePendingOnlineBookings();
   if (result.expired > 0 || result.confirmed > 0) logger.info(result, 'Pending booking sweep');
+});
+
+registerJobHandler('post-event-broadcast', async () => {
+  await checkAndSendPostEventBroadcasts();
 });
