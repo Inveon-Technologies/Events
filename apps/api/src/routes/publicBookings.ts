@@ -17,7 +17,7 @@ import {
   NotFoundError as ReviewNotFoundError,
   ValidationError as ReviewValidationError,
 } from '../services/eventReviews';
-import { sendBookingConfirmationEmail } from '../services/bookingEmails';
+import { enqueueNotification } from '../queue';
 import {
   customerCancelBooking,
   ValidationError as CancellationValidationError,
@@ -201,10 +201,14 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
 
     // Fire-and-forget: the booking is already committed at this point, and
     // a slow or failed email send must never delay the HTTP response or
-    // undo the reservation. sendBookingConfirmationEmail() catches
-    // everything internally, so this can never produce an unhandled
-    // rejection either.
-    void sendBookingConfirmationEmail(result);
+    // undo the reservation. enqueueNotification() never throws (it runs
+    // the job inline, errors logged, if the queue is down), so this can
+    // never produce an unhandled rejection either.
+    void enqueueNotification(
+      'booking-confirmation',
+      { bookingId: result.bookingId },
+      { jobId: `booking-confirmation-${result.bookingId}` },
+    );
 
     res.status(201).json({ bookingId: result.bookingId, bookingReference: result.bookingReference });
   } catch (err) {

@@ -6,6 +6,7 @@ import { cashfreeCreateRefund } from './cashfreeClient';
 import { sendEmail, isEmailConfigured } from './email';
 import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '../emails/templates';
 import { logger } from '../logger';
+import { enqueueNotification } from '../queue';
 
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
@@ -45,7 +46,7 @@ async function performCancellation(params: {
   isEventCancellation: boolean;
   refundPercentage: number;
 }): Promise<CancellationResult> {
-  const { booking, event } = params;
+  const { booking } = params;
   // Nothing was ever collected for a still-pending booking, so there's
   // nothing to refund, whatever the policy says.
   const wasPaid = booking.status === 'confirmed';
@@ -106,35 +107,14 @@ async function performCancellation(params: {
     }
   }
 
-  // Best-effort, deliberately never throws — matches the same pattern
-  // as sendBookingConfirmationEmail: a failed or unconfigured email
-  // send must never undo or block a cancellation that's already been
-  // committed to the database.
-  if (isEmailConfigured()) {
-    try {
-      const html = bookingCancellationEmail({
-        customerName: booking.primaryContactName,
-        eventName: event.name,
-        eventDateLabel: formatEventDateLabel(event.eventDate),
-        bookingReference: booking.bookingReference,
-        reason: params.reason,
-        cancelledByEventCancellation: params.isEventCancellation,
-        cancelledByOrganizer: params.cancelledBy === 'organizer',
-        totalPaise: booking.totalAmountPaise,
-        refundAmountPaise,
-        refundStatus,
-      });
-      await sendEmail({
-        to: booking.primaryContactEmail,
-        subject: params.isEventCancellation
-          ? `Event cancelled: ${event.name} (${booking.bookingReference})`
-          : `Booking cancelled: ${event.name} (${booking.bookingReference})`,
-        html,
-      });
-    } catch (err) {
-      logger.error({ err, bookingReference: booking.bookingReference }, 'Failed to send cancellation email');
-    }
-  }
+  // Queued (retried on failure), never awaited on the work itself: a
+  // failed or unconfigured email must never undo or block a
+  // cancellation that's already committed.
+  await enqueueNotification(
+    'booking-cancelled',
+    { bookingId: booking.id, isEventCancellation: params.isEventCancellation },
+    { jobId: `booking-cancelled-${booking.id}` },
+  );
 
   return { bookingId: booking.id, refundAmountPaise, refundStatus };
 }
@@ -290,4 +270,36 @@ export async function organizerCancelEvent(eventId: string, organizerId: string,
   }
 
   return { cancelledBookings, failedBookingIds };
+}
+
+// Handler for the "booking-cancelled" job. Reads everything back from the
+// committed booking row (reason, who cancelled, refund amount/status), so
+// the job payload stays a bare id. Throws on a failed send so the queue
+// retries.
+export async function deliverBookingCancellationEmail(bookingId: string, isEventCancellation: boolean): Promise<void> {
+  if (!isEmailConfigured()) return;
+  const booking = await Booking.findByPk(bookingId);
+  if (!booking || booking.status !== 'cancelled') return;
+  const event = await Event.findByPk(booking.eventId);
+  if (!event) return;
+
+  const html = bookingCancellationEmail({
+    customerName: booking.primaryContactName,
+    eventName: event.name,
+    eventDateLabel: formatEventDateLabel(event.eventDate),
+    bookingReference: booking.bookingReference,
+    reason: booking.cancellationReason ?? '',
+    cancelledByEventCancellation: isEventCancellation,
+    cancelledByOrganizer: booking.cancelledBy === 'organizer',
+    totalPaise: booking.totalAmountPaise,
+    refundAmountPaise: booking.refundAmountPaise ?? 0,
+    refundStatus: booking.refundStatus ?? null,
+  });
+  await sendEmail({
+    to: booking.primaryContactEmail,
+    subject: isEventCancellation
+      ? `Event cancelled: ${event.name} (${booking.bookingReference})`
+      : `Booking cancelled: ${event.name} (${booking.bookingReference})`,
+    html,
+  });
 }

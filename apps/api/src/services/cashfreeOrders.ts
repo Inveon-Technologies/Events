@@ -2,7 +2,7 @@ import { sequelize } from '../db/connection';
 import { Organizer, Booking, Payment, Event } from '../models';
 import { cashfreeCreateOrder, cashfreeCreateRefund } from './cashfreeClient';
 import { releaseBookingTickets, reserveBookingTickets } from './bookingTickets';
-import { buildBookingEmailPayload, sendBookingConfirmationEmail } from './bookingEmails';
+import { enqueueNotification } from '../queue';
 import { logger } from '../logger';
 
 const PLATFORM_FEE_PERCENT = Number(process.env.PLATFORM_FEE_PERCENT) || 5;
@@ -110,8 +110,11 @@ export async function confirmPendingOnlineBooking(payment: Payment): Promise<boo
     // they've actually paid. Fire-and-forget: the payment is already
     // committed, so a failed or slow email must never be treated as
     // this webhook having failed (Cashfree would just retry it).
-    const emailPayload = await buildBookingEmailPayload(payment.bookingId);
-    if (emailPayload) void sendBookingConfirmationEmail(emailPayload);
+    void enqueueNotification(
+      'booking-confirmation',
+      { bookingId: payment.bookingId },
+      { jobId: `booking-confirmation-${payment.bookingId}` },
+    );
   }
   return confirmed;
 }
@@ -181,8 +184,13 @@ export async function handleLateOnlinePayment(paymentId: string): Promise<LatePa
 
   if (decision === 'reinstated') {
     const payment = await Payment.findByPk(paymentId);
-    const emailPayload = payment ? await buildBookingEmailPayload(payment.bookingId) : null;
-    if (emailPayload) void sendBookingConfirmationEmail(emailPayload);
+    if (payment) {
+      void enqueueNotification(
+        'booking-confirmation',
+        { bookingId: payment.bookingId },
+        { jobId: `booking-confirmation-${payment.bookingId}-reinstated` },
+      );
+    }
     return 'reinstated';
   }
 

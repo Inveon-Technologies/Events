@@ -3,9 +3,11 @@ import { connectRedis } from './db/redis';
 import { checkAndSendEventReminders } from './services/eventReminders';
 import { expireStalePendingOnlineBookings } from './services/pendingBookingExpiry';
 import { logger } from './logger';
+import { isQueueEnabled, startQueueWorkers, closeQueues } from './queue';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const REMINDER_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes — frequent enough that no event's real 3-hour mark is ever missed by more than this, without hammering the database
+const PENDING_EXPIRY_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 const app = createApp();
 
@@ -17,39 +19,63 @@ connectRedis().catch((err) => {
   logger.error({ err }, 'Redis connection failed at startup — sign-in codes and rate limits need it');
 });
 
-// No job queue exists in this codebase (no BullMQ, no cron) — this is
-// deliberately the lightweight alternative: a plain interval inside
-// the one long-lived server process, checking for any event that's
-// now crossed into its real 3-hour-before window. Each run is
-// independently best-effort (see checkAndSendEventReminders and
-// sendEventReminder) and never throws out of this handler, so one bad
-// run never stops the next one from happening 5 minutes later.
-//
-// Safe with more than one API process: each reminder is claimed with a
-// conditional UPDATE before sending (see sendEventReminder), so only
-// one process ever sends it.
-setInterval(() => {
-  checkAndSendEventReminders().catch((err) => {
-    logger.error({ err }, 'Event reminder check failed');
+// Scheduled work. With Redis available it runs as BullMQ repeatable
+// jobs (see queue/), so each tick runs once across every API process.
+// Without it, a plain per-process interval does the same work — still
+// safe with several processes, because each reminder and each expiry is
+// claimed with a conditional UPDATE before anything is sent or released.
+const SCHEDULED_TASKS = [
+  { name: 'event-reminders', everyMs: REMINDER_POLL_INTERVAL_MS },
+  { name: 'pending-booking-expiry', everyMs: PENDING_EXPIRY_POLL_INTERVAL_MS },
+];
+
+const fallbackTimers: NodeJS.Timeout[] = [];
+
+function startIntervalFallback(): void {
+  fallbackTimers.push(
+    setInterval(() => {
+      checkAndSendEventReminders().catch((err) => {
+        logger.error({ err }, 'Event reminder check failed');
+      });
+    }, REMINDER_POLL_INTERVAL_MS),
+    setInterval(() => {
+      expireStalePendingOnlineBookings()
+        .then((result) => {
+          if (result.expired > 0 || result.confirmed > 0) logger.info(result, 'Pending booking sweep');
+        })
+        .catch((err) => {
+          logger.error({ err }, 'Pending booking expiry sweep failed');
+        });
+    }, PENDING_EXPIRY_POLL_INTERVAL_MS),
+  );
+}
+
+if (isQueueEnabled()) {
+  startQueueWorkers(SCHEDULED_TASKS).catch((err) => {
+    logger.error({ err }, 'Could not start the job queue — falling back to in-process intervals');
+    startIntervalFallback();
   });
-}, REMINDER_POLL_INTERVAL_MS);
+} else {
+  startIntervalFallback();
+}
 
-// Same pattern: releases tickets held by online bookings whose payment
-// never completed (see pendingBookingExpiry.ts). Every cancellation is
-// a conditional UPDATE, so overlapping runs can't double-release.
-const PENDING_EXPIRY_POLL_INTERVAL_MS = 5 * 60 * 1000;
-setInterval(() => {
-  expireStalePendingOnlineBookings()
-    .then((result) => {
-      if (result.expired > 0 || result.confirmed > 0) {
-        logger.info(result, 'Pending booking sweep');
-      }
-    })
-    .catch((err) => {
-      logger.error({ err }, 'Pending booking expiry sweep failed');
-    });
-}, PENDING_EXPIRY_POLL_INTERVAL_MS);
-
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Inveon Events API listening');
 });
+
+// Graceful shutdown (docker stop / deploy swap): stop taking requests,
+// let in-flight jobs finish, then exit.
+let shuttingDown = false;
+function shutdown(signal: string): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, 'Shutting down');
+  fallbackTimers.forEach(clearInterval);
+  const forceExit = setTimeout(() => process.exit(1), 25_000);
+  forceExit.unref();
+  server.close(() => {
+    closeQueues().finally(() => process.exit(0));
+  });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
