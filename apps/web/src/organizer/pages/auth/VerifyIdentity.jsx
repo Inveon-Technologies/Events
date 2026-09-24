@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Shield, ArrowRight } from 'lucide-react';
 
 const PAN_PATTERN = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -48,10 +48,14 @@ const CASHFREE_BUSINESS_TYPES = [
 ];
 
 export default function VerifyIdentity() {
-  const [panNumber, setPanNumber] = useState('');
-  const [accountType, setAccountType] = useState('individual');
-  const [businessType, setBusinessType] = useState('');
-  const [contactPhone, setContactPhone] = useState('');
+  const location = useLocation();
+  const prefill = location.state || {};
+  const isResubmission = Boolean(prefill.isResubmission);
+
+  const [panNumber, setPanNumber] = useState(prefill.panNumber || '');
+  const [accountType, setAccountType] = useState(prefill.accountType || 'individual');
+  const [businessType, setBusinessType] = useState(prefill.businessType || '');
+  const [contactPhone, setContactPhone] = useState(prefill.contactPhone || '');
   const [error, setError] = useState('');
 
   const navigate = useNavigate();
@@ -81,7 +85,7 @@ export default function VerifyIdentity() {
     // request, so nothing is actually sent to the server until
     // CompleteSetup has everything.
     navigate('/organizer/complete-setup', {
-      state: { panNumber: pan, accountType, businessType: businessType.trim(), contactPhone: contactPhone.trim() },
+      state: { panNumber: pan, accountType, businessType: businessType.trim(), contactPhone: contactPhone.trim(), isResubmission },
     });
   };
 
@@ -91,9 +95,13 @@ export default function VerifyIdentity() {
         <div className="w-12 h-12 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center mb-3">
           <Shield className="w-6 h-6" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Organizer Identity Verification</h2>
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+          {isResubmission ? 'Update Your Verification Details' : 'Organizer Identity Verification'}
+        </h2>
         <p className="text-xs text-slate-500 mt-1">
-          In compliance with payment regulations, we verify your identity with Cashfree before enabling ticket payouts.
+          {isResubmission
+            ? 'Double-check your details below, then continue to re-enter your bank account for verification.'
+            : 'In compliance with payment regulations, we verify your identity with Cashfree before enabling ticket payouts.'}
         </p>
       </div>
 
