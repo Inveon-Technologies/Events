@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -966,13 +966,16 @@ describe('App routing', () => {
     const [, initiateOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'));
     expect(JSON.parse(initiateOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', email: 'real-customer@example.com' });
 
-    // Real 6-box OTP entry, auto-advancing.
+    // Real 6-box OTP entry — pasted as one atomic clipboard event
+    // (matching the real paste handler this page supports for OTP
+    // autofill) rather than six separate sequential keystrokes, each
+    // of which triggers its own state update and auto-focus side
+    // effect; asserting on the fully-settled code this way avoids a
+    // real race between those six updates and the click below.
     await waitFor(() => expect(screen.getByText(/Verify Your Identity/i)).toBeInTheDocument());
     const otpInputs = screen.getAllByRole('textbox').filter((el) => el.getAttribute('maxlength') === '1');
     expect(otpInputs).toHaveLength(6);
-    for (let i = 0; i < 6; i += 1) {
-      await user.type(otpInputs[i], String(i + 1));
-    }
+    fireEvent.paste(otpInputs[0], { clipboardData: { getData: () => '123456' } });
     await user.click(screen.getByRole('button', { name: /verify.*continue/i }));
 
     await waitFor(() => {
