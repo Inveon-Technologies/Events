@@ -702,6 +702,13 @@ export function EventDetailsPage() {
                   </div>
                 </div>
 
+                {event.genderRestriction && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
+                    <span className="material-symbols-outlined text-[16px] shrink-0">wc</span>
+                    <span className="text-[11px] font-bold capitalize">{event.genderRestriction} attendees only — you'll confirm this at checkout.</span>
+                  </div>
+                )}
+
                 {!event.allowSelfServiceCancellation && (
                   <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700">
                     <span className="material-symbols-outlined text-[16px] shrink-0">block</span>

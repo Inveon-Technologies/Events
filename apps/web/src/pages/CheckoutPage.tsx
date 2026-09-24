@@ -9,6 +9,7 @@ interface Attendee {
   name: string;
   email: string;
   phone: string;
+  gender: string;
   emergencyName: string;
   emergencyPhone: string;
   tier: string;
@@ -63,6 +64,7 @@ export function CheckoutPage() {
         name: 'Rohit Deshmukh',
         email: 'rohit@example.com',
         phone: '9876543210',
+        gender: '',
         emergencyName: 'Sneha Deshmukh',
         emergencyPhone: '9876509876',
         tier: 'General Ticket',
@@ -72,6 +74,7 @@ export function CheckoutPage() {
         name: 'Priya Patil',
         email: 'priya@example.com',
         phone: '8765432109',
+        gender: '',
         emergencyName: 'Amit Patil',
         emergencyPhone: '9765401234',
         tier: 'General Ticket',
@@ -81,6 +84,7 @@ export function CheckoutPage() {
         name: 'Karan Sharma',
         email: 'karan@example.com',
         phone: '7654321098',
+        gender: '',
         emergencyName: 'Neha Sharma',
         emergencyPhone: '7654309876',
         tier: 'VIP Ticket',
@@ -123,6 +127,7 @@ export function CheckoutPage() {
           name: existing.name || '',
           email: existing.email || '',
           phone: existing.phone || '',
+          gender: existing.gender || '',
           emergencyName: existing.emergencyName || '',
           emergencyPhone: existing.emergencyPhone || '',
           tier: assignedTier,
@@ -133,6 +138,7 @@ export function CheckoutPage() {
           name: '',
           email: '',
           phone: '',
+          gender: '',
           emergencyName: '',
           emergencyPhone: '',
           tier: assignedTier,
@@ -221,6 +227,11 @@ export function CheckoutPage() {
       return;
     }
 
+    if (event?.genderRestriction && attendees.some((a) => a.gender !== event.genderRestriction)) {
+      showToast(`Please confirm every attendee is ${event.genderRestriction} — this event is ${event.genderRestriction} attendees only.`);
+      return;
+    }
+
     const primaryTier = event!.ticketCategories[0];
     if (!primaryTier) {
       showToast('This event has no ticket categories available.');
@@ -243,6 +254,7 @@ export function CheckoutPage() {
             primaryContactEmail: lead.email,
             paymentMethod: 'online',
             attendeeNames: attendees.map((a) => a.name || lead.name),
+            attendeeGenders: event?.genderRestriction ? attendees.map((a) => a.gender) : undefined,
           },
         },
       );
@@ -748,6 +760,23 @@ export function CheckoutPage() {
                                 </div>
                               </div>
                             </div>
+
+                            {event?.genderRestriction && (
+                              <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={attendee.gender === event.genderRestriction}
+                                    onChange={(e) => updateAttendeeField(index, 'gender', e.target.checked ? event.genderRestriction! : '')}
+                                    className="w-4 h-4 accent-primary"
+                                    required
+                                  />
+                                  <span className="text-body-sm text-amber-900 font-medium capitalize">
+                                    Yes, I confirm this attendee is {event.genderRestriction} — this event is {event.genderRestriction} attendees only.
+                                  </span>
+                                </label>
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                               <div>

@@ -237,6 +237,7 @@ export interface EventDetails {
   refundCutoffDays?: number | null;
   refundPercentage?: number | null;
   venueMapUrl?: string | null;
+  genderRestriction?: 'male' | 'female' | null;
   faqItems?: { question: string; answer: string }[] | null;
   ratingSummary?: { averageRating: number | null; reviewCount: number };
   isPast?: boolean;
@@ -503,6 +504,7 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
       refundCutoffDays: real.refundCutoffDays ?? null,
       refundPercentage: real.refundPercentage ?? null,
       venueMapUrl: real.venueMapUrl || null,
+      genderRestriction: real.genderRestriction || null,
       faqItems: Array.isArray(real.faqItems) && real.faqItems.length > 0 ? real.faqItems : null,
       ratingSummary: real.ratingSummary,
       isPast: eventDate.getTime() < Date.now(),

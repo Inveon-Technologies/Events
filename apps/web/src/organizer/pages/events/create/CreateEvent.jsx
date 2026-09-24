@@ -96,6 +96,7 @@ export default function CreateEvent() {
     bannerImage: '',
     totalCapacity: 0,
     tags: [],
+    genderRestriction: '', // '' = open to all genders (the default); 'male' or 'female' otherwise
     ticketTiers: [
       {
         id: 'tier-1',
@@ -144,6 +145,7 @@ export default function CreateEvent() {
           startTime: data.eventDate.slice(11, 16),
           venueName: data.venueAddress || '',
           bannerImage: data.bannerImage || '',
+          genderRestriction: data.genderRestriction || '',
           ticketTiers: data.ticketTiers.length
             ? data.ticketTiers.map((t) => ({ id: t.id, name: t.name, price: t.price, quantity: t.quantity, sold: t.sold, description: t.description || '' }))
             : prev.ticketTiers,
@@ -660,6 +662,25 @@ export default function CreateEvent() {
                 <option value="Food & Heritage">Food & Heritage</option>
                 <option value="Sports & Fitness">Sports & Fitness</option>
               </select>
+            </div>
+
+            <div>
+              <label htmlFor="event-gender-restriction" className="block text-xs font-bold text-slate-700 mb-1">Gender Eligibility</label>
+              <select
+                id="event-gender-restriction"
+                value={formData.genderRestriction}
+                onChange={(e) => setFormData({ ...formData, genderRestriction: e.target.value })}
+                className="w-full sm:w-1/2 px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                <option value="">Open to all genders</option>
+                <option value="female">Female attendees only</option>
+                <option value="male">Male attendees only</option>
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1">
+                {formData.genderRestriction
+                  ? `Customers will be asked to confirm their gender at checkout — only bookings matching "${formData.genderRestriction} only" will be accepted.`
+                  : 'Leave this as "Open to all genders" unless this event genuinely needs to restrict attendance — no gender question is shown at checkout otherwise.'}
+              </p>
             </div>
 
             <div>
