@@ -144,7 +144,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     description: event.description,
     eventDate: event.eventDate.toISOString(),
     venueAddress: event.venueAddress,
-    venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl),
+    venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude),
     bannerUrl: event.bannerUrl ?? firstPhoto?.url ?? null,
     termsAndConditions: event.termsAndConditions,
     cancellationPolicy: event.cancellationPolicy,

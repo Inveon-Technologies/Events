@@ -21,6 +21,8 @@ export interface OrganizerEventDetail {
   description: string | null;
   eventDate: string;
   venueAddress: string | null;
+  venueLatitude: number | null;
+  venueLongitude: number | null;
   bannerImage: string | null;
   status: string;
   scheduleItems: CreateEventScheduleItem[] | null;
@@ -53,6 +55,8 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     description: event.description,
     eventDate: event.eventDate.toISOString(),
     venueAddress: event.venueAddress,
+    venueLatitude: event.venueLatitude,
+    venueLongitude: event.venueLongitude,
     bannerImage: event.bannerUrl,
     status: event.status,
     scheduleItems: event.scheduleItems,
@@ -91,6 +95,8 @@ export interface UpdateEventParams {
   city?: string;
   state?: string;
   pincode?: string;
+  venueLatitude?: number | null;
+  venueLongitude?: number | null;
   bannerImage?: string;
   scheduleItems?: CreateEventScheduleItem[];
   packingChecklist?: CreateEventPackingItem[];
@@ -253,6 +259,8 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         tagline: params.shortDescription !== undefined ? params.shortDescription.trim() || null : event.tagline,
         description: params.description !== undefined ? params.description.trim() || null : event.description,
         venueAddress,
+        venueLatitude: params.venueLatitude !== undefined ? params.venueLatitude : event.venueLatitude,
+        venueLongitude: params.venueLongitude !== undefined ? params.venueLongitude : event.venueLongitude,
         eventDate,
         bannerUrl: params.bannerImage !== undefined ? params.bannerImage.trim() || null : event.bannerUrl,
         scheduleItems: params.scheduleItems !== undefined ? sanitizeScheduleItems(params.scheduleItems) : event.scheduleItems,

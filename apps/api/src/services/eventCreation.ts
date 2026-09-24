@@ -60,6 +60,8 @@ export interface CreateEventParams {
   city?: string;
   state?: string;
   pincode?: string;
+  venueLatitude?: number | null;
+  venueLongitude?: number | null;
   bannerImage?: string;
   cancellationPolicyDescription?: string;
   allowSelfServiceCancellation?: boolean;
@@ -175,6 +177,8 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         tagline: params.shortDescription?.trim() || null,
         description: params.description?.trim() || null,
         venueAddress,
+        venueLatitude: params.venueLatitude ?? null,
+        venueLongitude: params.venueLongitude ?? null,
         eventDate,
         bannerUrl: params.bannerImage?.trim() || null,
         cancellationPolicy: params.cancellationPolicyDescription?.trim() || null,
@@ -241,6 +245,8 @@ export async function duplicateEvent(eventId: string, organizerId: string): Prom
         description: source.description,
         venueAddress: source.venueAddress,
         venueMapUrl: source.venueMapUrl,
+        venueLatitude: source.venueLatitude,
+        venueLongitude: source.venueLongitude,
         eventDate: source.eventDate,
         gateOpenTime: source.gateOpenTime,
         bannerUrl: source.bannerUrl,
