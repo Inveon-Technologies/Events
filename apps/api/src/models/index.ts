@@ -1,6 +1,6 @@
 import { Organizer } from './Organizer';
 import { User } from './User';
-import { Event, EventScheduleItem, EventPackingItem, EventFaqItem } from './Event';
+import { Event, EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint } from './Event';
 import { EventMedia } from './EventMedia';
 import { TicketCategory } from './TicketCategory';
 import { Booking } from './Booking';
@@ -8,6 +8,7 @@ import { Ticket } from './Ticket';
 import { Payment } from './Payment';
 import { Cancellation } from './Cancellation';
 import { EventReview } from './EventReview';
+import { ApiCredential } from './ApiCredential';
 
 // event_custom_questions, ticket_custom_answers, event_media, and
 // certificates exist as tables (see the migration) but deliberately have
@@ -59,5 +60,8 @@ EventReview.belongsTo(Event, { foreignKey: 'eventId' });
 Organizer.hasMany(EventReview, { foreignKey: 'organizerId' });
 EventReview.belongsTo(Organizer, { foreignKey: 'organizerId' });
 
-export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview };
-export type { EventScheduleItem, EventPackingItem, EventFaqItem };
+Organizer.hasMany(ApiCredential, { foreignKey: 'organizerId' });
+ApiCredential.belongsTo(Organizer, { foreignKey: 'organizerId' });
+
+export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview, ApiCredential };
+export type { EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint };

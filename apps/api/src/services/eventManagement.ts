@@ -1,7 +1,8 @@
 import { sequelize } from '../db/connection';
-import { Event, TicketCategory, Organizer, Booking } from '../models';
-import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem } from './eventCreation';
-import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems } from './eventCreation';
+import { Event, TicketCategory, Organizer, Booking, EventMedia } from '../models';
+import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem, CreateEventLocationPoint } from './eventCreation';
+import type { EventLocationPoint } from '../models/Event';
+import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems, sanitizeLocationPoints } from './eventCreation';
 
 export class NotFoundError extends Error {}
 export class ForbiddenError extends Error {}
@@ -28,6 +29,7 @@ export interface OrganizerEventDetail {
   scheduleItems: CreateEventScheduleItem[] | null;
   packingChecklist: CreateEventPackingItem[] | null;
   faqItems: CreateEventFaqItem[] | null;
+  locationPoints: EventLocationPoint[] | null;
   cancellationPolicy: string | null;
   allowSelfServiceCancellation: boolean;
   refundCutoffDays: number | null;
@@ -41,11 +43,20 @@ export interface OrganizerEventDetail {
     quantity: number;
     sold: number; // quotaTotal - quotaRemaining — how many are already committed, and so protected from a shrinking edit
   }[];
+  // The event's uploaded photos/video in upload order — the first photo
+  // is its cover. Lets the edit screen show (and remove) what's already
+  // there, not just stage new files.
+  media: { id: string; mediaType: 'photo' | 'video'; url: string }[];
+  galleryUrl: string | null;
+  galleryNote: string | null;
 }
 
 export async function getOrganizerEvent(eventId: string, organizerId: string): Promise<OrganizerEventDetail> {
   const event = await requireOwnedEvent(eventId, organizerId);
-  const tiers = await TicketCategory.findAll({ where: { eventId: event.id }, order: [['createdAt', 'ASC']] });
+  const [tiers, media] = await Promise.all([
+    TicketCategory.findAll({ where: { eventId: event.id }, order: [['createdAt', 'ASC']] }),
+    EventMedia.findAll({ where: { eventId: event.id }, order: [['createdAt', 'ASC']] }),
+  ]);
 
   return {
     id: event.id,
@@ -62,6 +73,7 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     scheduleItems: event.scheduleItems,
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
+    locationPoints: event.locationPoints ?? null,
     cancellationPolicy: event.cancellationPolicy,
     allowSelfServiceCancellation: event.allowSelfServiceCancellation,
     refundCutoffDays: event.refundCutoffDays,
@@ -75,6 +87,9 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
       quantity: t.quotaTotal,
       sold: t.quotaTotal - t.quotaRemaining,
     })),
+    media: media.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url })),
+    galleryUrl: event.galleryUrl ?? null,
+    galleryNote: event.galleryNote ?? null,
   };
 }
 
@@ -101,6 +116,7 @@ export interface UpdateEventParams {
   scheduleItems?: CreateEventScheduleItem[];
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
+  locationPoints?: CreateEventLocationPoint[];
   cancellationPolicy?: string;
   allowSelfServiceCancellation?: boolean;
   refundCutoffDays?: number;
@@ -273,6 +289,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         scheduleItems: params.scheduleItems !== undefined ? sanitizeScheduleItems(params.scheduleItems) : event.scheduleItems,
         packingChecklist: params.packingChecklist !== undefined ? sanitizePackingChecklist(params.packingChecklist) : event.packingChecklist,
         faqItems: params.faqItems !== undefined ? sanitizeFaqItems(params.faqItems) : event.faqItems,
+        locationPoints: params.locationPoints !== undefined ? sanitizeLocationPoints(params.locationPoints) : event.locationPoints,
         cancellationPolicy: params.cancellationPolicy !== undefined ? params.cancellationPolicy.trim() || null : event.cancellationPolicy,
         allowSelfServiceCancellation: nextAllowSelfService,
         refundCutoffDays: nextAllowSelfService ? nextRefundCutoffDays : null,

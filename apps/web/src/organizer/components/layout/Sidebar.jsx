@@ -15,10 +15,19 @@ import {
 } from 'lucide-react';
 import { useEvents } from '../../context/EventsContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import UserAvatar from '../common/UserAvatar';
+
+const ROLE_LABELS = {
+  organizer_owner: 'Owner',
+  organizer_staff: 'Staff',
+  gate_volunteer: 'Gate Volunteer',
+};
 
 export default function Sidebar({ mobileOpen, setMobileOpen }) {
   const { events } = useEvents();
   const { unreadCount } = useNotifications();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const mainNavItems = [
@@ -129,12 +138,10 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
           <div className="p-3 border-t border-navy-800/80 bg-navy-950/60">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-600 to-cyan-400 flex items-center justify-center text-xs font-bold text-white shadow-xs ring-1 ring-white/20">
-                  EA
-                </div>
+                <UserAvatar src={user?.avatar} name={user?.orgName || user?.name || user?.email} className="w-8 h-8 text-xs shadow-xs ring-1 ring-white/20" />
                 <div className="overflow-hidden">
-                  <p className="text-xs font-semibold text-white truncate">Eeshan Agrawal</p>
-                  <p className="text-[10px] text-slate-400 truncate">Lead Organizer</p>
+                  <p className="text-xs font-semibold text-white truncate">{user?.name}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{user?.orgName || ROLE_LABELS[user?.role] || ''}</p>
                 </div>
               </div>
               <NavLink to="/organizer/settings/account" className="p-1.5 text-slate-400 hover:text-white hover:bg-navy-800 rounded">

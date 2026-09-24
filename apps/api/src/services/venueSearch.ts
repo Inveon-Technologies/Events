@@ -79,3 +79,46 @@ export async function searchVenues(query: string): Promise<VenueSearchResult[]> 
     };
   });
 }
+
+const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
+
+// The real address at a point the organizer clicked or dragged a pin to
+// on the map. Returns null when OpenStreetMap has no address there
+// (open water, remote terrain) — the point still saves with its
+// coordinates; the organizer just types a label.
+export async function reverseGeocode(latitude: number, longitude: number): Promise<VenueSearchResult | null> {
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new VenueSearchError('Invalid coordinates');
+  }
+
+  const url = `${NOMINATIM_REVERSE_URL}?${new URLSearchParams({
+    lat: String(latitude),
+    lon: String(longitude),
+    format: 'json',
+    addressdetails: '1',
+    zoom: '18',
+  })}`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  } catch {
+    throw new VenueSearchError('Could not reach the location search service. Please try again.');
+  }
+  if (!res.ok) {
+    throw new VenueSearchError('Could not reach the location search service. Please try again.');
+  }
+
+  const result = (await res.json()) as NominatimResult & { error?: string };
+  if (result.error || !result.display_name) return null;
+  const addr = result.address ?? {};
+  return {
+    displayName: result.display_name,
+    venueName: addr.road || result.display_name.split(',')[0].trim(),
+    city: addr.city || addr.town || addr.village || addr.suburb || '',
+    state: addr.state || '',
+    pincode: addr.postcode || '',
+    latitude,
+    longitude,
+  };
+}

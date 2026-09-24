@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import crypto from 'crypto';
 import { Op } from 'sequelize';
 import { sequelize } from '../db/connection';
+import { moveFile } from './fileMove';
 import { Event, EventMedia } from '../models';
 import { isS3Configured, uploadFileToS3, deleteFileFromS3, s3KeyFromUrl } from './s3Storage';
 
@@ -83,6 +84,26 @@ export async function sniffImageMimeType(filePath: string): Promise<string | nul
   } finally {
     await handle.close();
   }
+}
+
+// The image to show for an event wherever it appears as a card: its
+// explicit banner if one was set, otherwise its first uploaded photo
+// (the create/edit flow uploads photos as event media and never sets a
+// separate banner — the first photo IS the cover). One query for any
+// number of events. Events with neither map to null.
+export async function getEventCoverUrls(events: Array<{ id: string; bannerUrl: string | null }>): Promise<Map<string, string | null>> {
+  const covers = new Map<string, string | null>(events.map((e) => [e.id, e.bannerUrl]));
+  const needPhoto = events.filter((e) => !e.bannerUrl).map((e) => e.id);
+  if (needPhoto.length === 0) return covers;
+
+  const photos = await EventMedia.findAll({
+    where: { eventId: needPhoto, mediaType: 'photo' },
+    order: [['createdAt', 'ASC']],
+  });
+  for (const photo of photos) {
+    if (!covers.get(photo.eventId)) covers.set(photo.eventId, photo.url);
+  }
+  return covers;
 }
 
 export interface UploadEventMediaParams {
@@ -193,7 +214,7 @@ async function storeEventMedia(params: UploadEventMediaParams): Promise<EventMed
     const eventDir = path.join(UPLOAD_DIR, 'events', params.eventId);
     await fs.mkdir(eventDir, { recursive: true });
     const destPath = path.join(eventDir, filename);
-    await fs.rename(params.tempFilePath, destPath);
+    await moveFile(params.tempFilePath, destPath);
     url = `${UPLOAD_URL_PREFIX}/events/${params.eventId}/${filename}`;
   }
 

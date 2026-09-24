@@ -202,4 +202,19 @@ describe('real check-in system (real DB)', () => {
       .send({ qrToken: ticket.qrToken });
     expect(rescan.status).toBe(200);
   });
+
+  it('manual check-in from the roster by ticket id follows the same rules as a scan', async () => {
+    const { ticket } = await createConfirmedBooking(`checkin-manual-${suffix}@example.com`);
+
+    const first = await request(app).post(`/api/organizer/events/${eventId}/checkin/ticket/${ticket.id}`).set('Authorization', `Bearer ${token}`);
+    expect(first.status).toBe(200);
+    expect(first.body.attendeeName).toBe('Checkin Test Customer');
+
+    const again = await request(app).post(`/api/organizer/events/${eventId}/checkin/ticket/${ticket.id}`).set('Authorization', `Bearer ${token}`);
+    expect(again.status).toBe(409);
+    expect(again.body.reasonCode).toBe('already_checked_in');
+
+    const otherOrg = await request(app).post(`/api/organizer/events/${eventId}/checkin/ticket/${ticket.id}`).set('Authorization', `Bearer ${otherToken}`);
+    expect(otherOrg.status).toBe(403);
+  });
 });

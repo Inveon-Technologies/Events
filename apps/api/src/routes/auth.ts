@@ -62,7 +62,7 @@ authRouter.post('/login', loginLimit, asyncHandler(async (req, res) => {
 
   res.status(200).json({
     token,
-    user: { id: user.id, email: user.email, role: user.role, organizerId: user.organizerId },
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, organizerId: user.organizerId },
   });
 }));
 

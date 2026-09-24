@@ -106,6 +106,26 @@ export async function checkInTicket(params: {
   };
 }
 
+// Manual check-in from the organizer's attendee roster (e.g. a guest
+// whose phone died), by ticket id instead of a scanned QR. Same rules
+// and the same race-safe update as a scan — it simply looks up the
+// ticket's QR token first.
+export async function checkInTicketById(params: {
+  eventId: string;
+  organizerId: string;
+  ticketId: string;
+  checkedInByUserId: string;
+}): Promise<CheckInResult> {
+  const ticket = await Ticket.findByPk(params.ticketId);
+  if (!ticket) throw new NotFoundError('Ticket not found');
+  return checkInTicket({
+    eventId: params.eventId,
+    organizerId: params.organizerId,
+    qrToken: ticket.qrToken,
+    checkedInByUserId: params.checkedInByUserId,
+  });
+}
+
 export interface UndoCheckInResult {
   ticketId: string;
 }

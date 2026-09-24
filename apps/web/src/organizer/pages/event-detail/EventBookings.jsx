@@ -7,7 +7,7 @@ import Modal from '../../components/common/Modal';
 import EventLookupState from '../../components/common/EventLookupState';
 
 function EventBookingsContent({ event }) {
-  const { bookings, updateBookingStatus, cancelBooking } = useEvents();
+  const { bookings, cancelBooking } = useEvents();
 
 
   const [searchTerm, setSearchTerm] = useState('');

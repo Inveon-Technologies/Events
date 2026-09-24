@@ -20,6 +20,9 @@ What exists today (see the roadmap for what's planned):
 - **Digital tickets** — QR-coded tickets, delivered by email with a PDF invoice. Customers can log in with an emailed code to see all their bookings, view QR passes, and cancel within the organizer's refund policy.
 - **Gate check-in** — camera-based QR scanner; each ticket can be admitted exactly once, even when scanned at two gates at the same moment.
 - **Reminders** — an email to every booking 3 hours before the event.
+- **Maps** — organizers place the venue, or several group pickup points with times and notes, on a real OpenStreetMap map (free, no API key); attendees see the pins with directions.
+- **Post-event photos** — organizers share a Google Drive / Google Photos link after the event; attendees see it on their booking page.
+- **Integrations API** — organizers create app key + secret pairs (Settings → Integrations) to read their events, tickets and images from their own website via the read-only `/api/v1` API.
 
 Not built yet: WhatsApp delivery, organizer approval of cash payments, post-event galleries and certificates.
 

@@ -5,6 +5,14 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 
+// jsdom has no SVG layout, so Leaflet's vector layers (the dashed route
+// line) can't render here; they're exercised in a real browser instead.
+vi.mock('react-leaflet', async (importOriginal: () => Promise<object>) => ({
+  ...(await importOriginal()),
+  Polyline: () => null,
+}));
+
+
 const mockCashfreeCheckout = vi.fn();
 vi.mock('@cashfreepayments/cashfree-js', () => ({
   load: vi.fn(async () => ({ checkout: mockCashfreeCheckout })),
@@ -238,6 +246,35 @@ describe('App routing', () => {
 
     // No video element should render at all when the event has none.
     expect(document.querySelector('video')).toBeNull();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('event page Location tab shows the real pickup points on a map, with times, notes and directions', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, status: 200,
+      json: async () => ({
+        id: 'evt-map-1', slug: 'map-event', name: 'Map Event', tagline: null, description: null,
+        eventDate: '2027-01-10T00:30:00.000Z', venueAddress: 'Gunjawane', venueMapUrl: null, bannerUrl: null,
+        media: [], organizerName: 'Map Org', organizerSlug: 'map-org', scheduleItems: null, packingChecklist: null, faqItems: null,
+        ticketCategories: [], ratingSummary: { averageRating: null, reviewCount: 0 },
+        locationPoints: [
+          { type: 'pickup', label: 'Swargate Bus Stand', address: 'Swargate, Pune', latitude: 18.5018, longitude: 73.8636, time: '04:30', note: 'Near the ticket counter' },
+          { type: 'venue', label: 'Rajgad Base Village', address: 'Gunjawane', latitude: 18.2546, longitude: 73.6821, time: null, note: null },
+        ],
+      }),
+    }));
+
+    renderApp('/events/evt-map-1');
+    await waitFor(() => expect(screen.getAllByText('Map Event').length).toBeGreaterThan(0));
+    await userEvent.setup().click(screen.getByRole('button', { name: /location/i }));
+
+    expect(await screen.findByTestId('event-location-map')).toBeInTheDocument();
+    expect(screen.getByText('Swargate Bus Stand')).toBeInTheDocument();
+    expect(screen.getByText('· 04:30')).toBeInTheDocument();
+    expect(screen.getByText('Near the ticket counter')).toBeInTheDocument();
+    const directions = screen.getAllByRole('link', { name: 'Directions' });
+    expect(directions[0]).toHaveAttribute('href', 'https://www.google.com/maps/dir/?api=1&destination=18.5018,73.8636');
 
     vi.unstubAllGlobals();
   });

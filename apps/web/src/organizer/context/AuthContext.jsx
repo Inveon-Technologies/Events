@@ -16,7 +16,6 @@ const ORGANIZER_STORAGE_KEYS = [
   'inveon_settings',
   'inveon_notifications',
 ];
-const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
 
 function buildUserFromAuthResponse(data) {
   return {
@@ -25,14 +24,12 @@ function buildUserFromAuthResponse(data) {
     role: data.user.role,
     organizerId: data.user.organizerId,
     token: data.token,
-    // Not returned by either /auth/login or /auth/verify-otp — the
-    // dashboard page fetches and fills this in right after redirect (it
-    // already calls GET /organizer/dashboard, which returns
-    // organizerName as its first field, so this avoids a second
-    // round-trip during login just to learn the same thing).
-    name: data.user.email.split('@')[0],
+    name: data.user.name || data.user.email.split('@')[0],
+    // Filled in from GET /organizer/profile right after login (see the
+    // sync effect in AuthProvider): the organization's name and its
+    // uploaded logo, shown as the avatar. No stock photo stand-in.
     orgName: null,
-    avatar: DEFAULT_AVATAR,
+    avatar: null,
     isLoggedIn: true,
   };
 }
@@ -52,6 +49,35 @@ export function AuthProvider({ children }) {
     }
     return { isLoggedIn: false };
   });
+
+  // Keeps the header/sidebar identity in step with the real organizer
+  // profile — its name and uploaded logo — on login and on every reload.
+  // Previously the avatar was a stock photo that never changed, so an
+  // uploaded logo looked like it hadn't saved.
+  useEffect(() => {
+    if (!user?.isLoggedIn || !user?.token) return;
+    let cancelled = false;
+    apiRequest('/organizer/profile', { token: user.token })
+      .then((profile) => {
+        if (cancelled) return;
+        setUser((prev) =>
+          prev?.isLoggedIn && (prev.orgName !== profile.name || prev.avatar !== profile.logoUrl)
+            ? { ...prev, orgName: profile.name, avatar: profile.logoUrl }
+            : prev,
+        );
+      })
+      .catch(() => {
+        // Identity display only — pages surface their own load errors.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.isLoggedIn, user?.token]);
+
+  // For settings pages to reflect a saved name/logo immediately.
+  const updateUserProfile = useCallback((changes) => {
+    setUser((prev) => (prev?.isLoggedIn ? { ...prev, ...changes } : prev));
+  }, []);
 
   useEffect(() => {
     if (user?.isLoggedIn) {
@@ -156,7 +182,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, setUser, login, signup, verifyOtp, resendOtp, forgotPassword, verifyResetOtp, resetPassword, logout }}
+      value={{ user, setUser, updateUserProfile, login, signup, verifyOtp, resendOtp, forgotPassword, verifyResetOtp, resetPassword, logout }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
 import { Lock, Smartphone, Laptop } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import SettingsTabs from '../../components/common/SettingsTabs';
 
 export default function SecuritySettings() {
   const { user } = useAuth();
@@ -41,13 +41,7 @@ export default function SecuritySettings() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-slate-200 pb-2">
-        <NavLink to="/organizer/settings/account" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Account Profile</NavLink>
-        <NavLink to="/organizer/settings/verification" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Payment Verification</NavLink>
-        <NavLink to="/organizer/settings/organization" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Organization & Team</NavLink>
-        <NavLink to="/organizer/settings/security" className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Security & 2FA</NavLink>
-        <NavLink to="/organizer/settings/notifications" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Notification Alerts</NavLink>
-      </div>
+      <SettingsTabs />
 
       <div className="space-y-6">
         <form onSubmit={handlePasswordChange} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">

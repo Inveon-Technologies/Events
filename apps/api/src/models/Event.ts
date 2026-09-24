@@ -15,6 +15,18 @@ export interface EventPackingItem {
   mandatory: boolean;
 }
 
+export type EventLocationPointType = 'venue' | 'pickup' | 'drop' | 'meeting' | 'stop';
+
+export interface EventLocationPoint {
+  type: EventLocationPointType;
+  label: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  time: string | null; // "HH:MM", local (IST) time of day
+  note: string | null;
+}
+
 export interface EventFaqItem {
   question: string;
   answer: string;
@@ -29,6 +41,9 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare description: string | null;
   declare venueAddress: string | null;
   declare venueMapUrl: string | null;
+  declare galleryUrl: CreationOptional<string | null>;
+  declare galleryNote: CreationOptional<string | null>;
+  declare galleryUpdatedAt: CreationOptional<Date | null>;
   declare venueLatitude: number | null;
   declare venueLongitude: number | null;
   declare eventDate: Date;
@@ -45,6 +60,7 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare scheduleItems: EventScheduleItem[] | null;
   declare packingChecklist: EventPackingItem[] | null;
   declare faqItems: EventFaqItem[] | null;
+  declare locationPoints: CreationOptional<EventLocationPoint[] | null>;
   declare status: CreationOptional<EventStatus>;
   declare capacity: number;
   declare readonly createdAt: CreationOptional<Date>;
@@ -61,6 +77,9 @@ Event.init(
     description: { type: DataTypes.TEXT, allowNull: true },
     venueAddress: { type: DataTypes.TEXT, allowNull: true },
     venueMapUrl: { type: DataTypes.STRING, allowNull: true },
+    galleryUrl: { type: DataTypes.STRING(2048), allowNull: true },
+    galleryNote: { type: DataTypes.TEXT, allowNull: true },
+    galleryUpdatedAt: { type: DataTypes.DATE, allowNull: true },
     venueLatitude: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     venueLongitude: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     eventDate: { type: DataTypes.DATE, allowNull: false },
@@ -77,6 +96,7 @@ Event.init(
     scheduleItems: { type: DataTypes.JSONB, allowNull: true },
     packingChecklist: { type: DataTypes.JSONB, allowNull: true },
     faqItems: { type: DataTypes.JSONB, allowNull: true },
+    locationPoints: { type: DataTypes.JSONB, allowNull: true },
     status: { type: DataTypes.ENUM('draft', 'published', 'closed', 'cancelled'), allowNull: false, defaultValue: 'draft' },
     capacity: { type: DataTypes.INTEGER, allowNull: false },
     createdAt: DataTypes.DATE,

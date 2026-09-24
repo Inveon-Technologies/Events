@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { Organizer, User } from '../models';
 import { isS3Configured, uploadFileToS3, deleteFileFromS3, s3KeyFromUrl } from './s3Storage';
 import { UPLOAD_DIR, UPLOAD_URL_PREFIX, MAX_FILE_SIZE_BYTES, sniffImageMimeType } from './eventMedia';
+import { moveFile } from './fileMove';
 
 export class NotFoundError extends Error {}
 export class ValidationError extends Error {}
@@ -118,7 +119,7 @@ export async function uploadOrganizerLogo(params: UploadLogoParams): Promise<{ l
     const orgDir = path.join(UPLOAD_DIR, 'organizers', params.organizerId);
     await fs.mkdir(orgDir, { recursive: true });
     const destPath = path.join(orgDir, filename);
-    await fs.rename(params.tempFilePath, destPath);
+    await moveFile(params.tempFilePath, destPath);
     url = `${UPLOAD_URL_PREFIX}/organizers/${params.organizerId}/${filename}`;
   }
 

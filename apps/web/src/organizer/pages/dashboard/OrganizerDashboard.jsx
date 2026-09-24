@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -22,17 +22,35 @@ import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { useEvents } from '../../context/EventsContext';
 import { useAuth } from '../../context/AuthContext';
+import { apiRequest } from '../../lib/api';
 
 export default function OrganizerDashboard() {
-  const { events, bookings, participants, payments } = useEvents();
+  const { events, bookings } = useEvents();
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Compute live dynamic stats
+  // Week/month figures from GET /organizer/dashboard. The cards used to
+  // show invented trends ("+18.4%", "+12.2%", "+4 today") and a check-in
+  // count taken from a mock attendee list.
+  const [summary, setSummary] = useState(null);
+  useEffect(() => {
+    if (!user?.token) return undefined;
+    let cancelled = false;
+    apiRequest('/organizer/dashboard', { token: user.token })
+      .then((data) => {
+        if (!cancelled) setSummary(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.token]);
+
   const publishedEvents = events.filter((e) => e.status === 'published');
   const totalRevenue = events.reduce((acc, curr) => acc + (curr.grossRevenue || 0), 0);
   const totalTicketsSold = events.reduce((acc, curr) => acc + (curr.ticketsSold || 0), 0);
-  const totalCheckedIn = participants.filter((p) => p.checkInStatus === 'checked_in').length;
+  const totalCheckedIn = events.reduce((acc, curr) => acc + (curr.checkedInCount || 0), 0);
+  const revenueThisMonth = summary ? Math.round(summary.revenuePaiseThisMonth / 100) : null;
 
   return (
     <div className="space-y-6">
@@ -46,10 +64,11 @@ export default function OrganizerDashboard() {
               <span>Organizer Portal Active</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              Welcome back, {user?.name || "Eeshan Agrawal"}!
+              Welcome back, {user?.name}!
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
-              You have <span className="font-bold text-white">{publishedEvents.length} active events</span> with live ticketing and <span className="font-bold text-white">{totalCheckedIn} attendees</span> checked in today.
+              You have <span className="font-bold text-white">{publishedEvents.length} upcoming event{publishedEvents.length === 1 ? '' : 's'}</span> on sale
+              {summary?.nextUpcomingEventName ? <> — next up: <span className="font-bold text-white">{summary.nextUpcomingEventName}</span></> : null}.
             </p>
           </div>
 
@@ -77,9 +96,7 @@ export default function OrganizerDashboard() {
         <StatCard
           title="Total Gross Revenue"
           value={`₹${(totalRevenue).toLocaleString('en-IN')}`}
-          subtitle="All published events"
-          change="+18.4%"
-          isPositive={true}
+          subtitle={revenueThisMonth !== null ? `₹${revenueThisMonth.toLocaleString('en-IN')} this month` : 'Paid bookings, all events'}
           icon={CreditCard}
           iconBg="bg-blue-50 text-brand-600"
           onClick={() => navigate('/organizer/payments')}
@@ -87,9 +104,7 @@ export default function OrganizerDashboard() {
         <StatCard
           title="Total Tickets Sold"
           value={totalTicketsSold.toLocaleString('en-IN')}
-          subtitle="Across active listings"
-          change="+12.2%"
-          isPositive={true}
+          subtitle={summary ? `${summary.bookingsThisWeek} booking${summary.bookingsThisWeek === 1 ? '' : 's'} this week` : 'Across all events'}
           icon={Ticket}
           iconBg="bg-emerald-50 text-emerald-600"
           onClick={() => navigate('/organizer/tickets')}
@@ -97,9 +112,7 @@ export default function OrganizerDashboard() {
         <StatCard
           title="Live Verified Check-Ins"
           value={totalCheckedIn}
-          subtitle="Scanned via QR / Portal"
-          change="+4 today"
-          isPositive={true}
+          subtitle={totalTicketsSold > 0 ? `of ${totalTicketsSold.toLocaleString('en-IN')} tickets (${Math.round((totalCheckedIn / totalTicketsSold) * 100)}%)` : 'No tickets sold yet'}
           icon={QrCode}
           iconBg="bg-cyan-50 text-cyan-600"
           onClick={() => navigate('/organizer/check-in')}
@@ -159,7 +172,7 @@ export default function OrganizerDashboard() {
                         </span>
                         <span className="flex items-center gap-1">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{event.city}</span>
+                          <span>{event.city || event.venueName || 'Venue not set'}</span>
                         </span>
                       </div>
                     </div>

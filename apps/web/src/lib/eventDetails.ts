@@ -1,4 +1,5 @@
 // The public event page's data, built only from the real backend.
+import type { LocationPoint } from './mapPoints';
 
 export interface TicketCategory {
   id: string;
@@ -78,6 +79,9 @@ export interface EventDetails {
   ratingSummary?: { averageRating: number | null; reviewCount: number };
   isPast?: boolean;
   ticketCategories: TicketCategory[];
+  // Venue / pickup / drop pins, in the organizer's order. Falls back to a
+  // single venue pin when only venue coordinates exist.
+  locationPoints: LocationPoint[];
 }
 
 // fetchEventData() builds the event page's data purely from the real
@@ -174,5 +178,18 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
     ratingSummary: real.ratingSummary,
     isPast: eventDate.getTime() < Date.now(),
     ticketCategories,
+    locationPoints: Array.isArray(real.locationPoints) && real.locationPoints.length > 0
+      ? real.locationPoints
+      : typeof real.venueLatitude === 'number' && typeof real.venueLongitude === 'number'
+        ? [{
+            type: 'venue',
+            label: real.venueAddress?.split(',')[0] || real.name,
+            address: real.venueAddress || null,
+            latitude: real.venueLatitude,
+            longitude: real.venueLongitude,
+            time: null,
+            note: null,
+          }]
+        : [],
   };
 }

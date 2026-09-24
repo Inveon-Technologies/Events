@@ -57,6 +57,9 @@ export interface CustomerBookingSummary {
   bannerUrl: string | null;
   totalAmountPaise: number;
   ticketCount: number;
+  // True once the organizer has shared the post-event photos & videos
+  // link (only for confirmed bookings — see customerTickets.ts).
+  galleryAvailable: boolean;
 }
 
 // Every real booking tied to this verified email, across every event
@@ -71,7 +74,7 @@ export async function getCustomerBookings(email: string): Promise<CustomerBookin
     // bookingCreation.ts), but older rows kept whatever casing the
     // customer typed, and the session email is always lowercased.
     where: sqlWhere(fn('lower', col('Booking.primary_contact_email')), email.trim().toLowerCase()),
-    include: [{ model: Event, attributes: ['id', 'name', 'eventDate', 'bannerUrl'] }],
+    include: [{ model: Event, attributes: ['id', 'name', 'eventDate', 'bannerUrl', 'galleryUrl'] }],
     order: [['createdAt', 'DESC']],
   });
 
@@ -88,6 +91,7 @@ export async function getCustomerBookings(email: string): Promise<CustomerBookin
       bannerUrl: event?.bannerUrl ?? null,
       totalAmountPaise: booking.totalAmountPaise,
       ticketCount: ticketCounts[i],
+      galleryAvailable: booking.status === 'confirmed' && Boolean(event?.galleryUrl),
     };
   });
 }

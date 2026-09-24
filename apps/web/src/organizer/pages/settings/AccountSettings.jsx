@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { NavLink } from 'react-router-dom';
 import { Mail, Phone, Save, Camera } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { apiRequest, uploadOrganizerLogoFile, ApiError } from '../../lib/api';
+import SettingsTabs from '../../components/common/SettingsTabs';
 
 export default function AccountSettings() {
-  const { user } = useAuth();
+  const { user, updateUserProfile } = useAuth();
   const { showToast } = useNotifications();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +42,7 @@ export default function AccountSettings() {
         body: { name: profile.name, contactEmail: profile.contactEmail || '', contactPhone: profile.contactPhone || '', about: profile.about || '' },
       });
       setProfile(updated);
+      updateUserProfile({ orgName: updated.name, avatar: updated.logoUrl });
       showToast('Profile saved successfully!', 'success');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not save your profile.', 'error');
@@ -57,6 +58,7 @@ export default function AccountSettings() {
     try {
       const result = await uploadOrganizerLogoFile(file, user?.token);
       setProfile((prev) => ({ ...prev, logoUrl: result.logoUrl }));
+      updateUserProfile({ avatar: result.logoUrl });
       showToast('Logo updated successfully!', 'success');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not upload the logo.', 'error');
@@ -79,13 +81,7 @@ export default function AccountSettings() {
         </p>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-slate-200 pb-2">
-        <NavLink to="/organizer/settings/account" className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Account Profile</NavLink>
-        <NavLink to="/organizer/settings/verification" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Payment Verification</NavLink>
-        <NavLink to="/organizer/settings/organization" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Organization & Team</NavLink>
-        <NavLink to="/organizer/settings/security" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Security & 2FA</NavLink>
-        <NavLink to="/organizer/settings/notifications" className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Notification Alerts</NavLink>
-      </div>
+      <SettingsTabs />
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-xs space-y-6">
         <div className="flex items-center gap-5">

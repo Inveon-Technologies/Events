@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { Organizer, Event, Ticket, Booking, Payment } from '../models';
+import { getEventCoverUrls } from './eventMedia';
 
 export type DisplayEventStatus = 'draft' | 'published' | 'completed' | 'cancelled';
 
@@ -12,6 +13,7 @@ export interface OrganizerEventRow {
   bannerUrl: string | null;
   capacity: number;
   ticketsSold: number;
+  checkedInCount: number;
   revenuePaise: number;
   displayStatus: DisplayEventStatus;
 }
@@ -31,7 +33,7 @@ export interface OrganizerEventsParams {
 // published event whose date has passed. Mirrors the bookings service's
 // partially_cancelled derivation for the same reason: this can never drift
 // out of sync with reality the way a manually-set status could.
-function deriveEventStatus(status: string, eventDate: Date, now: Date): DisplayEventStatus {
+export function deriveEventStatus(status: string, eventDate: Date, now: Date): DisplayEventStatus {
   if (status === 'draft') return 'draft';
   if (status === 'cancelled') return 'cancelled';
   // status === 'published' or legacy 'closed'
@@ -111,12 +113,22 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
     Event.findAll({ where: { organizerId }, order: [['eventDate', 'DESC']] }),
   ]);
 
+  // Before, this returned event.bannerUrl only — which the create flow
+  // never sets (photos are uploaded as event media) — so every event
+  // card in the organizer portal showed a stock placeholder instead of
+  // the organizer's own cover photo. Same rule as the public site now.
+  const coverUrls = await getEventCoverUrls(events);
+
   const rows: OrganizerEventRow[] = await Promise.all(
     events.map(async (event) => {
-      const [ticketsSold, revenueRow] = await Promise.all([
+      const [ticketsSold, checkedInCount, revenueRow] = await Promise.all([
         Ticket.count({
           include: [{ model: Booking, attributes: [], where: { eventId: event.id } }],
           where: { status: { [Op.ne]: 'cancelled' } },
+        }),
+        Ticket.count({
+          include: [{ model: Booking, attributes: [], where: { eventId: event.id } }],
+          where: { status: 'checked_in' },
         }),
         Payment.findOne({
           attributes: [[Payment.sequelize!.fn('COALESCE', Payment.sequelize!.fn('SUM', Payment.sequelize!.col('Payment.amount_paise')), 0), 'total']],
@@ -132,9 +144,10 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
         name: event.name,
         eventDate: event.eventDate.toISOString(),
         venueAddress: event.venueAddress,
-        bannerUrl: event.bannerUrl,
+        bannerUrl: coverUrls.get(event.id) ?? null,
         capacity: event.capacity,
         ticketsSold,
+        checkedInCount,
         revenuePaise: Number((revenueRow as unknown as { total: string } | null)?.total ?? 0),
         displayStatus: deriveEventStatus(event.status, event.eventDate, now),
       };

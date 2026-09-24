@@ -33,14 +33,16 @@ import {
 } from '../services/bookingCancellation';
 import {
   checkInTicket,
+  checkInTicketById,
   undoCheckIn,
   NotFoundError as CheckInNotFoundError,
   ForbiddenError as CheckInForbiddenError,
   RejectedError as CheckInRejectedError,
 } from '../services/ticketCheckIn';
 import { getOrganizerTickets } from '../services/organizerTickets';
+import { getOrganizerNotifications } from '../services/organizerNotifications';
 import { getOrganizerPayments } from '../services/organizerPayments';
-import { searchVenues, VenueSearchError } from '../services/venueSearch';
+import { searchVenues, reverseGeocode, VenueSearchError } from '../services/venueSearch';
 import {
   getOrganizerProfile,
   updateOrganizerProfile,
@@ -62,6 +64,19 @@ import {
   NotFoundError as EventNotFoundError,
   ForbiddenError as EventForbiddenError,
 } from '../services/eventManagement';
+import {
+  listApiCredentials,
+  createApiCredential,
+  revokeApiCredential,
+  ValidationError as CredentialValidationError,
+  NotFoundError as CredentialNotFoundError,
+} from '../services/apiCredentials';
+import {
+  setEventGallery,
+  ValidationError as GalleryValidationError,
+  NotFoundError as GalleryNotFoundError,
+  ForbiddenError as GalleryForbiddenError,
+} from '../services/eventGallery';
 
 // Undefined (field not sent) is distinct from null (explicitly clearing
 // a restriction) — the caller decides which, this only rejects a
@@ -122,6 +137,22 @@ function parseFaqItems(body: Record<string, unknown>) {
   });
 }
 
+function parseLocationPoints(body: Record<string, unknown>) {
+  const raw = Array.isArray(body.locationPoints) ? body.locationPoints : [];
+  return raw.map((p) => {
+    const point = (p ?? {}) as Record<string, unknown>;
+    return {
+      type: typeof point.type === 'string' ? point.type : undefined,
+      label: typeof point.label === 'string' ? point.label : undefined,
+      address: typeof point.address === 'string' ? point.address : null,
+      latitude: typeof point.latitude === 'number' ? point.latitude : Number.NaN,
+      longitude: typeof point.longitude === 'number' ? point.longitude : Number.NaN,
+      time: typeof point.time === 'string' ? point.time : null,
+      note: typeof point.note === 'string' ? point.note : null,
+    };
+  });
+}
+
 export const organizerRouter = Router();
 
 // dest: os.tmpdir() — files land in a scratch location first; eventMedia.ts
@@ -143,6 +174,7 @@ const GATE_VOLUNTEER_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'GET', pattern: /^\/events\/?$/ },
   { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/?$/ },
   { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/[^/]+\/undo\/?$/ },
+  { method: 'POST', pattern: /^\/events\/[^/]+\/checkin\/ticket\/[^/]+\/?$/ },
 ];
 
 organizerRouter.use(authenticate, (req, res, next) => {
@@ -261,6 +293,7 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
   const scheduleItems = parseScheduleItems(body);
   const packingChecklist = parsePackingChecklist(body);
   const faqItems = parseFaqItems(body);
+  const locationPoints = parseLocationPoints(body);
 
   try {
     const created = await createOrganizerEvent({
@@ -286,6 +319,7 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       scheduleItems,
       packingChecklist,
       faqItems,
+      locationPoints,
       status,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -356,6 +390,7 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       scheduleItems: body.scheduleItems !== undefined ? parseScheduleItems(body) : undefined,
       packingChecklist: body.packingChecklist !== undefined ? parsePackingChecklist(body) : undefined,
       faqItems: body.faqItems !== undefined ? parseFaqItems(body) : undefined,
+      locationPoints: body.locationPoints !== undefined ? parseLocationPoints(body) : undefined,
       status: body.status === 'draft' || body.status === 'published' || body.status === 'closed' ? body.status : undefined,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -658,6 +693,37 @@ organizerRouter.post('/events/:eventId/checkin', asyncHandler(async (req, res) =
   }
 }));
 
+organizerRouter.post('/events/:eventId/checkin/ticket/:ticketId', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  try {
+    const result = await checkInTicketById({
+      eventId: req.params.eventId,
+      organizerId,
+      ticketId: req.params.ticketId,
+      checkedInByUserId: req.user!.sub,
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof CheckInNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    if (err instanceof CheckInRejectedError) {
+      res.status(409).json({ error: err.message, reasonCode: err.reasonCode, details: err.details });
+      return;
+    }
+    throw err;
+  }
+}));
+
 organizerRouter.post('/events/:eventId/checkin/:ticketId/undo', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
@@ -895,4 +961,101 @@ organizerRouter.get('/venue-search', asyncHandler(async (req, res) => {
     }
     throw err;
   }
+}));
+
+organizerRouter.get('/venue-reverse', asyncHandler(async (req, res) => {
+  try {
+    const result = await reverseGeocode(Number(req.query.lat), Number(req.query.lng));
+    res.status(200).json({ result });
+  } catch (err) {
+    if (err instanceof VenueSearchError) {
+      res.status(err.message === 'Invalid coordinates' ? 400 : 502).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+// Post-event photos & videos: the organizer's own Google Drive / Google
+// Photos share link, shown to attendees on their booking page.
+organizerRouter.put('/events/:eventId/gallery', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  try {
+    const result = await setEventGallery({
+      eventId: req.params.eventId,
+      organizerId,
+      url: typeof body.url === 'string' ? body.url : null,
+      note: typeof body.note === 'string' ? body.note : null,
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof GalleryValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof GalleryNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof GalleryForbiddenError) {
+      res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+// Settings → Integrations: app key + secret pairs for the organizer's
+// own website/app to read their events through /api/v1. Owner-only —
+// a key grants access to all of the organization's event data.
+organizerRouter.get('/integrations/keys', ownerOnly, asyncHandler(async (req, res) => {
+  res.status(200).json({ keys: await listApiCredentials(req.user!.organizerId!) });
+}));
+
+organizerRouter.post('/integrations/keys', ownerOnly, asyncHandler(async (req, res) => {
+  const { name } = req.body as Record<string, unknown>;
+  try {
+    const created = await createApiCredential({
+      organizerId: req.user!.organizerId!,
+      userId: req.user!.sub,
+      name: typeof name === 'string' ? name : '',
+    });
+    res.status(201).json(created);
+  } catch (err) {
+    if (err instanceof CredentialValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.delete('/integrations/keys/:keyId', ownerOnly, asyncHandler(async (req, res) => {
+  try {
+    await revokeApiCredential(req.user!.organizerId!, req.params.keyId);
+    res.status(204).send();
+  } catch (err) {
+    if (err instanceof CredentialNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+// Activity feed for the header bell and Notifications page, derived from
+// real bookings, cancellations, refunds and events.
+organizerRouter.get('/notifications', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+  res.status(200).json({ notifications: await getOrganizerNotifications(organizerId) });
 }));
