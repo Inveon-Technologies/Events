@@ -1,5 +1,5 @@
 import { sequelize } from '../db/connection';
-import { Event, TicketCategory, Organizer, Booking } from '../models';
+import { Event, TicketCategory, Organizer, Booking, EventMedia } from '../models';
 import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem } from './eventCreation';
 import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems } from './eventCreation';
 
@@ -41,11 +41,20 @@ export interface OrganizerEventDetail {
     quantity: number;
     sold: number; // quotaTotal - quotaRemaining — how many are already committed, and so protected from a shrinking edit
   }[];
+  // The event's uploaded photos/video in upload order — the first photo
+  // is its cover. Lets the edit screen show (and remove) what's already
+  // there, not just stage new files.
+  media: { id: string; mediaType: 'photo' | 'video'; url: string }[];
+  galleryUrl: string | null;
+  galleryNote: string | null;
 }
 
 export async function getOrganizerEvent(eventId: string, organizerId: string): Promise<OrganizerEventDetail> {
   const event = await requireOwnedEvent(eventId, organizerId);
-  const tiers = await TicketCategory.findAll({ where: { eventId: event.id }, order: [['createdAt', 'ASC']] });
+  const [tiers, media] = await Promise.all([
+    TicketCategory.findAll({ where: { eventId: event.id }, order: [['createdAt', 'ASC']] }),
+    EventMedia.findAll({ where: { eventId: event.id }, order: [['createdAt', 'ASC']] }),
+  ]);
 
   return {
     id: event.id,
@@ -75,6 +84,9 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
       quantity: t.quotaTotal,
       sold: t.quotaTotal - t.quotaRemaining,
     })),
+    media: media.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url })),
+    galleryUrl: event.galleryUrl ?? null,
+    galleryNote: event.galleryNote ?? null,
   };
 }
 

@@ -12,6 +12,7 @@ interface CustomerBooking {
   bannerUrl: string | null;
   totalAmountPaise: number;
   ticketCount: number;
+  galleryAvailable?: boolean;
 }
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'cancelled';
@@ -188,6 +189,12 @@ export function MyBookingsPage() {
                     <Icon name="calendar_month" className="text-[15px]" />
                     <span>{formatDate(b.eventDate)}</span>
                   </div>
+                  {b.galleryAvailable && (
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-700">
+                      <Icon name="photo_library" className="text-[15px]" />
+                      <span>Event photos &amp; videos available</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <div className="text-xs text-ink-muted">
                       {b.ticketCount} ticket{b.ticketCount === 1 ? '' : 's'} · <span className="font-bold text-ink">{formatINR(b.totalAmountPaise)}</span>

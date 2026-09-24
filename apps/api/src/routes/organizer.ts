@@ -62,6 +62,12 @@ import {
   NotFoundError as EventNotFoundError,
   ForbiddenError as EventForbiddenError,
 } from '../services/eventManagement';
+import {
+  setEventGallery,
+  ValidationError as GalleryValidationError,
+  NotFoundError as GalleryNotFoundError,
+  ForbiddenError as GalleryForbiddenError,
+} from '../services/eventGallery';
 
 // Undefined (field not sent) is distinct from null (explicitly clearing
 // a restriction) — the caller decides which, this only rejects a
@@ -891,6 +897,41 @@ organizerRouter.get('/venue-search', asyncHandler(async (req, res) => {
   } catch (err) {
     if (err instanceof VenueSearchError) {
       res.status(502).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+// Post-event photos & videos: the organizer's own Google Drive / Google
+// Photos share link, shown to attendees on their booking page.
+organizerRouter.put('/events/:eventId/gallery', asyncHandler(async (req, res) => {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return;
+  }
+
+  const body = req.body as Record<string, unknown>;
+  try {
+    const result = await setEventGallery({
+      eventId: req.params.eventId,
+      organizerId,
+      url: typeof body.url === 'string' ? body.url : null,
+      note: typeof body.note === 'string' ? body.note : null,
+    });
+    res.status(200).json(result);
+  } catch (err) {
+    if (err instanceof GalleryValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    if (err instanceof GalleryNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof GalleryForbiddenError) {
+      res.status(403).json({ error: err.message });
       return;
     }
     throw err;

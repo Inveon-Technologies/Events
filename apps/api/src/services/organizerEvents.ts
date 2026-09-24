@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import { Organizer, Event, Ticket, Booking, Payment } from '../models';
+import { getEventCoverUrls } from './eventMedia';
 
 export type DisplayEventStatus = 'draft' | 'published' | 'completed' | 'cancelled';
 
@@ -111,6 +112,12 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
     Event.findAll({ where: { organizerId }, order: [['eventDate', 'DESC']] }),
   ]);
 
+  // Before, this returned event.bannerUrl only — which the create flow
+  // never sets (photos are uploaded as event media) — so every event
+  // card in the organizer portal showed a stock placeholder instead of
+  // the organizer's own cover photo. Same rule as the public site now.
+  const coverUrls = await getEventCoverUrls(events);
+
   const rows: OrganizerEventRow[] = await Promise.all(
     events.map(async (event) => {
       const [ticketsSold, revenueRow] = await Promise.all([
@@ -132,7 +139,7 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
         name: event.name,
         eventDate: event.eventDate.toISOString(),
         venueAddress: event.venueAddress,
-        bannerUrl: event.bannerUrl,
+        bannerUrl: coverUrls.get(event.id) ?? null,
         capacity: event.capacity,
         ticketsSold,
         revenuePaise: Number((revenueRow as unknown as { total: string } | null)?.total ?? 0),

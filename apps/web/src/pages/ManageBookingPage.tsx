@@ -80,6 +80,8 @@ interface BookingDetail {
   refundPercentage: number | null;
   refundCutoffPassed: boolean;
   tickets: TicketRow[];
+  galleryUrl?: string | null;
+  galleryNote?: string | null;
 }
 
 export function ManageBookingPage() {
@@ -306,6 +308,29 @@ export function ManageBookingPage() {
                 <p className="font-bold text-ink uppercase">{detail.bookingStatus}</p>
               </div>
             </div>
+
+            {/* Event photos & videos — the organizer's own Drive/Photos link, shared after the event */}
+            {detail.galleryUrl && (
+              <div className="bg-gradient-to-r from-brand-50 to-cyan-50 rounded-2xl border border-brand-100 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="w-11 h-11 rounded-xl bg-white text-brand-600 flex items-center justify-center shrink-0 shadow-sm">
+                  <Icon name="photo_library" className="text-[22px]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-ink">Your event photos &amp; videos are ready</h3>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    {detail.galleryNote || `${detail.organizerName} has shared the photos and videos from ${detail.eventName}.`}
+                  </p>
+                </div>
+                <a
+                  href={detail.galleryUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-lg text-center shrink-0"
+                >
+                  View photos &amp; videos
+                </a>
+              </div>
+            )}
 
             {/* Your Tickets */}
             <div>

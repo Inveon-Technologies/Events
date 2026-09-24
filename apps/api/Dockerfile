@@ -25,6 +25,10 @@ COPY --from=build /app/dist ./dist
 
 # Don't run as root in production.
 RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
+# The default local upload directory (UPLOAD_DIR unset, no S3) must be
+# writable by the non-root user — /app itself is root-owned, so creating
+# it at runtime failed with EACCES and every logo/photo upload 500'd.
+RUN mkdir -p /app/uploads && chown nodejs:nodejs /app/uploads
 USER nodejs
 
 EXPOSE 3000

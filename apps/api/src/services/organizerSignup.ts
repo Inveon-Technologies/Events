@@ -102,7 +102,7 @@ export async function resendSignupOtp(email: string): Promise<void> {
 
 export interface VerifySignupResult {
   token: string;
-  user: { id: string; email: string; role: string; organizerId: string | null };
+  user: { id: string; email: string; name: string | null; role: string; organizerId: string | null };
 }
 
 export async function verifySignup(email: string, code: string): Promise<VerifySignupResult> {
@@ -136,6 +136,6 @@ export async function verifySignup(email: string, code: string): Promise<VerifyS
   const token = signAccessToken({ sub: user.id, role: user.role, organizerId: user.organizerId });
   return {
     token,
-    user: { id: user.id, email: user.email, role: user.role, organizerId: user.organizerId },
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, organizerId: user.organizerId },
   };
 }

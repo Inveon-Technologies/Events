@@ -6,7 +6,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { apiRequest, uploadOrganizerLogoFile, ApiError } from '../../lib/api';
 
 export default function AccountSettings() {
-  const { user } = useAuth();
+  const { user, updateUserProfile } = useAuth();
   const { showToast } = useNotifications();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -42,6 +42,7 @@ export default function AccountSettings() {
         body: { name: profile.name, contactEmail: profile.contactEmail || '', contactPhone: profile.contactPhone || '', about: profile.about || '' },
       });
       setProfile(updated);
+      updateUserProfile({ orgName: updated.name, avatar: updated.logoUrl });
       showToast('Profile saved successfully!', 'success');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not save your profile.', 'error');
@@ -57,6 +58,7 @@ export default function AccountSettings() {
     try {
       const result = await uploadOrganizerLogoFile(file, user?.token);
       setProfile((prev) => ({ ...prev, logoUrl: result.logoUrl }));
+      updateUserProfile({ avatar: result.logoUrl });
       showToast('Logo updated successfully!', 'success');
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not upload the logo.', 'error');

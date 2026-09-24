@@ -16,6 +16,7 @@ import {
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { useEvents } from '../../context/EventsContext';
+import UserAvatar from '../common/UserAvatar';
 
 export default function Header({ setMobileOpen }) {
   const { notifications, unreadCount, markAsRead } = useNotifications();
@@ -144,17 +145,16 @@ export default function Header({ setMobileOpen }) {
               }}
               className="flex items-center gap-2 p-1 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              <div className="w-8 h-8 rounded-full bg-navy-900 text-white font-bold text-xs flex items-center justify-center ring-2 ring-slate-100">
-                EA
-              </div>
+              <UserAvatar src={user?.avatar} name={user?.orgName || user?.name || user?.email} className="w-8 h-8 text-xs ring-2 ring-slate-100" />
               <ChevronDown className="w-3.5 h-3.5 text-slate-500 hidden sm:block" />
             </button>
 
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
                 <div className="px-4 py-2.5 border-b border-slate-100">
-                  <p className="text-xs font-bold text-slate-900">{user?.name || "Eeshan Agrawal"}</p>
-                  <p className="text-[11px] text-slate-500 truncate">{user?.email || "eeshan.agrawal@inveon.dev"}</p>
+                  <p className="text-xs font-bold text-slate-900">{user?.name}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{user?.email}</p>
+                  {user?.orgName && <p className="text-[11px] text-slate-400 truncate">{user.orgName}</p>}
                 </div>
                 <NavLink
                   to="/organizer/settings/account"

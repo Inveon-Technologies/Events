@@ -32,7 +32,7 @@ import {
 import { useEvents } from '../../../context/EventsContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
-import { ApiError, apiRequest, uploadEventMediaFile } from '../../../lib/api';
+import { ApiError, apiRequest, uploadEventMediaFile, deleteEventMediaFile } from '../../../lib/api';
 
 const MAX_IMAGES = 5;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -159,6 +159,13 @@ export default function CreateEvent() {
           packingChecklist: data.packingChecklist || [],
           faqItems: data.faqItems || [],
         }));
+        // Already-uploaded media, shown alongside newly staged files.
+        // Marked with existingId so saving never re-uploads them and
+        // removing one deletes it on the server.
+        const existing = data.media || [];
+        setMediaImages(existing.filter((m) => m.mediaType === 'photo').map((m) => ({ existingId: m.id, previewUrl: m.url })));
+        const video = existing.find((m) => m.mediaType === 'video');
+        setMediaVideo(video ? { existingId: video.id, previewUrl: video.url } : null);
       })
       .catch((err) => {
         if (!cancelled) showToast(err instanceof ApiError ? err.message : 'Could not load this event.', 'error');
@@ -203,11 +210,25 @@ export default function CreateEvent() {
     setMediaImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
   }
 
-  function removeImage(index) {
-    setMediaImages((prev) => {
-      URL.revokeObjectURL(prev[index].previewUrl);
-      return prev.filter((_, i) => i !== index);
-    });
+  async function removeExistingMedia(item) {
+    try {
+      await deleteEventMediaFile(eventId, item.existingId, user?.token);
+      return true;
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : 'Could not remove this file.', 'error');
+      return false;
+    }
+  }
+
+  async function removeImage(index) {
+    const item = mediaImages[index];
+    if (!item) return;
+    if (item.existingId) {
+      if (!(await removeExistingMedia(item))) return;
+    } else {
+      URL.revokeObjectURL(item.previewUrl);
+    }
+    setMediaImages((prev) => prev.filter((m) => m !== item));
   }
 
   async function handleVideoFileSelected(e) {
@@ -232,8 +253,13 @@ export default function CreateEvent() {
     }
   }
 
-  function removeVideo() {
-    if (mediaVideo) URL.revokeObjectURL(mediaVideo.previewUrl);
+  async function removeVideo() {
+    if (!mediaVideo) return;
+    if (mediaVideo.existingId) {
+      if (!(await removeExistingMedia(mediaVideo))) return;
+    } else {
+      URL.revokeObjectURL(mediaVideo.previewUrl);
+    }
     setMediaVideo(null);
   }
 
@@ -243,7 +269,8 @@ export default function CreateEvent() {
   // race. The event itself is already created and safe by this point —
   // a media upload failure is reported but never undoes it.
   async function uploadStagedMedia(eventId) {
-    const allFiles = [...mediaImages.map((m) => m.file), ...(mediaVideo ? [mediaVideo.file] : [])];
+    // Only newly staged files — already-uploaded media (existingId) stays as is.
+    const allFiles = [...mediaImages, ...(mediaVideo ? [mediaVideo] : [])].filter((m) => m.file).map((m) => m.file);
     if (allFiles.length === 0) return;
 
     setUploadingMedia(true);
@@ -685,13 +712,20 @@ export default function CreateEvent() {
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-bold text-slate-700">Event Photos</label>
+                <label className="block text-xs font-bold text-slate-700">
+                  Event Photos <span className="font-normal text-slate-400">— the first photo is the event's cover/banner</span>
+                </label>
                 <span className="text-[11px] text-slate-400 font-medium">{mediaImages.length}/{MAX_IMAGES} images · up to 10MB each</span>
               </div>
               <div className="flex flex-wrap gap-3">
                 {mediaImages.map((img, i) => (
                   <div key={img.previewUrl} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 group">
                     <img src={img.previewUrl} alt="" className="w-full h-full object-cover" />
+                    {i === 0 && (
+                      <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] font-bold text-center py-0.5">
+                        COVER
+                      </span>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeImage(i)}

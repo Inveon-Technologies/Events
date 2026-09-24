@@ -46,7 +46,7 @@ export default function OrganizerDashboard() {
               <span>Organizer Portal Active</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-              Welcome back, {user?.name || "Eeshan Agrawal"}!
+              Welcome back, {user?.name}!
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-xl">
               You have <span className="font-bold text-white">{publishedEvents.length} active events</span> with live ticketing and <span className="font-bold text-white">{totalCheckedIn} attendees</span> checked in today.

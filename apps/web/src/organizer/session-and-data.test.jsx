@@ -103,3 +103,26 @@ describe('organizer portal: session and data handling', () => {
     expect(screen.queryByText('Only Real Event')).not.toBeInTheDocument();
   });
 });
+
+describe('organizer portal: real identity in the header', () => {
+  afterEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the organizer\'s uploaded logo and real names — no stock avatar or hardcoded "Eeshan Agrawal"', async () => {
+    localStorage.setItem('inveon_user', JSON.stringify({ ...loggedInUser, name: 'Asha Kulkarni', avatar: null }));
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url) => {
+      if (String(url).includes('/organizer/profile')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ name: 'Sahyadri Trails', logoUrl: '/api/uploads/organizers/org-1/logo.png' }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => eventsResponse });
+    }));
+
+    renderAt('/organizer/events');
+    await waitFor(() => expect(document.querySelector('img[src="/api/uploads/organizers/org-1/logo.png"]')).toBeTruthy());
+    expect(screen.getAllByText('Asha Kulkarni').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Eeshan/)).not.toBeInTheDocument();
+    expect(document.querySelector('img[src*="unsplash"]')).toBeNull();
+  });
+});

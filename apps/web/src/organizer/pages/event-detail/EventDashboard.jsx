@@ -21,6 +21,7 @@ import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 import { useEvents } from '../../context/EventsContext';
 import EventLookupState from '../../components/common/EventLookupState';
+import EventGalleryCard from '../../components/EventGalleryCard';
 
 function EventDashboardContent({ event }) {
   const { participants, bookings, cancelEvent } = useEvents();
@@ -195,6 +196,9 @@ function EventDashboardContent({ event }) {
           onClick={() => navigate(`/organizer/events/${event.id}/bookings`)}
         />
       </div>
+
+      {/* Post-event photos & videos link */}
+      <EventGalleryCard eventId={event.id} eventDate={`${event.startDate}T${event.startTime || '00:00'}:00Z`} />
 
       {/* Two Column Workspace Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

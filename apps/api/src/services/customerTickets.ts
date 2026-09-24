@@ -51,6 +51,10 @@ export interface CustomerBookingDetail {
   refundPercentage: number | null;
   refundCutoffPassed: boolean;
   tickets: CustomerTicketRow[];
+  // The organizer's post-event photos & videos link — only for a
+  // confirmed booking (attendees), never for a cancelled one.
+  galleryUrl: string | null;
+  galleryNote: string | null;
 }
 
 async function findVerifiedBooking(bookingReference: string, email: string): Promise<Booking> {
@@ -122,6 +126,8 @@ export async function getBookingDetail(bookingReference: string, email: string):
     refundCutoffDays: event.refundCutoffDays,
     refundPercentage: event.refundPercentage,
     refundCutoffPassed,
+    galleryUrl: booking.status === 'confirmed' ? event.galleryUrl ?? null : null,
+    galleryNote: booking.status === 'confirmed' ? event.galleryNote ?? null : null,
     tickets: tickets.map((ticket, i) => ({
       id: ticket.id,
       ticketReference: `${booking.bookingReference}-${i + 1}`,

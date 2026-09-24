@@ -29,6 +29,9 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare description: string | null;
   declare venueAddress: string | null;
   declare venueMapUrl: string | null;
+  declare galleryUrl: CreationOptional<string | null>;
+  declare galleryNote: CreationOptional<string | null>;
+  declare galleryUpdatedAt: CreationOptional<Date | null>;
   declare venueLatitude: number | null;
   declare venueLongitude: number | null;
   declare eventDate: Date;
@@ -61,6 +64,9 @@ Event.init(
     description: { type: DataTypes.TEXT, allowNull: true },
     venueAddress: { type: DataTypes.TEXT, allowNull: true },
     venueMapUrl: { type: DataTypes.STRING, allowNull: true },
+    galleryUrl: { type: DataTypes.STRING(2048), allowNull: true },
+    galleryNote: { type: DataTypes.TEXT, allowNull: true },
+    galleryUpdatedAt: { type: DataTypes.DATE, allowNull: true },
     venueLatitude: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     venueLongitude: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     eventDate: { type: DataTypes.DATE, allowNull: false },

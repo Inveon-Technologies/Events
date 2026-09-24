@@ -8,8 +8,10 @@ import { apiRequest, ApiError } from '../lib/api';
 
 const EventsContext = createContext();
 
+// Neutral placeholder for an event with no photos yet — never a stock
+// photo, which made it look like the organizer's image hadn't saved.
 const PLACEHOLDER_BANNER =
-  'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1200&q=80';
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 600'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%23dbeafe'/><stop offset='1' stop-color='%23e2e8f0'/></linearGradient></defs><rect width='1200' height='600' fill='url(%23g)'/><text x='600' y='315' font-family='sans-serif' font-size='40' fill='%2394a3b8' text-anchor='middle'>No cover photo yet</text></svg>";
 
 // Maps GET /api/organizer/events (see apps/api/src/services/organizerEvents.ts)
 // onto the richer shape every page in this portal already expects (see

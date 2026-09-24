@@ -265,6 +265,21 @@ describe('event media upload (real DB, real ffprobe)', () => {
     expect(served.status).toBe(200);
   });
 
+  it('the organizer\'s own event list and edit detail use the first uploaded photo as the cover', async () => {
+    const event = await createTestEvent(`Organizer Cover Test ${suffix}`);
+    const upload = await request(app)
+      .post(`/api/organizer/events/${event.id}/media`)
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', imagePath);
+
+    const listRes = await request(app).get('/api/organizer/events').set('Authorization', `Bearer ${token}`);
+    const row = listRes.body.events.find((e: { id: string }) => e.id === event.id);
+    expect(row.bannerUrl).toBe(upload.body.url);
+
+    const detailRes = await request(app).get(`/api/organizer/events/${event.id}`).set('Authorization', `Bearer ${token}`);
+    expect(detailRes.body.media).toEqual([{ id: upload.body.id, mediaType: 'photo', url: upload.body.url }]);
+  });
+
   it('an event with no media returns an empty array, not null or an error', async () => {
     const event = await createTestEvent(`No Media Test ${suffix}`);
     const res = await request(app).get(`/api/events/${event.id}`);
