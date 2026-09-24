@@ -1,0 +1,2 @@
+# Written by `npm run loadtest:seed` — holds a login and QR tokens.
+seed.json

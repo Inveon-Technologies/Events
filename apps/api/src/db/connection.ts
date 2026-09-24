@@ -20,6 +20,16 @@ export const sequelize = new Sequelize(
   {
     dialect: 'postgres',
     logging: false,
+    // Sequelize's default pool is 5 connections, which queued requests
+    // behind each other at the gate rush (#66 load test: p95 ~300ms at
+    // ~90 scans/s). Keep DB_POOL_MAX x API processes under Postgres'
+    // max_connections (100 by default).
+    pool: {
+      max: Number(process.env.DB_POOL_MAX) || 20,
+      min: 0,
+      acquire: 30_000,
+      idle: 10_000,
+    },
   },
 );
 

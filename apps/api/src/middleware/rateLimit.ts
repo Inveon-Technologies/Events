@@ -50,7 +50,9 @@ async function increment(key: string, windowSeconds: number): Promise<number> {
 }
 
 export function rateLimit(options: RateLimitOptions): RequestHandler {
-  const enabled = options.enabled ?? process.env.NODE_ENV !== 'test';
+  // RATE_LIMITS_DISABLED=true is for load-testing a staging stack from
+  // one machine (see loadtest/README.md) — never set it in production.
+  const enabled = options.enabled ?? (process.env.NODE_ENV !== 'test' && process.env.RATE_LIMITS_DISABLED !== 'true');
   const keyFor = options.keyFor ?? ((req: Request) => req.ip ?? 'unknown');
 
   return (req: Request, res: Response, next: NextFunction) => {

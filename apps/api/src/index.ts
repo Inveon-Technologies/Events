@@ -11,6 +11,10 @@ const REMINDER_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes — frequent enoug
 const PENDING_EXPIRY_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const POST_EVENT_POLL_INTERVAL_MS = 15 * 60 * 1000;
 
+if (process.env.RATE_LIMITS_DISABLED === 'true') {
+  logger.warn('RATE_LIMITS_DISABLED=true — rate limiting is OFF. Only for load-testing a staging stack.');
+}
+
 const app = createApp();
 
 // Best-effort — routes that don't need Redis (health, login, most of the
