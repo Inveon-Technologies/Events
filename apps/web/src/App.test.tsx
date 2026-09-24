@@ -670,6 +670,155 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('event page shows a real gender-restriction badge when the event has one, and shows none for an unrestricted event', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-gender-badge-1',
+        slug: 'gender-badge-event',
+        name: 'Gender Badge Event',
+        tagline: null,
+        description: null,
+        eventDate: '2026-12-25T09:00:00.000Z',
+        venueAddress: 'Pune',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: null,
+        allowSelfServiceCancellation: false,
+        refundCutoffDays: null,
+        refundPercentage: null,
+        genderRestriction: 'female',
+        scheduleItems: null,
+        packingChecklist: null,
+        faqItems: null,
+        media: [],
+        organizerName: 'Gender Badge Org',
+        organizerSlug: 'gender-badge-org',
+        ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+        ratingSummary: { averageRating: null, reviewCount: 0 },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-gender-badge-1');
+    await waitFor(() => expect(screen.getAllByText('Gender Badge Event').length).toBeGreaterThan(0));
+    expect(screen.getByText(/female attendees only/i)).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('checkout requires a real gender confirmation for a restricted event, blocks submission until confirmed, and sends the real attendeeGenders once confirmed', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/bookings')) {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ bookingId: 'booking-1', bookingReference: 'INV-BKG-2026-33333', paymentSessionId: 'session_gender_123' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-checkout-gender-1',
+          slug: 'checkout-gender-event',
+          name: 'Checkout Gender Event',
+          tagline: null,
+          description: null,
+          eventDate: '2026-12-25T09:00:00.000Z',
+          venueAddress: 'Pune',
+          venueMapUrl: null,
+          bannerUrl: null,
+          termsAndConditions: null,
+          cancellationPolicy: null,
+          allowSelfServiceCancellation: false,
+          refundCutoffDays: null,
+          refundPercentage: null,
+          genderRestriction: 'male',
+          scheduleItems: null,
+          packingChecklist: null,
+          faqItems: null,
+          media: [],
+          organizerName: 'Checkout Gender Org',
+          organizerSlug: 'checkout-gender-org',
+          ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+          ratingSummary: { averageRating: null, reviewCount: 0 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockCashfreeCheckout.mockResolvedValue({ redirect: true });
+
+    renderApp('/events/evt-checkout-gender-1/checkout', { quantities: { 'tier-1': 1 } });
+    await waitFor(() => expect(screen.getAllByText('Checkout Gender Event').length).toBeGreaterThan(0));
+    await user.click(screen.getAllByText('CONTINUE TO PARTICIPANTS')[0]);
+
+    await user.type(await screen.findByPlaceholderText('e.g. Rahul Sharma'), 'Test Attendee');
+    await user.type(screen.getByPlaceholderText('name@example.com'), 'attendee@example.com');
+    await user.type(screen.getByPlaceholderText('9876543210'), '9000000001');
+
+    // Real confirmation checkbox for the real restriction — present and unchecked by default.
+    const confirmCheckbox = screen.getByRole('checkbox', { name: /confirm this attendee is male/i });
+    expect(confirmCheckbox).not.toBeChecked();
+
+    // Submitting without confirming never calls the real booking endpoint.
+    await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+    await new Promise((r) => { setTimeout(r, 50); });
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/bookings'))).toBe(false);
+
+    await user.click(confirmCheckbox);
+    expect(confirmCheckbox).toBeChecked();
+    await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/bookings'));
+      expect(call).toBeTruthy();
+    });
+    const [, bookingOpts] = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/bookings'));
+    expect(JSON.parse(bookingOpts.body).attendeeGenders).toEqual(['male']);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('checkout shows no gender confirmation at all for an unrestricted event', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        id: 'evt-checkout-open-1',
+        slug: 'checkout-open-event',
+        name: 'Checkout Open Event',
+        tagline: null,
+        description: null,
+        eventDate: '2026-12-25T09:00:00.000Z',
+        venueAddress: 'Pune',
+        venueMapUrl: null,
+        bannerUrl: null,
+        termsAndConditions: null,
+        cancellationPolicy: null,
+        allowSelfServiceCancellation: false,
+        refundCutoffDays: null,
+        refundPercentage: null,
+        genderRestriction: null,
+        scheduleItems: null,
+        packingChecklist: null,
+        faqItems: null,
+        media: [],
+        organizerName: 'Checkout Open Org',
+        organizerSlug: 'checkout-open-org',
+        ticketCategories: [{ id: 'tier-1', name: 'General', description: null, pricePaise: 50000, maxPerBooking: 10, available: 20 }],
+        ratingSummary: { averageRating: null, reviewCount: 0 },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-checkout-open-1/checkout', { quantities: { 'tier-1': 1 } });
+    await waitFor(() => expect(screen.getAllByText('Checkout Open Event').length).toBeGreaterThan(0));
+    expect(screen.queryByText(/confirm this attendee is/i)).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
   it('booking confirmation page fetches the real status and shows "Confirmed" only when the server says so', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

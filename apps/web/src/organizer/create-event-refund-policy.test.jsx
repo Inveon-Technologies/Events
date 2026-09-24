@@ -112,4 +112,50 @@ describe('CreateEvent: the real refund policy the organizer sets actually reache
     const body = JSON.parse(postOpts.body);
     expect(body.allowSelfServiceCancellation).toBe(false);
   });
+
+  it('setting a real gender restriction sends it in the real create request, and leaving it as "Open to all" sends null', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'POST' && String(url).includes('/organizer/events')) {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 'evt-gender-1', slug: 'gender-event' }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ organizerName: 'Org', counts: { all: 0, draft: 0, published: 0, completed: 0, cancelled: 0 }, events: [] }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/create-event/basic');
+    await user.type(screen.getByPlaceholderText(/rajgad sunrise trek/i), 'Female Only Event');
+    await user.selectOptions(screen.getByLabelText(/gender eligibility/i), 'female');
+    await user.click(screen.getByRole('button', { name: /save as draft/i }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/organizer/events'));
+      expect(call).toBeTruthy();
+    });
+    const [, postOpts] = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/organizer/events'));
+    expect(JSON.parse(postOpts.body).genderRestriction).toBe('female');
+  });
+
+  it('leaving gender eligibility as the default "Open to all" sends null, not an empty string or missing field', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'POST' && String(url).includes('/organizer/events')) {
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 'evt-gender-2', slug: 'open-event' }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ organizerName: 'Org', counts: { all: 0, draft: 0, published: 0, completed: 0, cancelled: 0 }, events: [] }) });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/create-event/basic');
+    await user.type(screen.getByPlaceholderText(/rajgad sunrise trek/i), 'Open Event');
+    expect(screen.getByLabelText(/gender eligibility/i)).toHaveValue('');
+    await user.click(screen.getByRole('button', { name: /save as draft/i }));
+
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/organizer/events'));
+      expect(call).toBeTruthy();
+    });
+    const [, postOpts] = fetchMock.mock.calls.find(([u, o]) => o?.method === 'POST' && String(u).includes('/organizer/events'));
+    expect(JSON.parse(postOpts.body).genderRestriction).toBeNull();
+  });
 });
