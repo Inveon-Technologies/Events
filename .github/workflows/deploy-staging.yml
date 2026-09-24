@@ -1,0 +1,106 @@
+name: Deploy to staging
+
+# Staging (#42): any branch, on demand, or every push to the `staging`
+# branch. Same images, same deploy script and rollback as production, on a
+# separate server — so a release can be clicked through (and load-tested,
+# see loadtest/) before it reaches main.
+#
+# Setup, once (docs/ops/RUNBOOK.md#staging): create a GitHub Environment
+# named "staging" with secrets STAGING_HOST, STAGING_USER, STAGING_SSH_KEY,
+# and on the server check this repo out at /var/www/Events with
+# docker/.env and apps/api/.env filled in.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to deploy
+        default: main
+  push:
+    branches: [staging]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  API_IMAGE: ghcr.io/inveon-technologies/events-api
+  WEB_IMAGE: ghcr.io/inveon-technologies/events-web
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.vars.outputs.tag }}
+      sha: ${{ steps.vars.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set image tag
+        id: vars
+        run: |
+          sha="$(git rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          # Prefixed, so a staging build can never be mistaken for (or
+          # overwrite) a production tag.
+          echo "tag=staging-${sha::8}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/api
+          push: true
+          tags: ${{ env.API_IMAGE }}:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push web image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/web
+          push: true
+          tags: ${{ env.WEB_IMAGE }}:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    environment: staging
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ needs.build-and-push.outputs.sha }}
+          TAG: ${{ needs.build-and-push.outputs.image_tag }}
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          envs: GH_TOKEN,SHA,TAG
+          script_stop: true
+          script: |
+            cd /var/www/Events
+            git fetch "https://x-access-token:${GH_TOKEN}@github.com/Inveon-Technologies/Events.git" "$SHA"
+            git reset --hard FETCH_HEAD
+            # Staging runs this repo's own docker/docker-compose.yml.
+            APP_DIR=/var/www/Events/docker \
+            API_SERVICE=api WEB_SERVICE=web TAG_VAR=IMAGE_TAG NGINX_SERVICE=nginx \
+            LAST_GOOD_FILE="$HOME/.events_staging_last_good_tag" \
+            HISTORY_FILE="$HOME/.events_staging_deploy_history" \
+              bash scripts/deploy.sh "$TAG"
