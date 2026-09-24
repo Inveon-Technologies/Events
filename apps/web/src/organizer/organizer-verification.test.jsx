@@ -246,4 +246,104 @@ describe('organizer verification: identity + bank details', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('shows the real "likely stalled" notice and real per-document status/remarks from Cashfree, plus a real resubmit button', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        cashfreeVendorStatus: 'in_bene_creation',
+        panNumber: 'ABCDE1234F',
+        kycAccountType: 'individual',
+        businessType: null,
+        bankAccountHolderName: 'Stalled Test Owner',
+        bankAccountNumberLast4: '9012',
+        bankIfsc: 'HDFC0001234',
+        contactPhone: '+919000000001',
+        kycSubmittedAt: '2026-09-01T00:00:00.000Z',
+        likelyStalled: true,
+        documents: [
+          { docType: 'PAN_NUMBER', status: 'IN_REVIEW', remarks: null },
+          { docType: 'BANK_ACCOUNT', status: 'REJECTED', remarks: 'Account holder name does not match PAN records' },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/settings/verification');
+
+    await waitFor(() => expect(screen.getByText(/taking longer than expected/i)).toBeInTheDocument());
+    expect(screen.getByText('PAN NUMBER')).toBeInTheDocument();
+    expect(screen.getByText('BANK ACCOUNT')).toBeInTheDocument();
+    expect(screen.getByText('Account holder name does not match PAN records')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /update & resubmit details/i })).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('does not show the stalled notice or the document list for a genuinely recent, non-stalled submission', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        cashfreeVendorStatus: 'in_bene_creation',
+        panNumber: 'ABCDE1234F',
+        kycAccountType: 'individual',
+        businessType: null,
+        bankAccountHolderName: 'Fresh Test Owner',
+        bankAccountNumberLast4: '9012',
+        bankIfsc: 'HDFC0001234',
+        contactPhone: '+919000000001',
+        kycSubmittedAt: new Date().toISOString(),
+        likelyStalled: false,
+        documents: null,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/settings/verification');
+    await waitFor(() => expect(screen.getByText('Verification in progress')).toBeInTheDocument());
+
+    expect(screen.queryByText(/taking longer than expected/i)).not.toBeInTheDocument();
+    // Still shows a resubmit option even without a stalled flag — this
+    // is a real, always-available path for the organizer, not gated
+    // behind the heuristic notice.
+    expect(screen.getByRole('button', { name: /update & resubmit details/i })).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it('clicking "Update & Resubmit Details" navigates to the real verification form, pre-filled with the real existing KYC details', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        cashfreeVendorStatus: 'in_bene_creation',
+        panNumber: 'ZYXWV9876G',
+        kycAccountType: 'business',
+        businessType: 'Travel and Hospitality',
+        bankAccountHolderName: 'Resubmit Test Owner',
+        bankAccountNumberLast4: '4321',
+        bankIfsc: 'ICIC0005678',
+        contactPhone: '+919111111111',
+        kycSubmittedAt: '2026-09-01T00:00:00.000Z',
+        likelyStalled: true,
+        documents: null,
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
+
+    renderAt('/organizer/settings/verification');
+    await waitFor(() => expect(screen.getByRole('button', { name: /update & resubmit details/i })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /update & resubmit details/i }));
+
+    // Real pre-filled values from the real existing record, not a
+    // blank form the organizer has to re-type everything into.
+    await waitFor(() => expect(screen.getByText(/update your verification details/i)).toBeInTheDocument());
+    expect(screen.getByDisplayValue('ZYXWV9876G')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('+919111111111')).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
 });

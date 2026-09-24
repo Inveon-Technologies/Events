@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { ShieldCheck, ShieldAlert, Clock, RefreshCw, ArrowRight } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Clock, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, ApiError } from '../../lib/api';
 
@@ -11,6 +11,10 @@ const STATUS_META = {
   blocked: { label: 'Blocked — contact support', tone: 'bg-red-100 text-red-800', icon: ShieldAlert },
   deleted: { label: 'Removed — contact support', tone: 'bg-red-100 text-red-800', icon: ShieldAlert },
 };
+
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 export default function PaymentVerificationSettings() {
   const { user } = useAuth();
@@ -51,9 +55,26 @@ export default function PaymentVerificationSettings() {
     }
   }
 
+  function handleResubmit() {
+    // Pre-fills what's actually still available — the full bank
+    // account number is never stored (only its last 4 digits), so
+    // that one field genuinely has to be re-entered rather than
+    // pretended to be recoverable.
+    navigate('/organizer/verify-identity', {
+      state: {
+        isResubmission: true,
+        panNumber: details?.panNumber || '',
+        accountType: details?.kycAccountType || 'individual',
+        businessType: details?.businessType || '',
+        contactPhone: details?.contactPhone || '',
+      },
+    });
+  }
+
   const status = details?.cashfreeVendorStatus || 'not_started';
   const meta = STATUS_META[status] || STATUS_META.not_started;
   const StatusIcon = meta.icon;
+  const canResubmit = status === 'in_bene_creation' || status === 'blocked' || status === 'deleted';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
@@ -111,7 +132,21 @@ export default function PaymentVerificationSettings() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
+                {details?.likelyStalled && (
+                  <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-amber-900">This is taking longer than expected</p>
+                      <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                        Verification submitted on {details.kycSubmittedAt ? formatDate(details.kycSubmittedAt) : 'an earlier date'} is still
+                        in progress. Cashfree doesn't report a specific rejection reason for this stage — the most common cause is a
+                        mismatch between your bank details and PAN records. Double-check your details below and resubmit.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div>
                     <dt className="text-slate-500 mb-0.5">PAN</dt>
@@ -132,10 +167,39 @@ export default function PaymentVerificationSettings() {
                     </dd>
                   </div>
                 </dl>
+
+                {details?.documents && details.documents.length > 0 && (
+                  <div className="pt-3 border-t border-slate-100">
+                    <p className="text-xs font-bold text-slate-700 mb-2">Document review status</p>
+                    <div className="space-y-1.5">
+                      {details.documents.map((doc) => (
+                        <div key={doc.docType} className="flex items-start justify-between gap-3 text-[11px] bg-slate-50 rounded-lg px-3 py-2">
+                          <div>
+                            <span className="font-semibold text-slate-800">{doc.docType.replace(/_/g, ' ')}</span>
+                            {doc.remarks && <p className="text-slate-500 mt-0.5">{doc.remarks}</p>}
+                          </div>
+                          <span className="font-mono text-slate-500 shrink-0">{doc.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {(status === 'blocked' || status === 'deleted') && (
                   <p className="text-xs text-slate-600 pt-2 border-t border-slate-100">
                     Contact support to resolve this before submitting new details.
                   </p>
+                )}
+
+                {canResubmit && (
+                  <div className="pt-3 border-t border-slate-100">
+                    <button
+                      onClick={handleResubmit}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-800 font-semibold text-xs rounded-lg shadow-sm border border-slate-300"
+                    >
+                      Update & Resubmit Details <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             )}

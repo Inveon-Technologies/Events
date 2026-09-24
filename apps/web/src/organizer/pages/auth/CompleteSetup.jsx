@@ -10,6 +10,7 @@ const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 export default function CompleteSetup() {
   const location = useLocation();
   const kyc = location.state;
+  const isResubmission = Boolean(kyc?.isResubmission);
 
   const [bankAccountHolderName, setBankAccountHolderName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
@@ -62,7 +63,12 @@ export default function CompleteSetup() {
           bankIfsc: ifsc,
         },
       });
-      showToast('Verification submitted! Your account is being reviewed by Cashfree.', 'success');
+      showToast(
+        isResubmission
+          ? 'Updated details submitted! Your account is being re-reviewed by Cashfree.'
+          : 'Verification submitted! Your account is being reviewed by Cashfree.',
+        'success',
+      );
       navigate('/organizer/dashboard');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
@@ -77,9 +83,13 @@ export default function CompleteSetup() {
         <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
           <CheckCircle2 className="w-6 h-6" />
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Complete Organization Setup</h2>
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+          {isResubmission ? 'Re-enter Your Bank Details' : 'Complete Organization Setup'}
+        </h2>
         <p className="text-xs text-slate-500 mt-1">
-          Link your payout bank account to start receiving ticket sales revenue directly.
+          {isResubmission
+            ? 'Your account number is never stored in full, so it needs to be re-entered here even if only your IFSC or other details changed.'
+            : 'Link your payout bank account to start receiving ticket sales revenue directly.'}
         </p>
       </div>
 
@@ -135,7 +145,7 @@ export default function CompleteSetup() {
           disabled={loading}
           className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-70 mt-3"
         >
-          <span>{loading ? 'Submitting…' : 'Submit for Verification'}</span>
+          <span>{loading ? 'Submitting…' : isResubmission ? 'Resubmit for Verification' : 'Submit for Verification'}</span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </form>
