@@ -725,7 +725,7 @@ describe('App routing', () => {
     expect(screen.queryByText(/issued attendee/i)).not.toBeInTheDocument();
   });
 
-  it('ManageBookingPage shows real tickets with real QR image URLs once verified, and no cancel option when the event does not allow self-service cancellation', async () => {
+  it('ManageBookingPage shows real ticket cards and opens a real QR pass modal, with no cancel option when the event does not allow self-service cancellation', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -733,14 +733,34 @@ describe('App routing', () => {
       json: async () => ({
         bookingReference: 'INV-BKG-2026-77777',
         bookingStatus: 'confirmed',
+        bookedAt: '2026-12-01T10:00:00.000Z',
         eventName: 'Manage Test Event',
+        eventTagline: null,
         eventDate: '2026-12-25T09:00:00.000Z',
+        gateOpenTime: null,
+        venueAddress: null,
+        venueMapUrl: null,
+        bannerUrl: null,
+        organizerName: 'Manage Test Org',
+        organizerContactEmail: null,
+        organizerContactPhone: null,
+        packingChecklist: null,
+        cancellationPolicyText: null,
+        primaryContactName: 'Real Manage Attendee',
+        primaryContactEmail: 'attendee@example.com',
+        primaryContactWhatsapp: '+919000000001',
         totalAmountPaise: 50000,
+        paymentMethod: 'cash',
+        paymentStatus: 'paid',
+        paymentReference: null,
+        tierBreakdown: [{ tierName: 'General', quantity: 1, unitPricePaise: 50000, subtotalPaise: 50000 }],
         refundAmountPaise: null,
         refundStatus: null,
         allowSelfServiceCancellation: false,
+        refundCutoffDays: null,
+        refundPercentage: null,
         refundCutoffPassed: false,
-        tickets: [{ id: 'ticket-manage-1', attendeeName: 'Real Manage Attendee', tierName: 'General', status: 'valid' }],
+        tickets: [{ id: 'ticket-manage-1', ticketReference: 'INV-BKG-2026-77777-1', attendeeName: 'Real Manage Attendee', tierName: 'General', status: 'valid', checkedInAt: null }],
       }),
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -751,12 +771,19 @@ describe('App routing', () => {
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
     await waitFor(() => expect(screen.getByText('Manage Test Event')).toBeInTheDocument());
-    expect(screen.getByText('Real Manage Attendee')).toBeInTheDocument();
-    expect(screen.getByAltText(/qr code for real manage attendee/i)).toHaveAttribute(
-      'src',
-      '/api/bookings/INV-BKG-2026-77777/tickets/ticket-manage-1/qr?email=attendee%40example.com',
-    );
-    expect(screen.queryByRole('button', { name: /cancel this booking/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText('Real Manage Attendee').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /manage ticket cancellation/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/No Refund Policy/i)).toBeInTheDocument();
+
+    // The real QR image only appears once the pass modal is actually opened.
+    expect(screen.queryByAltText(/qr code for real manage attendee/i)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /view ticket & qr/i }));
+    await waitFor(() => {
+      expect(screen.getByAltText(/qr code for real manage attendee/i)).toHaveAttribute(
+        'src',
+        '/api/bookings/INV-BKG-2026-77777/tickets/ticket-manage-1/qr?email=attendee%40example.com',
+      );
+    });
 
     vi.unstubAllGlobals();
   });
@@ -773,14 +800,34 @@ describe('App routing', () => {
         json: async () => ({
           bookingReference: 'INV-BKG-2026-88888',
           bookingStatus: 'confirmed',
+          bookedAt: '2026-12-01T10:00:00.000Z',
           eventName: 'Cancellable Event',
+          eventTagline: null,
           eventDate: '2026-12-25T09:00:00.000Z',
+          gateOpenTime: null,
+          venueAddress: null,
+          venueMapUrl: null,
+          bannerUrl: null,
+          organizerName: 'Cancellable Test Org',
+          organizerContactEmail: null,
+          organizerContactPhone: null,
+          packingChecklist: null,
+          cancellationPolicyText: null,
+          primaryContactName: 'Cancel Test Attendee',
+          primaryContactEmail: 'canceller@example.com',
+          primaryContactWhatsapp: '+919000000002',
           totalAmountPaise: 50000,
+          paymentMethod: 'cash',
+          paymentStatus: 'paid',
+          paymentReference: null,
+          tierBreakdown: [{ tierName: 'General', quantity: 1, unitPricePaise: 50000, subtotalPaise: 50000 }],
           refundAmountPaise: null,
           refundStatus: null,
           allowSelfServiceCancellation: true,
+          refundCutoffDays: 3,
+          refundPercentage: 80,
           refundCutoffPassed: false,
-          tickets: [{ id: 'ticket-cancel-1', attendeeName: 'Cancel Test Attendee', tierName: 'General', status: 'valid' }],
+          tickets: [{ id: 'ticket-cancel-1', ticketReference: 'INV-BKG-2026-88888-1', attendeeName: 'Cancel Test Attendee', tierName: 'General', status: 'valid', checkedInAt: null }],
         }),
       });
     });
@@ -791,8 +838,8 @@ describe('App routing', () => {
     await user.type(screen.getByPlaceholderText('you@example.com'), 'canceller@example.com');
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /cancel this booking/i })).toBeInTheDocument());
-    await user.click(screen.getByRole('button', { name: /cancel this booking/i }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /manage ticket cancellation/i })).toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: /manage ticket cancellation/i }));
     await user.type(screen.getByRole('textbox'), 'Change of plans');
     await user.click(screen.getByRole('button', { name: /confirm cancellation/i }));
 
@@ -803,6 +850,80 @@ describe('App routing', () => {
     const [, cancelOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/cancel'));
     const body = JSON.parse(cancelOpts.body);
     expect(body).toEqual({ email: 'canceller@example.com', reason: 'Change of plans' });
+
+    vi.unstubAllGlobals();
+  });
+
+  it('ManageBookingPage shows the real organizer, venue, payment breakdown, event info, and a real multi-attendee QR modal with attendee switching', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        bookingReference: 'INV-BKG-2026-99999',
+        bookingStatus: 'confirmed',
+        bookedAt: '2026-12-01T10:00:00.000Z',
+        eventName: 'Rich Content Event',
+        eventTagline: 'A real tagline',
+        eventDate: '2026-12-25T09:00:00.000Z',
+        gateOpenTime: '2026-12-25T07:30:00.000Z',
+        venueAddress: 'Real Venue, Pune',
+        venueMapUrl: 'https://www.google.com/maps/search/?api=1&query=Real+Venue',
+        bannerUrl: null,
+        organizerName: 'Rich Content Organizer',
+        organizerContactEmail: 'organizer@example.com',
+        organizerContactPhone: null,
+        packingChecklist: [{ item: 'Trek shoes', mandatory: true }, { item: 'Water bottle', mandatory: true }],
+        cancellationPolicyText: null,
+        primaryContactName: 'Rich Content Customer',
+        primaryContactEmail: 'rich-content@example.com',
+        primaryContactWhatsapp: '+919876543210',
+        totalAmountPaise: 150000,
+        paymentMethod: 'online',
+        paymentStatus: 'paid',
+        paymentReference: 'CF-ORD-99999',
+        tierBreakdown: [{ tierName: 'General', quantity: 2, unitPricePaise: 50000, subtotalPaise: 100000 }, { tierName: 'VIP', quantity: 1, unitPricePaise: 50000, subtotalPaise: 50000 }],
+        refundAmountPaise: null,
+        refundStatus: null,
+        allowSelfServiceCancellation: true,
+        refundCutoffDays: 3,
+        refundPercentage: 80,
+        refundCutoffPassed: false,
+        tickets: [
+          { id: 'ticket-rich-1', ticketReference: 'INV-BKG-2026-99999-1', attendeeName: 'First Attendee', tierName: 'General', status: 'valid', checkedInAt: null },
+          { id: 'ticket-rich-2', ticketReference: 'INV-BKG-2026-99999-2', attendeeName: 'Second Attendee', tierName: 'VIP', status: 'valid', checkedInAt: null },
+        ],
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/bookings/some-id/manage');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-99999');
+    await user.type(screen.getByPlaceholderText('you@example.com'), 'rich-content@example.com');
+    await user.click(screen.getByRole('button', { name: /view my booking/i }));
+
+    await waitFor(() => expect(screen.getByText('Rich Content Event')).toBeInTheDocument());
+    expect(screen.getAllByText('Rich Content Organizer').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Real Venue, Pune').length).toBeGreaterThan(0);
+    expect(screen.getByText(/CF-ORD-99999/)).toBeInTheDocument();
+    expect(screen.getByText(/Trek shoes, Water bottle/)).toBeInTheDocument();
+    // Real masked contact — never the raw registered email/phone shown in full.
+    expect(screen.queryByText('rich-content@example.com')).not.toBeInTheDocument();
+    expect(screen.queryByText('+919876543210')).not.toBeInTheDocument();
+    // Real per-tier breakdown, not a flat total only.
+    expect(screen.getByText('General × 2')).toBeInTheDocument();
+    expect(screen.getByText('VIP × 1')).toBeInTheDocument();
+
+    await user.click(screen.getAllByRole('button', { name: /view ticket & qr/i })[0]);
+    await waitFor(() => expect(screen.getByAltText(/qr code for first attendee/i)).toBeInTheDocument());
+    // Real attendee-switcher tab for the second ticket, inside the modal.
+    await user.click(screen.getByRole('button', { name: /second \(vip\)/i }));
+    await waitFor(() => expect(screen.getByAltText(/qr code for second attendee/i)).toBeInTheDocument());
+    // Real download link, pointed at the real per-ticket QR endpoint.
+    expect(screen.getByRole('link', { name: /download pass/i })).toHaveAttribute(
+      'href',
+      '/api/bookings/INV-BKG-2026-99999/tickets/ticket-rich-2/qr?email=rich-content%40example.com',
+    );
 
     vi.unstubAllGlobals();
   });
