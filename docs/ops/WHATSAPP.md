@@ -11,7 +11,7 @@ The app sends four WhatsApp messages once this is set up:
 
 Messages go through the background queue, like emails: a failed send is
 retried 5 times, and WhatsApp problems never block a booking. Nothing is
-sent until the settings in step 6 are in place.
+sent until the settings in step 7 are in place.
 
 ---
 
