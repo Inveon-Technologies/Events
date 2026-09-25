@@ -4,6 +4,7 @@ import { sendEmail, isEmailConfigured } from './email';
 import { postEventThankYouEmail } from '../emails/templates';
 import { logger } from '../logger';
 import { enqueueWhatsApp } from './whatsapp/messages';
+import { certificateTicketsForBooking, eventCertificateRenderer } from './certificates';
 
 // Next-day broadcast (#57): the morning after an event, every confirmed
 // booking gets a thank-you email with the organizer's photo/video link
@@ -65,11 +66,17 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
   const [claimed] = await Event.update({ postEventEmailSentAt: new Date() }, { where: { id: event.id, postEventEmailSentAt: null } });
   if (claimed === 0) return result;
 
-  // WhatsApp goes out per booking, independent of email.
-  const confirmed = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' }, attributes: ['id'] });
+  // WhatsApp goes out per booking, independent of email — plus the
+  // certificate message for bookings with a checked-in attendee.
+  const confirmed = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
   for (const booking of confirmed) {
     // eslint-disable-next-line no-await-in-loop
     await enqueueWhatsApp('postEventThanks', booking.id);
+    // eslint-disable-next-line no-await-in-loop
+    if (event.certificateEnabled && (await certificateTicketsForBooking(booking, event)).length > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      await enqueueWhatsApp('certificateReady', booking.id);
+    }
   }
 
   if (!isEmailConfigured()) return result;
@@ -78,6 +85,7 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
   const organizer = await Organizer.findByPk(event.organizerId);
   const base = publicBaseUrl();
   const bookings = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
+  let renderCertificates: Awaited<ReturnType<typeof eventCertificateRenderer>> | null = null;
 
   for (const booking of bookings) {
     // eslint-disable-next-line no-await-in-loop
@@ -88,6 +96,24 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
     if (tickets.length === 0) continue;
 
     try {
+      // Checked-in attendees' certificates ride along as a PDF attachment.
+      // A rendering problem never stops the thank-you email itself.
+      let certificate: { pdf: Buffer; count: number } | null = null;
+      if (event.certificateEnabled) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const certTickets = await certificateTicketsForBooking(booking, event);
+          if (certTickets.length > 0) {
+            // eslint-disable-next-line no-await-in-loop
+            renderCertificates ??= await eventCertificateRenderer(event);
+            // eslint-disable-next-line no-await-in-loop
+            certificate = { pdf: await renderCertificates(certTickets), count: certTickets.length };
+          }
+        } catch (err) {
+          logger.error({ err, bookingId: booking.id, eventId: event.id }, 'Could not render participation certificates');
+        }
+      }
+
       const html = postEventThankYouEmail({
         attendeeName: joinNames(Array.from(new Set(tickets.map((t) => t.attendeeName)))) || booking.primaryContactName,
         eventName: event.name,
@@ -97,12 +123,20 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
         galleryNote: event.galleryNote ?? null,
         feedbackUrl: base ? `${base}/bookings/${encodeURIComponent(booking.bookingReference)}/feedback` : null,
         bookingsUrl: base ? `${base}/bookings/my` : null,
+        certificateCount: certificate?.count ?? 0,
       });
       // eslint-disable-next-line no-await-in-loop
       await sendEmail({
         to: booking.primaryContactEmail,
-        subject: event.galleryUrl ? `Your photos from ${event.name} are here` : `Thanks for joining ${event.name}`,
+        subject: event.galleryUrl
+          ? `Your photos from ${event.name} are here`
+          : certificate
+            ? `Your certificate from ${event.name}`
+            : `Thanks for joining ${event.name}`,
         html,
+        attachments: certificate
+          ? [{ filename: `Certificate-${booking.bookingReference}.pdf`, content: certificate.pdf, contentType: 'application/pdf' }]
+          : undefined,
       });
       result.emailsSent += 1;
     } catch (err) {

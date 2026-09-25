@@ -1,6 +1,6 @@
 # WhatsApp setup (AiSensy)
 
-The app sends four WhatsApp messages once this is set up:
+The app sends five WhatsApp messages once this is set up:
 
 | Message | When | Template / API campaign name |
 |---|---|---|
@@ -8,6 +8,7 @@ The app sends four WhatsApp messages once this is set up:
 | Event reminder | About 3 hours before the event starts | `event_reminder` |
 | Booking cancelled | When a customer or the organizer cancels | `booking_cancelled` |
 | Thank-you | 10:00 AM (India time) the day after the event, with photo and rating links | `post_event_thanks` |
+| Certificate ready, with a Download Certificate button | Same time, only for attendees who checked in, on events with certificates switched on | `certificate_ready` |
 
 Messages go through the background queue, like emails: a failed send is
 retried 5 times, and WhatsApp problems never block a booking. Nothing is
@@ -63,7 +64,7 @@ replies. Ask AiSensy to confirm two things on Basic before you pay:
 - the monthly limit on **API campaign** sends;
 - whether **delivery-status webhooks** are included.
 
-## 5. Create the four templates
+## 5. Create the five templates
 
 In AiSensy go to **Manage → Template Messages → New Template**. For each
 template below:
@@ -176,13 +177,33 @@ because it asks for a rating. That's about ₹1.09 a message instead of
 ₹0.145. It still works either way. To save money, you can skip creating it
 and the thank-you goes out by email only.
 
+### `certificate_ready`
+
+For events where the organizer switched on participation certificates.
+Sent only to bookings with at least one checked-in attendee.
+
+**Body:**
+```
+Hi {{1}}, thank you for attending {{2}}! 🎓
+
+Your certificate of participation is ready. Tap the button below to download it and share your achievement.
+```
+Samples: `Rahul` · `Rajgad Sunrise Trek`
+
+**Buttons:** Call to action → Visit website:
+
+| Button text | URL type | URL | Sample |
+|---|---|---|---|
+| `Download Certificate` | Dynamic | `https://events.inveontechnologies.in/api/certificates/{{1}}` | `INV-BKG-2026-8F3K2Q.sample` |
+
 ## 6. Create one API campaign per template
 
 The app sends each message by triggering an AiSensy **API campaign**. In
 **Campaigns → Launch → API Campaign**:
 
 1. **Campaign name:** exactly the template name: `booking_confirmation`,
-   `event_reminder`, `booking_cancelled`, `post_event_thanks`.
+   `event_reminder`, `booking_cancelled`, `post_event_thanks`,
+   `certificate_ready`.
 2. Pick the matching template.
 3. Leave the parameters as they are. The app sends them.
 4. Set the campaign **Live**.
@@ -206,7 +227,7 @@ The app sends each message by triggering an AiSensy **API campaign**. In
 
 ## 8. Send a test message
 
-Send all four messages to your own WhatsApp number in one go, with
+Send all five messages to your own WhatsApp number in one go, with
 sample values (country code first, e.g. `91` for India). On the
 production VPS, run it from `/home/ubuntu/inveontechnologies-website`
 (with this repo's own compose file the service is called `api` instead
@@ -272,7 +293,7 @@ plan.
 The code already supports it; only settings change.
 
 1. In Meta's WhatsApp Manager (business.facebook.com → WhatsApp
-   accounts), create the same four templates (same names and texts), or
+   accounts), create the same five templates (same names and texts), or
    let the migration copy the approved ones.
 2. Ask AiSensy to release the number, and turn off two-step verification
    on it.

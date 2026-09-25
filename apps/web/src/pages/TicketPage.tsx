@@ -11,6 +11,7 @@ interface TicketRow {
   id: string;
   ticketReference: string;
   displayReference?: string;
+  certificateAvailable?: boolean;
   attendeeName: string;
   tierName: string;
   status: 'valid' | 'checked_in' | 'cancelled';
@@ -237,6 +238,26 @@ export function TicketPage() {
                   {t.attendeeName}
                 </button>
               ))}
+            </div>
+          )}
+
+          {shown?.certificateAvailable && (
+            <div className="flex flex-wrap items-center gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200">
+              <Icon name="workspace_premium" className="text-[28px] text-amber-600" filled />
+              <div className="flex-1 min-w-[180px]">
+                <p className="text-sm font-bold text-amber-900">Your certificate of participation is ready</p>
+                <p className="text-xs text-amber-800">
+                  Thanks for attending{tickets.length > 1 ? `, ${shown.attendeeName}` : ''}! Download it and share your achievement.
+                </p>
+              </div>
+              <a
+                href={`/api/t/${encodeURIComponent(token)}/tickets/${shown.id}/certificate.pdf`}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold"
+              >
+                <Icon name="download" className="text-[18px]" /> Download Certificate
+              </a>
             </div>
           )}
 

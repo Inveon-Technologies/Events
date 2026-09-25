@@ -43,17 +43,24 @@ export async function certificateTicketsForBooking(booking: Booking, event: Even
     .map(({ t, i }) => ({ ticketId: t.id, attendeeName: t.attendeeName, certificateNo: certificateNumber(booking.bookingReference, i) }));
 }
 
-async function renderFor(event: Event, tickets: CertificateTicket[]): Promise<Buffer> {
+// Loads the event's images once; the returned function renders any
+// number of bookings' certificates (the post-event email loops over all).
+export async function eventCertificateRenderer(event: Event): Promise<(tickets: CertificateTicket[]) => Promise<Buffer>> {
   const organizer = await Organizer.findByPk(event.organizerId, { attributes: ['name', 'logoUrl'] });
   const design = eventCertificateDesign(event);
   const { partners } = await getEventTicketDesign(event);
   const assets = await loadCertificateAssets(design, organizer?.logoUrl ?? null, partners);
   const base = eventValues(event, organizer?.name ?? 'Event Organizer');
-  return renderCertificatesPdf(
-    design,
-    assets,
-    tickets.map((t) => ({ ...base, participant: t.attendeeName, certificateNo: t.certificateNo })),
-  );
+  return (tickets) =>
+    renderCertificatesPdf(
+      design,
+      assets,
+      tickets.map((t) => ({ ...base, participant: t.attendeeName, certificateNo: t.certificateNo })),
+    );
+}
+
+async function renderFor(event: Event, tickets: CertificateTicket[]): Promise<Buffer> {
+  return (await eventCertificateRenderer(event))(tickets);
 }
 
 // PDF of every certificate on the booking, or just one ticket's.

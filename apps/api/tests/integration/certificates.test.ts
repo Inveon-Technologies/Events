@@ -5,12 +5,18 @@ import { Organizer, User, Event, TicketCategory, Booking, Payment, Ticket } from
 import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
 import { ticketLinkToken } from '../../src/services/ticketLinks';
+import { sendEmail, isEmailConfigured } from '../../src/services/email';
+import { sendPostEventBroadcast } from '../../src/services/postEventBroadcast';
+import { buildWhatsAppMessage } from '../../src/services/whatsapp/messages';
 import { defaultCertificateDesign, sanitizeCertificateDesign, FOOTER_TOP_PERCENT } from '../../src/services/certificateDesign';
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');
   return { ...actual, sendEmail: jest.fn().mockResolvedValue(undefined), isEmailConfigured: jest.fn().mockReturnValue(false) };
 });
+
+const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
+const mockIsEmailConfigured = isEmailConfigured as jest.MockedFunction<typeof isEmailConfigured>;
 
 // Participation certificates: organizer design + on/off, and downloads
 // for checked-in attendees only.
@@ -199,6 +205,28 @@ describe('participation certificates', () => {
 
     const tampered = await request(app).get(`/api/certificates/${reference}.bad`);
     expect(tampered.status).toBe(404);
+  }, 30000);
+
+  it('attaches the certificate to the post-event email and builds the WhatsApp certificate message', async () => {
+    mockIsEmailConfigured.mockReturnValue(true);
+    mockSendEmail.mockClear();
+    await request(app).put(`/api/organizer/events/${eventId}/certificate`).set('Authorization', `Bearer ${auth}`).send({ enabled: true });
+    const event = (await Event.findByPk(eventId))!;
+    await event.update({ eventDate: new Date(Date.now() - 36 * 60 * 60 * 1000), postEventEmailSentAt: null });
+
+    const result = await sendPostEventBroadcast(event);
+    expect(result.emailsSent).toBe(1);
+    const call = mockSendEmail.mock.calls.find((c) => c[0].to === `rahul-cert-${suffix}@example.com`)!;
+    expect(call[0].subject).toContain('Your certificate from');
+    expect(call[0].html).toContain('certificate of participation is attached');
+    const pdf = call[0].attachments!.find((a) => a.filename === `Certificate-${reference}.pdf`)!;
+    expect(pdf.content.subarray(0, 5).toString()).toBe('%PDF-');
+
+    const booking = (await Booking.findOne({ where: { bookingReference: reference } }))!;
+    const built = await buildWhatsAppMessage('certificateReady', booking, event);
+    expect(built!.params).toEqual(['Rahul Sharma', event.name]);
+    expect(built!.urlButtons).toEqual([token]);
+    mockIsEmailConfigured.mockReturnValue(false);
   }, 30000);
 
   it('issues none when the organizer switches certificates off', async () => {

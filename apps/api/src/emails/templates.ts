@@ -280,6 +280,8 @@ export function postEventThankYouEmail(params: {
   galleryNote: string | null;
   feedbackUrl: string | null;
   bookingsUrl: string | null;
+  // Participation certificates attached to this email (0 = none).
+  certificateCount?: number;
 }): string {
   const button = (href: string, label: string, primary: boolean) =>
     `<a href="${escapeHtml(href)}" style="display:inline-block;margin:0 8px 8px 0;padding:10px 20px;background-color:${primary ? '#2563eb' : '#ffffff'};color:${primary ? '#ffffff' : '#2563eb'};border:1px solid #2563eb;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">${label}</a>`;
@@ -311,6 +313,18 @@ export function postEventThankYouEmail(params: {
     <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
       Hi ${escapeHtml(params.attendeeName)}, we hope you had a great time. Thank you for coming along with ${escapeHtml(params.organizerName)}.
     </p>
+
+    ${
+      params.certificateCount
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:16px 20px;font-size:14px;color:#78350f;line-height:1.5;">
+          &#127891; <strong>Your certificate${params.certificateCount > 1 ? 's' : ''} of participation ${params.certificateCount > 1 ? 'are' : 'is'} attached</strong> to this email. You can also download ${params.certificateCount > 1 ? 'them' : 'it'} from your ticket page anytime.
+        </td>
+      </tr>
+    </table>`
+        : ''
+    }
 
     ${galleryBlock}
 
