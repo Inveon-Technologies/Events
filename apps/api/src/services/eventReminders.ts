@@ -3,6 +3,7 @@ import { Event, Booking, Ticket } from '../models';
 import { sendEmail, isEmailConfigured } from './email';
 import { eventReminderEmail } from '../emails/templates';
 import { buildVenueMapUrl } from './mapsUrl';
+import { logger } from '../logger';
 
 const REMINDER_LEAD_TIME_MS = 3 * 60 * 60 * 1000; // 3 hours
 
@@ -90,8 +91,7 @@ export async function sendEventReminder(event: Event): Promise<ReminderSendResul
       result.emailsSent += 1;
       result.attendeesCovered += tickets.length;
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(`Failed to send event reminder for booking ${booking.id} (event ${event.id}):`, err);
+      logger.error({ err, bookingId: booking.id, eventId: event.id }, 'Failed to send event reminder');
     }
   }
 

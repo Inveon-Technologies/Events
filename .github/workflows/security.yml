@@ -1,0 +1,89 @@
+name: Security scan
+
+# Vulnerability scanning (#73): dependency audit on every PR and push to
+# main, container images (OS packages + bundled node_modules), Dockerfile /
+# compose misconfigurations, and committed secrets.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1' # Mondays 08:47 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Trivy is pinned by commit SHA and binary version on purpose: in March
+# 2026 almost every trivy-action tag was force-pushed to a credential
+# stealer (CVE-2026-33634 / GHSA-69fq-xp46-6x23). Never switch these
+# back to a tag. Known-good: trivy-action v0.35.0 at the SHA below,
+# trivy v0.69.3 (not v0.69.4-0.69.6).
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Fails on high/critical. Moderate findings are reported in the log
+      # (and tracked in the PR that last reviewed them) but don't block.
+      - name: npm audit (${{ matrix.app }})
+        working-directory: apps/${{ matrix.app }}
+        run: |
+          npm audit --audit-level=moderate || true
+          npm audit --audit-level=high
+
+  image-scan:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [api, web]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t events-${{ matrix.app }}:scan apps/${{ matrix.app }}
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          image-ref: events-${{ matrix.app }}:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+          format: table
+
+  config-and-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Dockerfiles, compose files: misconfigurations. Accepted findings
+      # are listed, with the reason, in .trivyignore.
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore
+      - name: Trivy secret scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          trivyignores: .trivyignore

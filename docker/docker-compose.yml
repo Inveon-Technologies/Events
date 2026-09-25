@@ -1,3 +1,12 @@
+# Log rotation for every container (Docker's json-file driver): each
+# service keeps at most 5 files of 10MB, so logs can never fill the disk.
+# The API writes structured JSON lines (pino) — see apps/api/src/logger.ts.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   nginx:
     image: nginx:1.27-alpine
@@ -20,6 +29,7 @@ services:
     depends_on:
       - api
     restart: unless-stopped
+    logging: *default-logging
 
   api:
     image: ghcr.io/inveon-technologies/events-api:${IMAGE_TAG:-latest}
@@ -38,13 +48,14 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 15s
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
   # Static build output only — copies the built React app into a shared
   # volume that nginx serves directly, then exits. Not a long-running service.
@@ -53,6 +64,7 @@ services:
     volumes:
       - web_static:/usr/share/nginx/html
     restart: "no"
+    logging: *default-logging
 
   postgres:
     image: postgres:15-alpine
@@ -68,13 +80,22 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
   redis:
     image: redis:7-alpine
-    command: redis-server --appendonly yes
+    # Persistence + memory policy tuned for the job queue — see the file.
+    command: redis-server /usr/local/etc/redis/redis.conf
     volumes:
       - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   pg_data:

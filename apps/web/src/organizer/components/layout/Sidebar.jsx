@@ -11,7 +11,8 @@ import {
   RotateCcw,
   Settings,
   Bell,
-  FileSpreadsheet
+  FileSpreadsheet,
+  BarChart3
 } from 'lucide-react';
 import { useEvents } from '../../context/EventsContext';
 import { useNotifications } from '../../context/NotificationContext';
@@ -39,6 +40,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
     { label: 'Payments', path: '/organizer/payments', icon: CreditCard },
     { label: 'Live Check-In', path: '/organizer/check-in', icon: QrCode, highlight: true },
     { label: 'Cancellations', path: '/organizer/cancellations-refunds', icon: RotateCcw },
+    { label: 'Reports', path: '/organizer/reports', icon: BarChart3 },
     { label: 'Notifications', path: '/organizer/notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount : null },
     { label: 'Settings', path: '/organizer/settings/account', icon: Settings },
   ];

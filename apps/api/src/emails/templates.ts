@@ -333,3 +333,64 @@ export function eventReminderEmail(params: {
   `;
   return emailShell(body, `${params.eventName} starts in 3 hours`);
 }
+
+// Dynamic values are HTML-escaped here: event names, notes and URLs are
+// organizer-entered text.
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function postEventThankYouEmail(params: {
+  attendeeName: string;
+  eventName: string;
+  organizerName: string;
+  bookingReference: string;
+  galleryUrl: string | null;
+  galleryNote: string | null;
+  feedbackUrl: string | null;
+  bookingsUrl: string | null;
+}): string {
+  const button = (href: string, label: string, primary: boolean) =>
+    `<a href="${escapeHtml(href)}" style="display:inline-block;margin:0 8px 8px 0;padding:10px 20px;background-color:${primary ? '#2563eb' : '#ffffff'};color:${primary ? '#ffffff' : '#2563eb'};border:1px solid #2563eb;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">${label}</a>`;
+
+  const galleryBlock = params.galleryUrl
+    ? `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;margin:0 0 24px;">
+      <tr>
+        <td style="padding:20px 24px;">
+          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Photos &amp; videos</p>
+          <p style="margin:0 0 16px;font-size:14px;color:#0f172a;line-height:1.5;">${
+            params.galleryNote ? escapeHtml(params.galleryNote) : `${escapeHtml(params.organizerName)} has shared the photos and videos from the event.`
+          }</p>
+          ${button(params.galleryUrl, 'View photos &amp; videos', true)}
+        </td>
+      </tr>
+    </table>`
+    : params.bookingsUrl
+      ? `<p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">When ${escapeHtml(params.organizerName)} shares the event photos and videos, you'll find the link on your booking page.</p>`
+      : '';
+
+  const actions = [
+    params.feedbackUrl ? button(params.feedbackUrl, 'Rate this event', !params.galleryUrl) : '',
+    params.bookingsUrl ? button(params.bookingsUrl, 'My bookings', false) : '',
+  ].join('');
+
+  const body = `
+    <h1 style="margin:0 0 8px;font-size:20px;color:#0f172a;font-weight:700;">Thanks for joining ${escapeHtml(params.eventName)}!</h1>
+    <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
+      Hi ${escapeHtml(params.attendeeName)}, we hope you had a great time. Thank you for coming along with ${escapeHtml(params.organizerName)}.
+    </p>
+
+    ${galleryBlock}
+
+    ${actions ? `<p style="margin:0 0 8px;font-size:14px;color:#475569;line-height:1.6;">How was it? Your rating helps other people pick their next event.</p><div style="margin:0 0 24px;">${actions}</div>` : ''}
+
+    <p style="margin:0;font-size:12px;color:#94a3b8;">Booking reference ${escapeHtml(params.bookingReference)}</p>
+  `;
+  return emailShell(body, `Thanks for joining ${escapeHtml(params.eventName)}`);
+}

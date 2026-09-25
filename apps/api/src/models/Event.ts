@@ -56,6 +56,7 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare refundPercentage: number | null;
   declare cancellationReason: string | null;
   declare reminderSentAt: Date | null;
+  declare postEventEmailSentAt: CreationOptional<Date | null>;
   declare genderRestriction: EventGenderRestriction | null;
   declare scheduleItems: EventScheduleItem[] | null;
   declare packingChecklist: EventPackingItem[] | null;
@@ -92,6 +93,7 @@ Event.init(
     refundPercentage: { type: DataTypes.INTEGER, allowNull: true },
     cancellationReason: { type: DataTypes.TEXT, allowNull: true },
     reminderSentAt: { type: DataTypes.DATE, allowNull: true },
+    postEventEmailSentAt: { type: DataTypes.DATE, allowNull: true },
     genderRestriction: { type: DataTypes.STRING, allowNull: true },
     scheduleItems: { type: DataTypes.JSONB, allowNull: true },
     packingChecklist: { type: DataTypes.JSONB, allowNull: true },

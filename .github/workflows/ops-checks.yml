@@ -1,0 +1,104 @@
+name: Ops checks
+
+# Verifies the operational scripts and server configs on every change to
+# them, and monthly on a schedule (so a drift is caught even when nobody
+# touches these files): backup + restore drill (#75), deploy rollback
+# drill (#70), nginx (#68/#9) and Redis (#69) configs.
+on:
+  pull_request:
+    paths:
+      - 'scripts/**'
+      - 'docker/**'
+      - 'apps/api/src/db/**'
+      - '.github/workflows/ops-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'docker/**'
+      - 'apps/api/src/db/**'
+  schedule:
+    - cron: '41 2 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-and-rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x scripts/*.sh scripts/server/*.sh scripts/tests/*.sh
+      - name: Rollback drill (deploy.sh + rollback.sh against a fake docker)
+        run: bash scripts/tests/deploy-rollback.test.sh
+      - name: Hardening script dry run
+        run: DRY_RUN=1 bash scripts/server/harden.sh
+
+  backup-restore-drill:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: inveon_events
+          POSTGRES_USER: events
+          POSTGRES_PASSWORD: events
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U events"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://events:events@localhost:5432/inveon_events
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Migrate and seed a realistic database
+        working-directory: apps/api
+        run: |
+          npm ci
+          npm run migrate
+          npm run seed
+      - name: Back up
+        run: BACKUP_DIR="$RUNNER_TEMP/backups" bash scripts/backup-db.sh
+      - name: Restore drill (fails on any row-count difference)
+        run: STRICT=1 bash scripts/restore-db.sh "$(ls "$RUNNER_TEMP"/backups/*.dump | tail -n 1)"
+
+  server-configs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: nginx -t (stack config)
+        run: |
+          docker run --rm --add-host api:127.0.0.1 \
+            -v "$PWD/docker/nginx/conf.d:/etc/nginx/conf.d:ro" \
+            nginx:1.27-alpine nginx -t
+      - name: nginx -t (TLS front door, with a throwaway certificate)
+        run: |
+          mkdir -p "$RUNNER_TEMP/le"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=events.inveontechnologies.in" \
+            -keyout "$RUNNER_TEMP/le/privkey.pem" -out "$RUNNER_TEMP/le/fullchain.pem"
+          docker run --rm \
+            -v "$PWD/docker/nginx/front-door:/etc/nginx/conf.d:ro" \
+            -v "$RUNNER_TEMP/le:/etc/letsencrypt/live/events.inveontechnologies.in:ro" \
+            nginx:1.27-alpine nginx -t
+      - name: Redis config loads with the intended policy
+        run: |
+          docker run -d --name redis-check -v "$PWD/docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro" \
+            redis:7-alpine redis-server /usr/local/etc/redis/redis.conf
+          sleep 2
+          test "$(docker exec redis-check redis-cli config get appendonly | tail -n 1)" = yes
+          test "$(docker exec redis-check redis-cli config get maxmemory-policy | tail -n 1)" = noeviction
+          docker rm -f redis-check
+      - name: docker compose config
+        run: |
+          touch apps/api/.env
+          cd docker && POSTGRES_USER=x POSTGRES_PASSWORD=x docker compose config --quiet

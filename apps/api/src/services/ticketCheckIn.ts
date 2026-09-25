@@ -32,16 +32,21 @@ export async function checkInTicket(params: {
   qrToken: string;
   checkedInByUserId: string;
 }): Promise<CheckInResult> {
-  const ticket = await Ticket.findOne({ where: { qrToken: params.qrToken.trim() } });
+  // One round trip for the ticket, its booking, event and tier — this is
+  // the hot path when a gate opens.
+  const ticket = await Ticket.findOne({
+    where: { qrToken: params.qrToken.trim() },
+    include: [
+      { model: Booking, required: true, include: [{ model: Event, required: true }] },
+      { model: TicketCategory, attributes: ['name'] },
+    ],
+  });
   if (!ticket) {
     throw new NotFoundError('No ticket found for this QR code');
   }
-
-  const booking = await Booking.findByPk(ticket.bookingId);
-  if (!booking) throw new NotFoundError('No ticket found for this QR code');
-
-  const event = await Event.findByPk(booking.eventId);
-  if (!event) throw new NotFoundError('No ticket found for this QR code');
+  const booking = ticket.get('Booking') as Booking;
+  const event = booking.get('Event') as Event;
+  const tier = ticket.get('TicketCategory') as TicketCategory | null;
 
   if (event.organizerId !== params.organizerId) {
     throw new ForbiddenError('This ticket does not belong to one of your events');
@@ -94,8 +99,6 @@ export async function checkInTicket(params: {
       { checkedInAt: current?.checkedInAt?.toISOString() },
     );
   }
-
-  const tier = await TicketCategory.findByPk(ticket.ticketCategoryId);
 
   return {
     ticketId: ticket.id,

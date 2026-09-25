@@ -1,0 +1,107 @@
+name: Load tests
+
+# Manual: booking rush (#65), steady check-in (#53) and gate rush (#66)
+# against a throwaway API + Postgres + Redis inside the runner. Numbers
+# from a shared runner are a floor, not the production figure — see
+# loadtest/README.md for running against staging.
+on:
+  workflow_dispatch:
+    inputs:
+      tickets:
+        description: Tickets to seed (split between check-in and gate rush)
+        default: '4000'
+      booking_rate:
+        description: Peak booking attempts per second
+        default: '30'
+      scanners:
+        description: Simultaneous scanners in the gate rush
+        default: '50'
+
+permissions:
+  contents: read
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: inveon_events_load
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      DATABASE_URL: postgres://test:test@localhost:5432/inveon_events_load
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: load-test-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: Install k6
+        run: |
+          curl -sSL https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz | tar xz
+          sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/k6
+          k6 version
+
+      - name: Build API, migrate, seed
+        working-directory: apps/api
+        env:
+          LOADTEST_SEED_CONFIRM: 'yes'
+        run: |
+          npm ci
+          npm run build
+          npm run migrate
+          npm run loadtest:seed -- --tickets "${{ inputs.tickets }}" --quota 300 --out ../../loadtest/seed.json
+
+      - name: Start API
+        working-directory: apps/api
+        env:
+          NODE_ENV: production
+          PORT: '3000'
+          LOG_LEVEL: warn
+          RATE_LIMITS_DISABLED: 'true'
+        run: |
+          nohup node dist/index.js > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:3000/api/health && exit 0; sleep 1; done
+          cat api.log; exit 1
+
+      - name: Booking rush (#65)
+        working-directory: loadtest
+        run: k6 run -e BASE_URL=http://localhost:3000 -e RATE=${{ inputs.booking_rate }} --summary-export=booking-summary.json booking.js
+
+      - name: Steady check-in (#53)
+        if: success() || failure()
+        working-directory: loadtest
+        run: k6 run -e BASE_URL=http://localhost:3000 --summary-export=checkin-summary.json checkin.js
+
+      - name: Gate rush (#66)
+        if: success() || failure()
+        working-directory: loadtest
+        run: k6 run -e BASE_URL=http://localhost:3000 -e SCANNERS=${{ inputs.scanners }} --summary-export=gate-rush-summary.json gate-rush.js
+
+      - name: Upload summaries
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: |
+            loadtest/*-summary.json
+            apps/api/api.log

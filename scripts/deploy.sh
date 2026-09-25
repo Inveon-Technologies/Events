@@ -20,19 +20,38 @@
 
 set -euo pipefail
 
-APP_DIR="/home/ubuntu/inveontechnologies-website"
+# Overridable so the rollback drill (scripts/tests/deploy-rollback.test.sh)
+# can run this exact script against a stubbed docker, and so a staging
+# server can use its own directory.
+APP_DIR="${APP_DIR:-/home/ubuntu/inveontechnologies-website}"
 # Deliberately outside any git-managed checkout — this is deploy-state
 # bookkeeping, not part of either repo.
-LAST_GOOD_FILE="$HOME/.events_last_good_tag"
-MAX_ATTEMPTS=10
-SLEEP_SECONDS=3
+LAST_GOOD_FILE="${LAST_GOOD_FILE:-$HOME/.events_last_good_tag}"
+# Every tag that deployed healthy, oldest first — scripts/rollback.sh
+# picks from it.
+HISTORY_FILE="${HISTORY_FILE:-$HOME/.events_deploy_history}"
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-10}"
+SLEEP_SECONDS="${SLEEP_SECONDS:-3}"
+# Set by scripts/rollback.sh: going back to an older image never runs
+# migrations (the schema stays migrated — see run_migrations).
+SKIP_MIGRATIONS="${SKIP_MIGRATIONS:-0}"
+# Compose service names and the image-tag variable. Defaults match the
+# production stack; a staging server running this repo's own
+# docker/docker-compose.yml uses API_SERVICE=api WEB_SERVICE=web
+# TAG_VAR=IMAGE_TAG NGINX_SERVICE=nginx (see docs/ops/RUNBOOK.md).
+API_SERVICE="${API_SERVICE:-events-api}"
+WEB_SERVICE="${WEB_SERVICE:-events-web}"
+TAG_VAR="${TAG_VAR:-EVENTS_IMAGE_TAG}"
+# If set, that nginx service is reloaded after a swap so it re-resolves
+# the new API container's address.
+NGINX_SERVICE="${NGINX_SERVICE:-}"
 
 NEW_TAG="${1:?Usage: deploy.sh <image_tag>}"
 
 cd "$APP_DIR"
 
 write_tag() {
-  echo "EVENTS_IMAGE_TAG=${1}" > .env.deploy
+  echo "${TAG_VAR}=${1}" > .env.deploy
 }
 
 # --env-file REPLACES the directory's default .env auto-load rather than
@@ -48,8 +67,15 @@ compose() {
 
 deploy_tag() {
   write_tag "$1"
-  compose pull events-api events-web
-  compose up -d --no-deps events-api events-web
+  compose pull "$API_SERVICE" "$WEB_SERVICE"
+  swap
+}
+
+swap() {
+  compose up -d --no-deps "$API_SERVICE" "$WEB_SERVICE"
+  if [ -n "$NGINX_SERVICE" ]; then
+    compose exec -T "$NGINX_SERVICE" nginx -s reload || true
+  fi
 }
 
 run_migrations() {
@@ -66,7 +92,7 @@ run_migrations() {
   # the swap (and a rollback returns to it), migrations must stay
   # backward-compatible with the previous release: add columns/tables
   # first, drop or rename only in a later release.
-  compose run --rm --no-deps -T events-api node dist/db/migrate.js up
+  compose run --rm --no-deps -T "$API_SERVICE" node dist/db/migrate.js up
 }
 
 health_check() {
@@ -76,7 +102,7 @@ health_check() {
   # depend on DNS/TLS/the shared nginx's routing being correct too.
   # events-api's own Dockerfile installs curl specifically for this.
   for i in $(seq 1 "$MAX_ATTEMPTS"); do
-    if docker compose exec -T events-api curl -sf http://localhost:3000/health > /dev/null; then
+    if docker compose exec -T "$API_SERVICE" curl -sf http://localhost:3000/health > /dev/null; then
       return 0
     fi
     echo "Health check attempt $i/$MAX_ATTEMPTS failed, retrying in ${SLEEP_SECONDS}s..."
@@ -93,9 +119,11 @@ if [ -f "$LAST_GOOD_FILE" ]; then
 fi
 
 write_tag "$NEW_TAG"
-compose pull events-api events-web
+compose pull "$API_SERVICE" "$WEB_SERVICE"
 
-if ! run_migrations; then
+if [ "$SKIP_MIGRATIONS" = "1" ]; then
+  echo "== Skipping migrations (rollback) =="
+elif ! run_migrations; then
   echo "== Migrations failed. The running version was never replaced. =="
   # Put .env.deploy back so a later manual `docker compose up` doesn't
   # pick up the tag that failed.
@@ -105,10 +133,11 @@ if ! run_migrations; then
   exit 1
 fi
 
-compose up -d --no-deps events-api events-web
+swap
 
 if health_check; then
   echo "$NEW_TAG" > "$LAST_GOOD_FILE"
+  echo "$NEW_TAG" >> "$HISTORY_FILE"
   echo "== Deploy succeeded, migrations applied, health check passed. =="
   exit 0
 fi
