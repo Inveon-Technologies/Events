@@ -650,11 +650,9 @@ superAdminRouter.post(
   (req, res, next) => {
     imageUpload.single('file')(req, res, (err: unknown) => {
       if (err) {
-        res
-          .status(400)
-          .json({
-            error: err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 5 MB' : 'Upload failed',
-          });
+        res.status(400).json({
+          error: err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 5 MB' : 'Upload failed',
+        });
         return;
       }
       next();
