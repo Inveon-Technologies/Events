@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
@@ -148,5 +148,57 @@ describe('CreateEvent: event media picker', () => {
     expect(uploads[0].method).toBe('POST');
     expect(uploads[0].body).toBeInstanceOf(FormData);
     expect(uploads[0].headers.Authorization).toBe('Bearer fake-token');
+  });
+
+  it('shows each file, lets the organizer retry a failed upload, and accepts dropped photos', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url, opts) => {
+        if (String(url).includes('/organizer/events') && opts?.method === 'POST') {
+          return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 'evt-new-2', slug: 'x' }) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ organizerName: 'Org', counts: {}, events: [] }) });
+      }),
+    );
+    // b.jpg fails the first time only.
+    const attempts = {};
+    class FakeXhr {
+      constructor() {
+        this.upload = {};
+      }
+      open(method, url) {
+        this.url = url;
+      }
+      setRequestHeader() {}
+      send(body) {
+        const name = body.get('file').name;
+        attempts[name] = (attempts[name] ?? 0) + 1;
+        setTimeout(() => {
+          const fail = name === 'b.jpg' && attempts[name] === 1;
+          this.status = fail ? 500 : 201;
+          this.responseText = JSON.stringify(fail ? { error: 'Server busy' } : { id: `m-${name}`, mediaType: 'photo', url: '/x.jpg' });
+          this.onload?.();
+        }, 5);
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
+
+    renderAt('/organizer/create-event/basic');
+    const dropZone = document.querySelector('input[type="file"][accept*="image"]').closest('label').parentElement;
+    fireEvent.drop(dropZone, {
+      dataTransfer: { files: [makeFile('a.jpg', 1000, 'image/jpeg'), makeFile('b.jpg', 1000, 'image/jpeg'), makeFile('notes.pdf', 10, 'application/pdf')] },
+    });
+    await waitFor(() => expect(screen.getAllByAltText('')).toHaveLength(2));
+    expect(screen.getByText(/isn't a JPG, PNG or WebP photo/)).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText(/Rajgad Sunrise Trek/i), 'Retry Event');
+    await user.click(screen.getByText('Save as Draft'));
+
+    await waitFor(() => expect(screen.getByText("1 file didn't upload")).toBeInTheDocument());
+    expect(screen.getByText('Server busy')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Try again/ }));
+    await waitFor(() => expect(attempts['b.jpg']).toBe(2));
+    expect(attempts['a.jpg']).toBe(1);
   });
 });
