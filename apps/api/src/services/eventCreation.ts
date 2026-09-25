@@ -3,6 +3,7 @@ import { Event, TicketCategory, Organizer } from '../models';
 import { parseIstDateTime } from './istTime';
 import type { EventLocationPoint, EventLocationPointType, EventPartner } from '../models/Event';
 import { isAcceptableImageUrl } from './designAssets';
+import { collectionModeFor } from './organizerSettlements';
 
 function slugify(input: string): string {
   return input
@@ -232,9 +233,13 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
   const hasPaidTier = params.ticketTiers.some((t) => t.price > 0);
   if (params.status === 'published' && hasPaidTier) {
     const organizer = await Organizer.findByPk(params.organizerId);
-    if (!organizer || organizer.cashfreeVendorStatus !== 'active') {
+    // Unverified organizers can publish too: their online payments are
+    // collected into the platform account and settled once they're
+    // verified (organizerSettlements.ts). Only a Cashfree-blocked vendor
+    // can't take paid bookings at all.
+    if (!collectionModeFor(organizer)) {
       throw new ValidationError(
-        'Complete payment verification before publishing an event with paid tickets — see Organizer Verification in your account settings.',
+        'Online payments are blocked for this account by our payment provider — contact support before publishing an event with paid tickets.',
       );
     }
   }

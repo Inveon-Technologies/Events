@@ -3,6 +3,7 @@ import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Booking, Ticket, Payment, Organizer } from '../models';
 import { randomUUID, randomInt } from 'crypto';
 import { isCustomerBlocked } from './accountBlocks';
+import { collectionModeFor } from './organizerSettlements';
 
 export interface CreateBookingParams {
   eventId: string;
@@ -36,14 +37,14 @@ export class NotFoundError extends Error {}
 // closed, or already started).
 export class BookingValidationError extends Error {}
 
-// A paid ticket booked online needs a Cashfree vendor split to actually
-// pay the organizer their share — an organizer who hasn't completed
-// verification has no vendor for that split to go to. Cash bookings are
-// unaffected: the organizer collects that money directly, no Cashfree
-// involvement at all.
+// A paid ticket booked online needs some way to collect the money: a
+// vendor split for a verified organizer, or the platform's own account
+// for one still being verified. Only a vendor Cashfree has blocked has
+// neither. Cash bookings are unaffected: the organizer collects that
+// money directly, no Cashfree involvement at all.
 export class OrganizerNotVerifiedError extends Error {
   constructor() {
-    super('This organizer has not completed payment verification yet — online payment is not available for this event');
+    super('Online payment is not available for this event right now — please contact the organizer');
   }
 }
 
@@ -165,7 +166,11 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
 
     if (params.paymentMethod === 'online' && ticketCategory.pricePaise > 0) {
       const organizer = await Organizer.findByPk(event.organizerId, { transaction: t });
-      if (!organizer || organizer.cashfreeVendorStatus !== 'active') {
+      // Verified organizers are paid by vendor split; unverified ones are
+      // collected into the platform account and settled later (see
+      // organizerSettlements.ts). Only a Cashfree-blocked vendor has no
+      // way to take online payment.
+      if (!collectionModeFor(organizer)) {
         throw new OrganizerNotVerifiedError();
       }
     }

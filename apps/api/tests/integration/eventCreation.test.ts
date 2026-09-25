@@ -348,6 +348,7 @@ describe('organizer event creation (real DB)', () => {
 describe('organizer event creation: publish-time Cashfree verification gate', () => {
   const app = createApp();
   let unverifiedToken: string;
+  let unverifiedOrgId: string;
   let verifiedToken: string;
   const suffix = Date.now();
 
@@ -356,6 +357,7 @@ describe('organizer event creation: publish-time Cashfree verification gate', ()
       name: `Publish Gate Unverified Org ${suffix}`,
       slug: `publish-gate-unverified-${suffix}`,
     });
+    unverifiedOrgId = unverifiedOrg.id;
     const unverifiedUser = await User.create({
       organizerId: unverifiedOrg.id,
       email: `publish-gate-unverified-${suffix}@example.com`,
@@ -385,19 +387,38 @@ describe('organizer event creation: publish-time Cashfree verification gate', ()
     await sequelize.close();
   });
 
-  it('refuses to publish an event with a paid ticket tier when the organizer is not verified', async () => {
+  it('lets an organizer who is not verified yet publish an event with a paid ticket tier', async () => {
     const res = await request(app)
       .post('/api/organizer/events')
       .set('Authorization', `Bearer ${unverifiedToken}`)
       .send({
-        title: 'Should Be Blocked Paid Event',
+        title: 'Unverified Paid Event',
         startDate: '2026-12-12',
         startTime: '07:00',
         ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
         status: 'published',
       });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toMatch(/verification/i);
+    expect(res.status).toBe(201);
+  });
+
+  it('refuses to publish a paid event when Cashfree has blocked the organizer', async () => {
+    await Organizer.update({ cashfreeVendorId: `publish_gate_blocked_${suffix}`, cashfreeVendorStatus: 'blocked' }, { where: { id: unverifiedOrgId } });
+    try {
+      const res = await request(app)
+        .post('/api/organizer/events')
+        .set('Authorization', `Bearer ${unverifiedToken}`)
+        .send({
+          title: 'Should Be Blocked Paid Event',
+          startDate: '2026-12-12',
+          startTime: '07:00',
+          ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+          status: 'published',
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/blocked/i);
+    } finally {
+      await Organizer.update({ cashfreeVendorId: null, cashfreeVendorStatus: 'not_started' }, { where: { id: unverifiedOrgId } });
+    }
   });
 
   it('still allows saving a paid event as a DRAFT when the organizer is not verified', async () => {

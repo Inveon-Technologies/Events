@@ -239,6 +239,11 @@ export interface CreateOrderParams {
   // Cashfree defaults to 30 days — far longer than this platform holds
   // a pending booking's reserved tickets (see pendingBookingExpiry.ts).
   expiresAt?: Date;
+  // Free-form key/value tags stored on the Cashfree order and shown in
+  // the Cashfree dashboard — used to record which organizer and customer
+  // a platform-collected payment belongs to, for settling later.
+  orderTags?: Record<string, string>;
+  orderNote?: string;
 }
 
 export interface CashfreeOrderResponse {
@@ -265,6 +270,8 @@ export async function cashfreeCreateOrder(params: CreateOrderParams): Promise<Ca
       notify_url: params.notifyUrl,
     },
     ...(params.expiresAt ? { order_expiry_time: params.expiresAt.toISOString() } : {}),
+    ...(params.orderTags ? { order_tags: params.orderTags } : {}),
+    ...(params.orderNote ? { order_note: params.orderNote } : {}),
     ...(params.vendorSplit
       ? {
           order_splits: [
