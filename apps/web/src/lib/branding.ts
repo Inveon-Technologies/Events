@@ -23,6 +23,8 @@ export interface Branding {
   supportPhone: string | null;
   primaryColor: string;
   companyName: string;
+  companyAddress?: string | null;
+  companyGstin?: string | null;
   certificateFooter: CertificateFooterBranding;
 }
 

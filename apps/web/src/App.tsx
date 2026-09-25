@@ -16,6 +16,7 @@ import { BookingNotFoundPage } from './pages/BookingNotFoundPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
 import { FeedbackPage } from './pages/FeedbackPage';
 import { TicketPage } from './pages/TicketPage';
+import { ContactPage, TermsPage, PrivacyPage, RefundPolicyPage } from './pages/LegalPages';
 import { OrganizerApp } from './organizer/OrganizerApp';
 import { getCustomerSession } from './lib/customerSession';
 
@@ -56,6 +57,11 @@ export default function App() {
       <Route path="/bookings/:bookingId/confirmed" element={<BookingConfirmedPage />} />
       <Route path="/bookings/:bookingId/manage" element={<ManageBookingPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/contact" element={<ContactPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/refund-policy" element={<RefundPolicyPage />} />
+      <Route path="/cancellation-policy" element={<Navigate to="/refund-policy" replace />} />
       <Route path="/bookings/:bookingReference/feedback" element={<FeedbackPage />} />
       <Route path="/bookings/:bookingId" element={<BookingReferenceRedirect />} />
       {/* Ticket page behind the signed link sent on WhatsApp and email */}
