@@ -1,7 +1,7 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocation, useParams, useNavigate, Link } from 'react-router-dom';
 import { load as loadCashfree } from '@cashfreepayments/cashfree-js';
-import { fetchEventData, EventDetails, EventNotFoundError } from '../lib/eventDetails';
+import { fetchEventData, EventDetails, EventNotFoundError, useLiveAvailability } from '../lib/eventDetails';
 import { EventUnavailablePage } from './EventUnavailablePage';
 import { formatINR } from '../lib/format';
 import { apiRequest, ApiError } from '../organizer/lib/api';
@@ -38,6 +38,7 @@ export function CheckoutPage() {
       cancelled = true;
     };
   }, [eventId]);
+  useLiveAvailability(event?.id, setEvent);
 
   // One ticket type per booking — that's what the backend books (a
   // booking belongs to exactly one ticket category). Quantities are
@@ -45,8 +46,20 @@ export function CheckoutPage() {
   // event page passed in (clamped to what that tier actually allows),
   // or 1 of the first tier with seats left.
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const quantitiesRef = useRef(quantities);
+  quantitiesRef.current = quantities;
   useEffect(() => {
     if (!event) return;
+    // A live seat-count refresh keeps what the customer already picked,
+    // only trimming it if fewer seats are left now.
+    const prev = quantitiesRef.current;
+    const pickedId = Object.keys(prev).find((id) => prev[id] > 0);
+    const picked = pickedId ? event.ticketCategories.find((t) => t.id === pickedId) : undefined;
+    if (picked) {
+      const qty = Math.min(prev[picked.id], picked.maxPerBooking, picked.available);
+      if (qty !== prev[picked.id]) setQuantities({ [picked.id]: qty });
+      return;
+    }
     const passed = (location.state as { quantities?: Record<string, number> } | null)?.quantities ?? {};
     const requested = event.ticketCategories.find((t) => (passed[t.id] ?? 0) > 0);
     const tier = requested ?? event.ticketCategories.find((t) => t.available > 0);
@@ -644,6 +657,10 @@ export function CheckoutPage() {
                         ))}
                       </div>
 
+                      <p className="text-body-sm text-on-surface-variant mt-space-md flex items-center gap-1.5">
+                        <span className="material-symbols-outlined text-base text-tertiary">timer</span>
+                        Your seats are held for 2 minutes while you pay. If the payment isn't finished by then they go back on sale.
+                      </p>
                       {bookingError && (
                         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 mt-space-md" role="alert">
                           {bookingError}

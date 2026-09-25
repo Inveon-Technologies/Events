@@ -8,7 +8,8 @@ import { isQueueEnabled, startQueueWorkers, closeQueues } from './queue';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const REMINDER_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes — frequent enough that no event's real 3-hour mark is ever missed by more than this, without hammering the database
-const PENDING_EXPIRY_POLL_INTERVAL_MS = 5 * 60 * 1000;
+// Short, so unpaid seat holds (SEAT_HOLD_MS, 2 min) go back on sale promptly.
+const PENDING_EXPIRY_POLL_INTERVAL_MS = 30 * 1000;
 const POST_EVENT_POLL_INTERVAL_MS = 15 * 60 * 1000;
 
 if (process.env.RATE_LIMITS_DISABLED === 'true') {

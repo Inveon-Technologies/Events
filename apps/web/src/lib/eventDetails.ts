@@ -1,4 +1,5 @@
 // The public event page's data, built only from the real backend.
+import { useEffect } from 'react';
 import type { LocationPoint } from './mapPoints';
 
 export interface TicketCategory {
@@ -192,4 +193,55 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
           }]
         : [],
   };
+}
+
+// Keeps an event's per-tier seat counts live while the page is open:
+// polls the lightweight availability endpoint (every 15 s, and whenever
+// the tab comes back into view) and merges the counts into the event.
+// Seats others are holding for payment come back within a couple of
+// minutes if they don't pay, so "N left" moves in both directions.
+export const AVAILABILITY_POLL_MS = 15_000;
+
+export function applyAvailability(event: EventDetails, tiers: { id: string; available: number }[]): EventDetails {
+  const byId = new Map(tiers.map((t) => [t.id, t.available]));
+  let changed = false;
+  const ticketCategories = event.ticketCategories.map((t) => {
+    const available = byId.get(t.id);
+    if (available === undefined || available === t.available) return t;
+    changed = true;
+    return { ...t, available };
+  });
+  if (!changed) return event;
+  return { ...event, ticketCategories, availableSeats: ticketCategories.reduce((sum, t) => sum + t.available, 0) };
+}
+
+export function useLiveAvailability(
+  eventId: string | undefined,
+  setEvent: (update: (prev: EventDetails | null) => EventDetails | null) => void,
+): void {
+  useEffect(() => {
+    if (!eventId) return undefined;
+    let stopped = false;
+    const refresh = async () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      try {
+        const res = await fetch(`/api/events/${encodeURIComponent(eventId)}/availability`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const body = (await res.json()) as { tiers?: { id: string; available: number }[] };
+        if (!stopped && Array.isArray(body.tiers)) setEvent((prev) => (prev ? applyAvailability(prev, body.tiers!) : prev));
+      } catch {
+        // Offline for a moment — the next tick tries again.
+      }
+    };
+    const timer = setInterval(refresh, AVAILABILITY_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [eventId, setEvent]);
 }
