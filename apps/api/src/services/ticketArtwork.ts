@@ -17,7 +17,6 @@ import { ticketDisplayReference } from './ticketLinks';
 //     the WhatsApp confirmation's header image and on the ticket page;
 //   - renderTicketPdf: one A4 page per participant, each with its QR.
 
-
 const IST: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Kolkata' };
 
 export interface TicketArtworkTicket {
@@ -127,8 +126,6 @@ function roundRect(ctx: SKRSContext2D, x: number, y: number, w: number, h: numbe
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
-
-
 
 const W = 1600;
 const H = 900;
@@ -307,7 +304,9 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
     eventDate: data.eventDate,
     tagline: data.tagline,
   });
-  const partnerLogos = await Promise.all(data.partners.map(async (p) => emailSafePng(await loadStoredImage(p.logoUrl, 4 * 1024 * 1024), 300, 150)));
+  const partnerLogos = await Promise.all(
+    data.partners.map(async (p) => emailSafePng(await loadStoredImage(p.logoUrl, 4 * 1024 * 1024), 300, 150)),
+  );
   const { venue, city } = venueParts(data.venueAddress);
   const badge = statusBadge(data);
 
@@ -321,8 +320,20 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
     doc.registerFont('R', path.join(FONT_DIR, 'Inter_400Regular.ttf'));
     doc.registerFont('S', path.join(FONT_DIR, 'Inter_600SemiBold.ttf'));
     doc.registerFont('B', path.join(FONT_DIR, 'Inter_700Bold.ttf'));
-    const t = (font: 'R' | 'S' | 'B', size: number, color: string, str: string, x: number, y: number, opts: PDFKit.Mixins.TextOptions = {}) =>
-      doc.font(font).fontSize(size).fillColor(color).text(str, x, y, { lineBreak: opts.width !== undefined, ...opts });
+    const t = (
+      font: 'R' | 'S' | 'B',
+      size: number,
+      color: string,
+      str: string,
+      x: number,
+      y: number,
+      opts: PDFKit.Mixins.TextOptions = {},
+    ) =>
+      doc
+        .font(font)
+        .fontSize(size)
+        .fillColor(color)
+        .text(str, x, y, { lineBreak: opts.width !== undefined, ...opts });
 
     const X = 24;
     const Y = 24;
@@ -346,8 +357,15 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
 
       // Date / time / venue bar
       const barY = Y + headerH + 8;
-      doc.roundedRect(X + 16, barY, heroW - 32, 44, 7).fillOpacity(0.9).fill('#000000').fillOpacity(1);
-      doc.roundedRect(X + 16, barY, heroW - 32, 44, 7).lineWidth(0.6).stroke('#3f3f46');
+      doc
+        .roundedRect(X + 16, barY, heroW - 32, 44, 7)
+        .fillOpacity(0.9)
+        .fill('#000000')
+        .fillOpacity(1);
+      doc
+        .roundedRect(X + 16, barY, heroW - 32, 44, 7)
+        .lineWidth(0.6)
+        .stroke('#3f3f46');
       const meta: [string, string, string | null][] = [
         ['DATE', istDateLabel(data.eventDate).toUpperCase(), istWeekday(data.eventDate).toUpperCase()],
         ['REPORTING TIME', istTimeLabel(data.gateOpenTime ?? data.eventDate), null],
@@ -368,7 +386,10 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
       // Attendee strip
       const sy = barY + 54;
       doc.roundedRect(X + 16, sy, heroW - 32, 48, 7).fill(PDF_COLORS.strip);
-      doc.roundedRect(X + 16, sy, heroW - 32, 48, 7).lineWidth(0.6).stroke(PDF_COLORS.line);
+      doc
+        .roundedRect(X + 16, sy, heroW - 32, 48, 7)
+        .lineWidth(0.6)
+        .stroke(PDF_COLORS.line);
       t('B', 6.5, PDF_COLORS.muted, 'ENTRY FOR', X + 30, sy + 10);
       t('B', 13, '#ffffff', ticket.attendeeName, X + 30, sy + 21, { width: 150, height: 17, ellipsis: true });
       t('B', 6.5, PDF_COLORS.muted, 'TICKET TYPE', X + 180, sy + 10);
@@ -383,7 +404,9 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
       t('S', 7, '#cbd5e1', 'BOOKING ID:', idX, sy + 27);
       t('B', 7.5, '#ffffff', data.bookingReference, idX + 50, sy + 26.5, { width: idW, height: 10, ellipsis: true });
       t('B', 6.5, PDF_COLORS.muted, 'STATUS', X + heroW - 16 - 12 - bw, sy + 8, { width: bw, align: 'right' });
-      doc.roundedRect(X + heroW - 16 - 12 - bw, sy + 20, bw, 17, 8.5).fill(badge.text === 'CONFIRMED' && ticket.status !== 'checked_in' ? '#10b981' : '#64748b');
+      doc
+        .roundedRect(X + heroW - 16 - 12 - bw, sy + 20, bw, 17, 8.5)
+        .fill(badge.text === 'CONFIRMED' && ticket.status !== 'checked_in' ? '#10b981' : '#64748b');
       t('B', 8, '#ffffff', statusText, X + heroW - 16 - 12 - bw, sy + 24.5, { width: bw, align: 'center' });
 
       // QR stub
@@ -392,7 +415,13 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
       doc.fillColor('#d4af37').fillOpacity(0.35);
       for (let dy = Y + 6; dy < Y + heroH; dy += 10) for (let dx = stubX + 6; dx < X + W; dx += 10) doc.circle(dx, dy, 0.45).fill();
       doc.restore();
-      doc.moveTo(stubX, Y).lineTo(stubX, Y + heroH).dash(4, { space: 3 }).lineWidth(1.2).stroke('#b0b7c3').undash();
+      doc
+        .moveTo(stubX, Y)
+        .lineTo(stubX, Y + heroH)
+        .dash(4, { space: 3 })
+        .lineWidth(1.2)
+        .stroke('#b0b7c3')
+        .undash();
       const stubW = W - heroW;
       t('B', 10.5, '#0f172a', 'SCAN FOR ENTRY', stubX, Y + 26, { width: stubW, align: 'center', characterSpacing: 1.6 });
       const qr = 168;
@@ -406,7 +435,11 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
       const py = Y + heroH;
       const footerY = doc.page.height - 24 - 26;
       doc.rect(X, py, W, footerY - py).fill('#fdfbf6');
-      doc.moveTo(X, py).lineTo(X + W, py).lineWidth(0.6).stroke('#e2e8f0');
+      doc
+        .moveTo(X, py)
+        .lineTo(X + W, py)
+        .lineWidth(0.6)
+        .stroke('#e2e8f0');
       const techW = 250;
       if (data.partners.length > 0) {
         t('B', 8, PDF_COLORS.ink, 'PARTNERS & SUPPORTERS', X + 18, py + 14, { characterSpacing: 1.4 });
@@ -422,8 +455,14 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
           doc.roundedRect(cx, cy, tw, th, 5).fillAndStroke('#ffffff', '#e2e8f0');
           const logo = partnerLogos[k];
           if (logo) doc.image(logo, cx + 8, cy + 5, { fit: [tw - 16, th - 26], align: 'center', valign: 'center' });
-          t('B', 6.5, '#1e293b', (p.role || p.name).toUpperCase(), cx + 4, cy + th - 19, { width: tw - 8, align: 'center', height: 8, ellipsis: true });
-          if (p.role) t('R', 6, PDF_COLORS.muted, p.name, cx + 4, cy + th - 10, { width: tw - 8, align: 'center', height: 7, ellipsis: true });
+          t('B', 6.5, '#1e293b', (p.role || p.name).toUpperCase(), cx + 4, cy + th - 19, {
+            width: tw - 8,
+            align: 'center',
+            height: 8,
+            ellipsis: true,
+          });
+          if (p.role)
+            t('R', 6, PDF_COLORS.muted, p.name, cx + 4, cy + th - 10, { width: tw - 8, align: 'center', height: 7, ellipsis: true });
         });
       }
       const tx = data.partners.length > 0 ? X + W - techW - 12 : X + (W - techW) / 2;
@@ -439,7 +478,11 @@ export async function renderTicketPdf(data: TicketArtworkData): Promise<Buffer> 
       mark(tx + 22, py + 46);
       t('B', 11, '#0f172a', 'INVEON', tx + 46, py + 47);
       t('B', 5.5, '#0050cb', 'TECHNOLOGIES', tx + 46.5, py + 61, { characterSpacing: 1 });
-      doc.moveTo(tx + techW / 2, py + 44).lineTo(tx + techW / 2, py + 72).lineWidth(0.6).stroke('#cbd5e1');
+      doc
+        .moveTo(tx + techW / 2, py + 44)
+        .lineTo(tx + techW / 2, py + 72)
+        .lineWidth(0.6)
+        .stroke('#cbd5e1');
       mark(tx + techW / 2 + 22, py + 46);
       t('B', 11, '#0f172a', 'INVEON', tx + techW / 2 + 46, py + 47);
       t('B', 5.5, '#0050cb', 'EVENTS', tx + techW / 2 + 46.5, py + 61, { characterSpacing: 1 });

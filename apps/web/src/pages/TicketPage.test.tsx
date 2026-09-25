@@ -69,8 +69,12 @@ describe('TicketPage (/t/:token)', () => {
     expect(screen.queryByText(/Partners & Supporters/)).not.toBeInTheDocument();
   });
 
-  it('shows the organizer\'s background, logo and partners, in the desktop layout on wide screens', async () => {
-    vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('1024'), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  it("shows the organizer's background, logo and partners, in the desktop layout on wide screens", async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('1024'),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
     renderAt(
       detail({
         eventName: 'Dandiya Night 2026',

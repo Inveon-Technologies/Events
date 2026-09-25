@@ -255,7 +255,7 @@ export function TicketPage() {
               bookingReference: detail.bookingReference,
               attendeeName: shown?.attendeeName ?? '—',
               tierName: shown?.tierName ?? '—',
-              ticketId: shown ? shown.displayReference ?? ticketId(shown.ticketReference) : '—',
+              ticketId: shown ? (shown.displayReference ?? ticketId(shown.ticketReference)) : '—',
               statusText: status.text,
               statusTone: status.tone,
               quantity: 1,
@@ -280,7 +280,8 @@ export function TicketPage() {
                 aria-label="Share Ticket"
                 className="flex items-center justify-center gap-2 py-3 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-brand-600 font-semibold text-sm"
               >
-                <Icon name="share" className="text-[20px]" /> <span className="hidden lg:inline">{copied ? 'Link copied' : 'Share Ticket'}</span>
+                <Icon name="share" className="text-[20px]" />{' '}
+                <span className="hidden lg:inline">{copied ? 'Link copied' : 'Share Ticket'}</span>
               </button>
               <Link
                 to="/bookings/my"
