@@ -6,6 +6,7 @@ import { releaseBookingTickets, reserveBookingTickets } from './bookingTickets';
 import { enqueueNotification } from '../queue';
 import { enqueueWhatsApp } from './whatsapp/messages';
 import { logger } from '../logger';
+import { collectionModeFor } from './organizerSettlements';
 
 
 // How long a customer has to finish paying once checkout starts. The
@@ -34,15 +35,27 @@ export interface CreateOrderForBookingResult {
   mode: 'production' | 'sandbox';
 }
 
+// Cashfree order_tags values are capped at 255 characters and
+// order_note at 200.
+function clip(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
+}
+
 // createBooking() (bookingCreation.ts) already refuses an online booking
-// for a paid tier unless the organizer's Cashfree vendor is active —
-// this function trusts that gate rather than re-checking it, since
-// re-deriving "is this organizer verified" here would just be a second
-// copy of the same rule to keep in sync.
+// for a paid tier when collectionModeFor() gives no way to collect —
+// this re-derives the mode (rather than re-gating) so the order is built
+// for whichever way the organizer can be paid right now:
+// - verified: a vendor split pays the organizer their share directly;
+// - not yet verified: no split, the whole amount lands in the
+//   platform's own Cashfree account, and the payment row records the
+//   organizer's share as pending settlement (organizerSettlements.ts).
+// Either way the order carries the organizer id and customer name in
+// its tags and note, and the payment row stores them too.
 export async function createCashfreeOrderForBooking(params: CreateOrderForBookingParams): Promise<CreateOrderForBookingResult> {
   const organizer = await Organizer.findByPk(params.organizerId);
-  if (!organizer || !organizer.cashfreeVendorId) {
-    throw new NotFoundError('Organizer has no registered payment vendor');
+  const mode = collectionModeFor(organizer);
+  if (!organizer || !mode) {
+    throw new NotFoundError('Online payment is not available for this organizer');
   }
 
   const totalRupees = params.totalAmountPaise / 100;
@@ -64,13 +77,34 @@ export async function createCashfreeOrderForBooking(params: CreateOrderForBookin
     customerName: params.customerName,
     customerEmail: params.customerEmail,
     customerPhone: params.customerPhone,
-    vendorSplit: { vendorId: organizer.cashfreeVendorId, amountRupees: vendorShareRupees },
+    vendorSplit: mode === 'split' ? { vendorId: organizer.cashfreeVendorId!, amountRupees: vendorShareRupees } : undefined,
     returnUrl: params.returnUrl,
     notifyUrl: `${apiPublicUrl}/api/webhooks/cashfree`,
     expiresAt: new Date(Date.now() + ONLINE_PAYMENT_WINDOW_MS),
+    orderTags: {
+      booking_reference: params.bookingReference,
+      organizer_id: organizer.id,
+      organizer_name: clip(organizer.name, 255),
+      customer_name: clip(params.customerName, 255),
+      collection_mode: mode,
+    },
+    orderNote: clip(
+      `${mode === 'platform' ? 'Platform collection (settle to organizer)' : 'Vendor split'} | organizer ${organizer.id} | customer ${params.customerName}`,
+      200,
+    ),
   });
 
-  await Payment.update({ gatewayReference: orderResponse.order_id }, { where: { bookingId: params.bookingId } });
+  await Payment.update(
+    {
+      gatewayReference: orderResponse.order_id,
+      collectionMode: mode,
+      organizerId: organizer.id,
+      customerName: params.customerName,
+      organizerSharePaise: Math.round(vendorShareRupees * 100),
+      settlementStatus: mode === 'platform' ? 'pending' : null,
+    },
+    { where: { bookingId: params.bookingId } },
+  );
 
   return { paymentSessionId: orderResponse.payment_session_id, mode: cashfreeMode() };
 }

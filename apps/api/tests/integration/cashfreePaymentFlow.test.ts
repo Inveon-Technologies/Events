@@ -6,6 +6,7 @@ import { Organizer, User, Event, TicketCategory, Booking, Payment, Ticket } from
 import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
 import { cashfreeCreateOrder } from '../../src/services/cashfreeClient';
+import { getPendingSettlements, getOrganizerPendingSettlementPaise, markOrganizerSettled, SettlementError } from '../../src/services/organizerSettlements';
 
 jest.mock('../../src/services/cashfreeClient', () => {
   const actual = jest.requireActual('../../src/services/cashfreeClient');
@@ -93,16 +94,8 @@ describe('real payment flow: booking -> order -> webhook (real DB, Cashfree API 
     const unverifiedOrg = await Organizer.create({
       name: `Unverified Payment Org ${suffix}`,
       slug: `unverified-payment-org-${suffix}`,
-      // Starts verified so the event below can actually be published
-      // (eventCreation.ts's publish-time gate would otherwise refuse
-      // it) — then downgraded afterward, simulating verification
-      // lapsing or being revoked after a paid event already went live.
-      // That's the actual scenario the booking-time gate in
-      // bookingCreation.ts defends against; an organizer who was never
-      // verified in the first place can no longer reach this state at
-      // all, now that publishing itself is gated too.
-      cashfreeVendorId: `unverified_payment_org_${suffix}`,
-      cashfreeVendorStatus: 'active',
+      // Never verified — publishing a paid event is allowed, and online
+      // payments for it are collected into the platform account.
     });
     unverifiedOrgId = unverifiedOrg.id;
     const unverifiedOwner = await User.create({
@@ -126,11 +119,6 @@ describe('real payment flow: booking -> order -> webhook (real DB, Cashfree API 
       });
     unverifiedEventId = unverifiedEventRes.body.id;
     unverifiedTierId = (await TicketCategory.findOne({ where: { eventId: unverifiedEventId } }))!.id;
-
-    // Now revoke it — the event stays published, matching real life:
-    // taking away a vendor's active status doesn't retroactively
-    // unpublish whatever they already put live.
-    await unverifiedOrg.update({ cashfreeVendorStatus: 'not_started' });
   });
 
   afterAll(async () => {
@@ -160,12 +148,71 @@ describe('real payment flow: booking -> order -> webhook (real DB, Cashfree API 
     };
   }
 
-  it('rejects an online booking for a paid tier when the organizer is not verified, with a clear 422', async () => {
+  it('collects an unverified organizer\'s online payment into the platform account, tagged with organizer id and customer name', async () => {
+    mockCreateOrder.mockClear();
     const res = await request(app)
       .post(`/api/events/${unverifiedEventId}/bookings`)
       .send(bookingBody(unverifiedTierId, 'online', 'unverified-1'));
-    expect(res.status).toBe(422);
-    expect(res.body.error).toMatch(/not completed payment verification/i);
+    expect(res.status).toBe(201);
+    expect(res.body.paymentSessionId).toEqual(expect.any(String));
+
+    expect(mockCreateOrder).toHaveBeenCalledTimes(1);
+    const callArgs = mockCreateOrder.mock.calls[0][0];
+    // No vendor split: the whole order settles to the platform's account.
+    expect(callArgs.vendorSplit).toBeUndefined();
+    expect(callArgs.orderTags).toEqual({
+      booking_reference: res.body.bookingReference,
+      organizer_id: unverifiedOrgId,
+      organizer_name: `Unverified Payment Org ${suffix}`,
+      customer_name: 'Test Customer',
+      collection_mode: 'platform',
+    });
+    expect(callArgs.orderNote).toContain(unverifiedOrgId);
+    expect(callArgs.orderNote).toContain('Test Customer');
+
+    const payment = await Payment.findOne({ where: { bookingId: res.body.bookingId } });
+    expect(payment!.collectionMode).toBe('platform');
+    expect(payment!.organizerId).toBe(unverifiedOrgId);
+    expect(payment!.customerName).toBe('Test Customer');
+    expect(payment!.organizerSharePaise).toBe(47500); // 95% of 500 rupees
+    expect(payment!.settlementStatus).toBe('pending');
+
+    // Nothing is owed until the customer has actually paid.
+    expect(await getOrganizerPendingSettlementPaise(unverifiedOrgId)).toBe(0);
+
+    await signedWebhookRequest(app, { type: 'PAYMENT_SUCCESS_WEBHOOK', data: { order: { order_id: res.body.bookingReference } } });
+    expect(await getOrganizerPendingSettlementPaise(unverifiedOrgId)).toBe(47500);
+    const row = (await getPendingSettlements()).find((r) => r.organizerId === unverifiedOrgId);
+    expect(row).toMatchObject({ verified: false, paymentCount: 1, collectedPaise: 50000, owedPaise: 47500 });
+  });
+
+  it('refuses to mark an organizer settled until they are verified, then settles everything pending', async () => {
+    await expect(markOrganizerSettled(unverifiedOrgId, 'UTR123')).rejects.toThrow(SettlementError);
+
+    await Organizer.update({ cashfreeVendorId: `settle_vendor_${suffix}`, cashfreeVendorStatus: 'active' }, { where: { id: unverifiedOrgId } });
+    try {
+      await expect(markOrganizerSettled(unverifiedOrgId, '  ')).rejects.toThrow(SettlementError);
+      const result = await markOrganizerSettled(unverifiedOrgId, 'UTR123');
+      expect(result).toEqual({ paymentCount: 1, settledPaise: 47500 });
+      expect(await getOrganizerPendingSettlementPaise(unverifiedOrgId)).toBe(0);
+      const settled = await Payment.findOne({ where: { organizerId: unverifiedOrgId, settlementStatus: 'settled' } });
+      expect(settled!.settlementReference).toBe('UTR123');
+    } finally {
+      await Organizer.update({ cashfreeVendorId: null, cashfreeVendorStatus: 'not_started' }, { where: { id: unverifiedOrgId } });
+    }
+  });
+
+  it('rejects an online booking for a paid tier when Cashfree has blocked the organizer, with a clear 422', async () => {
+    await Organizer.update({ cashfreeVendorId: `blocked_vendor_${suffix}`, cashfreeVendorStatus: 'blocked' }, { where: { id: unverifiedOrgId } });
+    try {
+      const res = await request(app)
+        .post(`/api/events/${unverifiedEventId}/bookings`)
+        .send(bookingBody(unverifiedTierId, 'online', 'blocked-1'));
+      expect(res.status).toBe(422);
+      expect(res.body.error).toMatch(/online payment is not available/i);
+    } finally {
+      await Organizer.update({ cashfreeVendorId: null, cashfreeVendorStatus: 'not_started' }, { where: { id: unverifiedOrgId } });
+    }
   });
 
   it('still allows a CASH booking for a paid tier even when the organizer is not verified — cash needs no Cashfree', async () => {
@@ -186,6 +233,7 @@ describe('real payment flow: booking -> order -> webhook (real DB, Cashfree API 
   });
 
   it('creates a real Cashfree order with a vendor split for a verified organizer, and returns a payment_session_id', async () => {
+    mockCreateOrder.mockClear();
     const res = await request(app)
       .post(`/api/events/${verifiedEventId}/bookings`)
       .send(bookingBody(verifiedTierId, 'online', 'verified-order'));
@@ -199,9 +247,12 @@ describe('real payment flow: booking -> order -> webhook (real DB, Cashfree API 
     expect(callArgs.orderId).toBe(res.body.bookingReference);
     // 5% default platform fee -> organizer gets 95% of 500 rupees = 475
     expect(callArgs.vendorSplit).toEqual({ vendorId: `org_verified_${suffix}`, amountRupees: 475 });
+    expect(callArgs.orderTags).toMatchObject({ organizer_id: verifiedOrgId, customer_name: 'Test Customer', collection_mode: 'split' });
 
     const payment = await Payment.findOne({ where: { bookingId: res.body.bookingId } });
     expect(payment!.gatewayReference).toBe(res.body.bookingReference);
+    expect(payment!.collectionMode).toBe('split');
+    expect(payment!.settlementStatus).toBeNull();
     expect(payment!.status).toBe('pending');
 
     const booking = await Booking.findByPk(res.body.bookingId);

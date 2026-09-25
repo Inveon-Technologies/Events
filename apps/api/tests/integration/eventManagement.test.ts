@@ -220,7 +220,7 @@ describe('organizer event management: get/edit/delete (real DB)', () => {
     expect(removeSold.body.error).toMatch(/cannot remove "sold tier"/i);
   });
 
-  it('PATCH re-applies the publish verification gate when publishing a draft with a paid tier', async () => {
+  it('PATCH lets an unverified organizer publish a paid draft, but not one whose vendor Cashfree has blocked', async () => {
     const unverifiedOrg = await Organizer.create({
       name: `Unverified Patch Org ${suffix}`,
       slug: `unverified-patch-org-${suffix}`,
@@ -234,23 +234,35 @@ describe('organizer event management: get/edit/delete (real DB)', () => {
     });
     const unverifiedToken = signAccessToken({ sub: unverifiedUser.id, role: unverifiedUser.role, organizerId: unverifiedOrg.id });
 
-    const draftRes = await request(app)
-      .post('/api/organizer/events')
-      .set('Authorization', `Bearer ${unverifiedToken}`)
-      .send({
-        title: `Unverified Draft ${suffix}`,
-        startDate: '2026-12-15',
-        startTime: '09:00',
-        ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
-        status: 'draft',
-      });
+    const createDraft = (title: string) =>
+      request(app)
+        .post('/api/organizer/events')
+        .set('Authorization', `Bearer ${unverifiedToken}`)
+        .send({
+          title,
+          startDate: '2026-12-15',
+          startTime: '09:00',
+          ticketTiers: [{ name: 'General', price: 500, quantity: 20 }],
+          status: 'draft',
+        });
 
+    // Not verified yet: allowed — payments go to the platform account.
+    const draftRes = await createDraft(`Unverified Draft ${suffix}`);
     const publishRes = await request(app)
       .patch(`/api/organizer/events/${draftRes.body.id}`)
       .set('Authorization', `Bearer ${unverifiedToken}`)
       .send({ status: 'published' });
-    expect(publishRes.status).toBe(400);
-    expect(publishRes.body.error).toMatch(/verification/i);
+    expect(publishRes.status).toBe(200);
+
+    // Blocked by Cashfree: still refused.
+    await unverifiedOrg.update({ cashfreeVendorId: `blocked_patch_${suffix}`, cashfreeVendorStatus: 'blocked' });
+    const blockedDraft = await createDraft(`Blocked Draft ${suffix}`);
+    const blockedRes = await request(app)
+      .patch(`/api/organizer/events/${blockedDraft.body.id}`)
+      .set('Authorization', `Bearer ${unverifiedToken}`)
+      .send({ status: 'published' });
+    expect(blockedRes.status).toBe(400);
+    expect(blockedRes.body.error).toMatch(/blocked/i);
 
     await Event.destroy({ where: { organizerId: unverifiedOrg.id } });
     await User.destroy({ where: { organizerId: unverifiedOrg.id } });

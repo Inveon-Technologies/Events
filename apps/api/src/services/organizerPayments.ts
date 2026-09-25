@@ -1,5 +1,6 @@
 import { Organizer, Event, Booking, Payment } from '../models';
 import { platformFeePercent as currentPlatformFeePercent } from './platformSettings';
+import { getOrganizerPendingSettlementPaise } from './organizerSettlements';
 
 export interface OrganizerTransactionRow {
   id: string;
@@ -26,6 +27,9 @@ export interface OrganizerPaymentsResult {
   bankAccountNumberLast4: string | null;
   bankIfsc: string | null;
   payoutActive: boolean;
+  // Online payments collected into the platform account while this
+  // organizer wasn't yet verified, still to be paid out to them.
+  pendingSettlementPaise: number;
 }
 
 // Real revenue and refunds across every one of the organizer's events,
@@ -95,5 +99,6 @@ export async function getOrganizerPayments(organizerId: string): Promise<Organiz
     bankAccountNumberLast4: organizer?.bankAccountNumberLast4 ?? null,
     bankIfsc: organizer?.bankIfsc ?? null,
     payoutActive: organizer?.cashfreeVendorStatus === 'active',
+    pendingSettlementPaise: await getOrganizerPendingSettlementPaise(organizerId),
   };
 }

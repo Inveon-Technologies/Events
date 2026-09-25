@@ -78,6 +78,7 @@ import {
   DEFAULT_CERTIFICATE_FOOTER,
 } from '../services/platformSettings';
 import { storePlatformImage, PlatformImageError } from '../services/platformAssets';
+import { getPendingSettlements, markOrganizerSettled, SettlementError } from '../services/organizerSettlements';
 import { queueOverview, retryFailedJob, retryAllFailed, cleanQueue, QUEUE_NAMES } from '../queue';
 import { sendEmail } from '../services/email';
 import { emailShell } from '../emails/templates';
@@ -155,7 +156,8 @@ function handleError(res: Response, err: unknown): boolean {
     err instanceof BackupError ||
     err instanceof OpsError ||
     err instanceof PlatformImageError ||
-    err instanceof ConsoleError
+    err instanceof ConsoleError ||
+    err instanceof SettlementError
   ) {
     res.status(400).json({ error: err.message });
     return true;
@@ -444,6 +446,27 @@ superAdminRouter.get(
   '/payments',
   handle(async (req, res) => {
     res.json(await listPayments(req.query));
+  }),
+);
+
+// Money collected into the platform account for organizers who weren't
+// verified yet, per organizer — what the platform owes each of them.
+superAdminRouter.get(
+  '/settlements',
+  handle(async (_req, res) => {
+    res.json({ settlements: await getPendingSettlements() });
+  }),
+);
+
+// Records that an organizer's pending amount was paid out (the transfer
+// itself happens outside this system; `reference` is its UTR/payout id).
+superAdminRouter.post(
+  '/organizers/:id/settlements',
+  handle(async (req, res) => {
+    const reference = typeof req.body?.reference === 'string' ? req.body.reference : '';
+    const result = await markOrganizerSettled(req.params.id, reference);
+    await log(req, 'organizer.settled', req.params.id, { reference: reference.trim(), ...result });
+    res.json(result);
   }),
 );
 
