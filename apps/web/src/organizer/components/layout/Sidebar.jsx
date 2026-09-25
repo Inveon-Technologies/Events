@@ -18,6 +18,7 @@ import { useEvents } from '../../context/EventsContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import UserAvatar from '../common/UserAvatar';
+import { useBranding } from '../../../lib/branding';
 
 const ROLE_LABELS = {
   organizer_owner: 'Owner',
@@ -30,6 +31,7 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
   const { unreadCount } = useNotifications();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const branding = useBranding();
 
   const mainNavItems = [
     { label: 'Dashboard', path: '/organizer/dashboard', icon: LayoutDashboard },
@@ -68,19 +70,25 @@ export default function Sidebar({ mobileOpen, setMobileOpen }) {
               onClick={() => { navigate('/organizer/dashboard'); setMobileOpen(false); }}
               className="flex items-center gap-3 cursor-pointer group"
             >
-              <div className="relative flex items-center justify-center">
-                <svg className="w-8 h-8 group-hover:scale-105 transition-transform" fill="none" viewBox="0 0 40 40">
-                  <rect fill="#0066FF" fillOpacity="0.85" height="16" rx="3" width="16" x="2" y="8"></rect>
-                  <rect fill="#2E90FA" height="16" rx="3" width="16" x="14" y="2"></rect>
-                  <rect fill="#004EEB" height="16" rx="3" width="16" x="18" y="16"></rect>
-                  <path d="M16 14L24 22M24 14L16 22" stroke="white" strokeLinecap="round" strokeWidth="2"></path>
-                </svg>
-              </div>
-              <div>
-                <div className="flex items-center gap-1">
-                  <span className="text-white font-black text-base tracking-wider leading-none">INVEON</span>
-                  <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">EVENTS</span>
+              {branding?.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.platformName} className="h-8 w-auto max-w-[120px] object-contain rounded bg-white/90 p-0.5" />
+              ) : (
+                <div className="relative flex items-center justify-center">
+                  <svg className="w-8 h-8 group-hover:scale-105 transition-transform" fill="none" viewBox="0 0 40 40">
+                    <rect fill="#0066FF" fillOpacity="0.85" height="16" rx="3" width="16" x="2" y="8"></rect>
+                    <rect fill="#2E90FA" height="16" rx="3" width="16" x="14" y="2"></rect>
+                    <rect fill="#004EEB" height="16" rx="3" width="16" x="18" y="16"></rect>
+                    <path d="M16 14L24 22M24 14L16 22" stroke="white" strokeLinecap="round" strokeWidth="2"></path>
+                  </svg>
                 </div>
+              )}
+              <div>
+                {!branding?.logoUrl && (
+                  <div className="flex items-center gap-1">
+                    <span className="text-white font-black text-base tracking-wider leading-none">INVEON</span>
+                    <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">EVENTS</span>
+                  </div>
+                )}
                 <p className="text-[10px] text-slate-400 mt-0.5">Organizer Workspace</p>
               </div>
             </div>

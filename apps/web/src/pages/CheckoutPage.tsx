@@ -5,6 +5,7 @@ import { fetchEventData, EventDetails, EventNotFoundError, useLiveAvailability }
 import { EventUnavailablePage } from './EventUnavailablePage';
 import { formatINR } from '../lib/format';
 import { apiRequest, ApiError } from '../organizer/lib/api';
+import { useBranding } from '../lib/branding';
 
 interface Attendee {
   name: string;
@@ -23,6 +24,7 @@ export function CheckoutPage() {
   const location = useLocation();
 
   const navigate = useNavigate();
+  const branding = useBranding();
   const [loadError, setLoadError] = useState<'not_found' | 'failed' | null>(null);
 
   useEffect(() => {
@@ -271,15 +273,21 @@ export function CheckoutPage() {
           {/* TOP HEADER & BRAND BAR */}
           <header className="flex items-center justify-between py-space-md mb-space-sm">
             <Link to="/" className="flex items-center space-x-space-xs cursor-pointer group">
-              <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary font-headline-lg shadow-sm group-hover:bg-primary-container transition">
-                <span className="material-symbols-outlined text-headline-md">confirmation_number</span>
-              </div>
-              <div>
-                <div className="font-headline-lg text-primary leading-none tracking-tight flex items-center gap-1">
-                  INVEON<span className="font-headline-sm text-on-surface font-normal">EVENTS</span>
-                </div>
-                <p className="font-label-badge text-on-surface-variant uppercase tracking-wider">by Inveon Technologies</p>
-              </div>
+              {branding?.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.platformName} className="h-10 w-auto object-contain" />
+              ) : (
+                <>
+                  <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary font-headline-lg shadow-sm group-hover:bg-primary-container transition">
+                    <span className="material-symbols-outlined text-headline-md">confirmation_number</span>
+                  </div>
+                  <div>
+                    <div className="font-headline-lg text-primary leading-none tracking-tight flex items-center gap-1">
+                      INVEON<span className="font-headline-sm text-on-surface font-normal">EVENTS</span>
+                    </div>
+                    <p className="font-label-badge text-on-surface-variant uppercase tracking-wider">by Inveon Technologies</p>
+                  </div>
+                </>
+              )}
             </Link>
             <div className="flex items-center space-x-2 bg-surface-container px-3 py-1.5 rounded-full text-on-surface-variant text-body-sm shadow-sm">
               <span className="material-symbols-outlined text-tertiary text-headline-sm" style={{ fontVariationSettings: "'FILL' 1" }}>

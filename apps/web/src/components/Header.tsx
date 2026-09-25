@@ -3,6 +3,8 @@ import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
 import { Icon } from './Icon';
 import { clearCustomerSession, useCustomerSession } from '../lib/customerSession';
+import { useBranding } from '../lib/branding';
+import { INVEON_EVENTS_LOGO_URL } from '../lib/brand';
 
 const NAV_LINKS = [
   { to: '/', label: 'Explore' },
@@ -18,6 +20,7 @@ export function Header() {
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const session = useCustomerSession();
+  const branding = useBranding();
 
   function logout() {
     clearCustomerSession();
@@ -47,10 +50,10 @@ export function Header() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
         
         {/* Brand Logo */}
-        <Link to="/" aria-label="Inveon Events Home" className="flex items-center gap-3 group focus:outline-none">
+        <Link to="/" aria-label={`${branding?.platformName || 'Inveon Events'} Home`} className="flex items-center gap-3 group focus:outline-none">
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOu7O6QckldNU8Q1b_jyziqMZctME8kx93UHIGU7MEowMcZxp_gd0hAENIKXIAgelubTZMHeS-XB84YCu79O0sSuUOu3AcroKDSkc_wVR2lXX9EaTgpQ51BsWO8Ple49PWdiJKhBmtBtB6HWwnXmpdSk0oeQ9StdhF_ZuPhV4yJyTafymOGm5LdlsgOrrCTuFiFQACtRHytmQPXdbBltzWx0DydPudiHRLzXCu0VvaGlv-FQwGj0cyuDsdv67GQCX4T4o"
-            alt="Inveon Events"
+            src={branding?.logoUrl || INVEON_EVENTS_LOGO_URL}
+            alt={branding?.platformName || 'Inveon Events'}
             className="h-8 sm:h-9 w-auto object-contain"
           />
         </Link>

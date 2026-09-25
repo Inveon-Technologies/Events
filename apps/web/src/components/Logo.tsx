@@ -1,3 +1,5 @@
+import { useBranding } from '../lib/branding';
+
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
   showWordmark?: boolean;
@@ -6,6 +8,11 @@ interface LogoProps {
 
 export function Logo({ size = 'md', showWordmark = true, variant = 'light' }: LogoProps) {
   const dims = size === 'sm' ? 'w-6 h-6' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
+  const branding = useBranding();
+  if (branding?.logoUrl) {
+    const h = size === 'sm' ? 'h-6' : size === 'lg' ? 'h-10' : 'h-8';
+    return <img src={branding.logoUrl} alt={branding.platformName} className={`${h} w-auto object-contain`} />;
+  }
 
   return (
     <span className="inline-flex items-center gap-2.5">

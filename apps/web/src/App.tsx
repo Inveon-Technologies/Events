@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { HomePage } from './pages/HomePage';
 import { EventsListPage } from './pages/EventsListPage';
@@ -17,6 +18,9 @@ import { FeedbackPage } from './pages/FeedbackPage';
 import { TicketPage } from './pages/TicketPage';
 import { OrganizerApp } from './organizer/OrganizerApp';
 import { getCustomerSession } from './lib/customerSession';
+
+// Inveon's super admin portal: its own bundle, loaded only at /x/<secret>.
+const SuperAdminApp = lazy(() => import('./superadmin/SuperAdminApp'));
 
 // A bare /bookings/<reference> link goes to the real booking management
 // page (which verifies reference + email before showing anything). It
@@ -56,6 +60,15 @@ export default function App() {
       <Route path="/bookings/:bookingId" element={<BookingReferenceRedirect />} />
       {/* Ticket page behind the signed link sent on WhatsApp and email */}
       <Route path="/t/:token" element={<TicketPage />} />
+
+      <Route
+        path="/x/:key/*"
+        element={
+          <Suspense fallback={<div className="min-h-screen bg-slate-50" />}>
+            <SuperAdminApp />
+          </Suspense>
+        }
+      />
 
       {/* Organizer back office — entire nested app, all 44 pages */}
       <Route path="/organizer/*" element={<OrganizerApp />} />

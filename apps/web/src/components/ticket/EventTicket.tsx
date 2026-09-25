@@ -1,6 +1,12 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../Icon';
 import { INVEON_EVENTS_LOGO_URL } from '../../lib/brand';
+import { useBranding } from '../../lib/branding';
+
+function PlatformLogo({ className }: { className: string }) {
+  const branding = useBranding();
+  return <img src={branding?.logoUrl || INVEON_EVENTS_LOGO_URL} alt={branding?.platformName || 'Inveon Events'} className={className} />;
+}
 
 // The digital ticket, shared by the customer's ticket page (/t/:token)
 // and the organizer's "preview before publish" step, so what the
@@ -315,7 +321,7 @@ export function DesktopTicket({ data, showPartnerPlaceholders = false }: { data:
               <div className="w-px h-10 bg-slate-300" />
               <div className="flex flex-col items-center">
                 <span className="text-[8px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Event Booking Partner</span>
-                <img src={INVEON_EVENTS_LOGO_URL} alt="Inveon Events" className="h-9 w-auto object-contain" />
+                <PlatformLogo className="h-9 w-auto object-contain" />
               </div>
             </div>
             <p className="text-[9.5px] text-slate-500 font-semibold tracking-wide mt-2">Digital Booking • Secure Payments • QR Ticketing</p>
@@ -481,7 +487,7 @@ export function MobileTicket({ data, showPartnerPlaceholders = false }: { data: 
           <div className="flex items-center gap-4 py-1">
             <InveonTechMark />
             <span className="w-px h-7 bg-slate-200" />
-            <img src={INVEON_EVENTS_LOGO_URL} alt="Inveon Events" className="h-7 w-auto object-contain" />
+            <PlatformLogo className="h-7 w-auto object-contain" />
           </div>
           <p className="mt-1.5 text-[9px] text-slate-500">✓ Digital Booking • Secure Payments • QR Ticketing</p>
         </div>

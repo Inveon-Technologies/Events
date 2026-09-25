@@ -2,8 +2,10 @@ import React from 'react';
 import { Outlet } from 'react-router-dom';
 import ToastContainer from '../common/ToastContainer';
 import { ShieldCheck, Calendar, Sparkles, Award } from 'lucide-react';
+import { useBranding } from '../../../lib/branding';
 
 export default function AuthLayout() {
+  const branding = useBranding();
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-between text-slate-100">
       <div className="flex-1 flex flex-col lg:flex-row">
@@ -15,6 +17,10 @@ export default function AuthLayout() {
 
           {/* Logo Header */}
           <div className="relative z-10 flex items-center gap-3">
+            {branding?.logoUrl ? (
+              <img src={branding.logoUrl} alt={branding.platformName} className="h-10 w-auto max-w-[180px] object-contain rounded bg-white/90 p-1" />
+            ) : (
+              <>
             <div className="relative flex items-center justify-center">
               <svg className="w-10 h-10" fill="none" viewBox="0 0 40 40">
                 <rect fill="#0066FF" fillOpacity="0.85" height="16" rx="3" width="16" x="2" y="8"></rect>
@@ -27,6 +33,8 @@ export default function AuthLayout() {
               <span className="text-white font-black text-xl tracking-wider leading-none">INVEON</span>
               <span className="text-xs uppercase font-bold text-cyan-400 tracking-widest block">EVENTS</span>
             </div>
+              </>
+            )}
           </div>
 
           {/* Hero Feature Content */}
@@ -75,6 +83,10 @@ export default function AuthLayout() {
           <div className="w-full max-w-md">
             {/* Mobile Logo */}
             <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
+              {branding?.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.platformName} className="h-9 w-auto object-contain" />
+              ) : (
+                <>
               <svg className="w-8 h-8" fill="none" viewBox="0 0 40 40">
                 <rect fill="#0066FF" fillOpacity="0.85" height="16" rx="3" width="16" x="2" y="8"></rect>
                 <rect fill="#2E90FA" height="16" rx="3" width="16" x="14" y="2"></rect>
@@ -82,6 +94,8 @@ export default function AuthLayout() {
                 <path d="M16 14L24 22M24 14L16 22" stroke="white" strokeLinecap="round" strokeWidth="2"></path>
               </svg>
               <span className="text-navy-900 font-black text-lg tracking-wider">INVEON EVENTS</span>
+                </>
+              )}
             </div>
 
             <Outlet />
