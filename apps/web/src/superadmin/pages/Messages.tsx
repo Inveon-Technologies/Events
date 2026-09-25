@@ -18,6 +18,8 @@ const KIND_LABEL: Record<string, string> = {
   signup: 'Organizer sign-up code',
   reset: 'Password reset code',
   admin_login: 'Admin sign-in code',
+  admin_stepup: 'Admin re-check code',
+  admin_stepup_code: 'Admin re-check code email',
 };
 
 export function MessagesPage() {

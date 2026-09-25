@@ -73,7 +73,7 @@ export const DEFAULT_CERTIFICATE_FOOTER: CertificateFooterSettings = {
 // same-named environment variable; clearing it falls back to the env.
 export const INTEGRATION_KEYS = {
   email: ['SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_NAME'],
-  cashfree: ['CASHFREE_APP_ID', 'CASHFREE_SECRET_KEY', 'CASHFREE_ENV'],
+  cashfree: ['CASHFREE_APP_ID', 'CASHFREE_SECRET_KEY', 'CASHFREE_ENV', 'PLATFORM_FEE_PERCENT'],
   whatsapp: [
     'WHATSAPP_PROVIDER',
     'AISENSY_API_KEY',
@@ -90,6 +90,7 @@ const PLAIN_INTEGRATION_KEYS = new Set<string>([
   'SMTP_USER',
   'SMTP_FROM_NAME',
   'CASHFREE_ENV',
+  'PLATFORM_FEE_PERCENT',
   'WHATSAPP_PROVIDER',
   'AISENSY_API_URL',
   'WHATSAPP_PHONE_NUMBER_ID',
@@ -242,4 +243,20 @@ export async function saveIntegrations(values: Record<string, string>, updatedBy
 export function resetSettingsCacheForTests(): void {
   cache.clear();
   loadedAt = 0;
+}
+
+// Inveon's cut of every online payment, in percent. One source for the
+// Cashfree split and every page that shows the fee: 0 is honoured (it
+// used to fall back to 5 in the split but 0 on screen); unset → 5.
+export const DEFAULT_PLATFORM_FEE_PERCENT = 5;
+export function platformFeePercent(): number {
+  const raw = integrationValue('PLATFORM_FEE_PERCENT');
+  if (raw === undefined) return DEFAULT_PLATFORM_FEE_PERCENT;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 && value <= 50 ? value : DEFAULT_PLATFORM_FEE_PERCENT;
+}
+
+// 'production' only when explicitly set; anything else is the sandbox.
+export function cashfreeMode(): 'production' | 'sandbox' {
+  return integrationValue('CASHFREE_ENV') === 'production' ? 'production' : 'sandbox';
 }

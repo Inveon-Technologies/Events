@@ -14,3 +14,7 @@ coverage/
 apps/api/uploads/
 
 .DS_Store
+
+# Python bytecode (scripts/server/admin-agent.py)
+__pycache__/
+*.pyc

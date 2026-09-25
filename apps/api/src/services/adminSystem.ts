@@ -12,7 +12,7 @@ import { UPLOAD_DIR } from './eventMedia';
 import { isS3Configured } from './s3Storage';
 import { isEmailConfigured } from './email';
 import { isWhatsAppConfigured, whatsAppProvider } from './whatsapp/client';
-import { integrationValue, settingsLoadedAt, getBranding, getInvoiceSettings, getCertificateFooter } from './platformSettings';
+import { integrationValue, platformFeePercent, settingsLoadedAt, getBranding, getInvoiceSettings, getCertificateFooter } from './platformSettings';
 import { isQueueEnabled } from '../queue';
 
 // Technical side of the super admin portal: live health of this API
@@ -94,7 +94,7 @@ export async function systemInfo() {
       queue: isQueueEnabled(),
     },
     config: {
-      platformFeePercent: Number(process.env.PLATFORM_FEE_PERCENT) || 0,
+      platformFeePercent: platformFeePercent(),
       seatHoldMinutes: Number(process.env.SEAT_HOLD_MINUTES) || 2,
       webPublicUrl: process.env.WEB_PUBLIC_URL ?? null,
       rateLimitsDisabled: process.env.RATE_LIMITS_DISABLED === 'true',
@@ -319,20 +319,67 @@ export async function hostLog(name: string, lines = 500): Promise<string> {
   return all.slice(-Math.max(10, Math.min(5000, lines))).join('\n');
 }
 
-export async function requestHostAction(action: string, target: string | null, requestedBy: string): Promise<{ id: string }> {
-  if (!(action in HOST_ACTIONS)) throw new OpsError('Unknown action');
-  if ((action === 'restart_container' || action === 'truncate_container_logs') && !target) throw new OpsError('Choose a container');
-  if (target !== null && target !== 'all' && !SAFE_NAME.test(target)) throw new OpsError('Bad container name');
-  if (action === 'restart_container' && target === 'all') throw new OpsError('Restart one container at a time');
+// A command to run inside one container (`docker exec … sh -c`). Only
+// works when the server helper was installed with ALLOW_EXEC=1; the route
+// also demands a step-up.
+export async function requestContainerExec(target: string, command: string, requestedBy: string): Promise<{ id: string }> {
+  if (!SAFE_NAME.test(target) || target === 'all') throw new OpsError('Choose a container');
+  const cmd = command.trim();
+  if (!cmd || cmd.length > 2000) throw new OpsError('Enter a command (up to 2000 characters)');
+  return writeRequest({ action: 'exec', target, command: cmd, requestedBy });
+}
+
+async function writeRequest(fields: Record<string, unknown>): Promise<{ id: string }> {
   const dir = path.join(opsDir(), 'requests');
   const id = crypto.randomUUID();
-  const body = JSON.stringify({ id, action, target, requestedBy, requestedAt: new Date().toISOString() });
+  const body = JSON.stringify({ id, ...fields, requestedAt: new Date().toISOString() });
   try {
     await fsp.writeFile(path.join(dir, `${id}.json`), body, { mode: 0o644, flag: 'wx' });
   } catch {
     throw new OpsError('The server helper is not installed (no requests folder). See docs/ops/SUPER_ADMIN.md.');
   }
   return { id };
+}
+
+// One host action's outcome (or null while it is still waiting/running).
+export async function hostActionResult(id: string): Promise<Record<string, unknown> | null> {
+  if (!/^[a-f0-9-]{36}$/.test(id)) throw new OpsError('Unknown request');
+  return readJson<Record<string, unknown>>(path.join(opsDir(), 'results', `${id}.json`));
+}
+
+export interface MetricSample {
+  t: string;
+  cpu: number | null;
+  load1: number;
+  memUsedBytes: number;
+  memTotalBytes: number;
+  diskPercent: number | null;
+  c: Record<string, [number | null, number]>;
+}
+
+// The helper's one-a-minute samples for the portal's charts.
+export async function hostMetrics(hours: number): Promise<{ samples: MetricSample[] }> {
+  const text = await fsp.readFile(path.join(opsDir(), 'metrics.jsonl'), 'utf8').catch(() => '');
+  const since = Date.now() - Math.max(1, Math.min(24, hours)) * 3600_000;
+  const samples: MetricSample[] = [];
+  for (const line of text.split('\n')) {
+    if (!line) continue;
+    try {
+      const s = JSON.parse(line) as MetricSample;
+      if (new Date(s.t).getTime() >= since) samples.push(s);
+    } catch {
+      // a half-written line — skip it
+    }
+  }
+  return { samples };
+}
+
+export async function requestHostAction(action: string, target: string | null, requestedBy: string): Promise<{ id: string }> {
+  if (!(action in HOST_ACTIONS)) throw new OpsError('Unknown action');
+  if ((action === 'restart_container' || action === 'truncate_container_logs') && !target) throw new OpsError('Choose a container');
+  if (target !== null && target !== 'all' && !SAFE_NAME.test(target)) throw new OpsError('Bad container name');
+  if (action === 'restart_container' && target === 'all') throw new OpsError('Restart one container at a time');
+  return writeRequest({ action, target, requestedBy });
 }
 
 export function systemBackupPath(name: string): string {

@@ -16,7 +16,7 @@ export const OTP_RESEND_COOLDOWN_SECONDS = 30;
 export const MAX_OTP_ATTEMPTS = 5;
 export const OTP_EXPIRY_MINUTES = OTP_TTL_SECONDS / 60;
 
-export type OtpPurpose = 'signup' | 'reset' | 'customer_login' | 'admin_login';
+export type OtpPurpose = 'signup' | 'reset' | 'customer_login' | 'admin_login' | 'admin_stepup';
 
 function generateCode(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');

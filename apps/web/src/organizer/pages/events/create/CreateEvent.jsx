@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation, useParams } from 'react-router-dom';
 import {
   Info,
@@ -27,6 +27,7 @@ import TicketDesignEditor from '../../../components/TicketDesignEditor';
 import TicketPreview from '../../../components/TicketPreview';
 import { istParts } from '../../../lib/istTime';
 import { ApiError, apiRequest, uploadEventMediaFile, deleteEventMediaFile } from '../../../lib/api';
+import UploadProgressOverlay from '../../../components/UploadProgressOverlay';
 
 const MAX_IMAGES = 5;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -208,22 +209,46 @@ export default function CreateEvent() {
   const [mediaVideo, setMediaVideo] = useState(null);
   const [mediaError, setMediaError] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  // Drives the full-screen progress overlay while saving + uploading.
+  const [progress, setProgress] = useState(null);
+  // Resolves the "some files failed" question in the progress overlay.
+  const retryChoice = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
+  const hasStagedMedia = () => mediaImages.some((m) => m.file) || Boolean(mediaVideo?.file);
+
+  function addImageFiles(list) {
+    setMediaError('');
+    const problems = [];
+    const images = list.filter((f) => {
+      if (!/^image\/(jpeg|png|webp)$/.test(f.type)) {
+        problems.push(`"${f.name}" isn't a JPG, PNG or WebP photo`);
+        return false;
+      }
+      if (f.size > MAX_FILE_SIZE_BYTES) {
+        problems.push(`"${f.name}" is over the 10MB limit`);
+        return false;
+      }
+      return true;
+    });
+    const room = MAX_IMAGES - mediaImages.length;
+    if (images.length > room) problems.push(`only ${MAX_IMAGES} photos are allowed, so ${images.length - room} were left out`);
+    const accepted = images.slice(0, Math.max(0, room));
+    if (problems.length) setMediaError(`${problems.join('; ')}.`);
+    if (accepted.length) {
+      setMediaImages((prev) => [...prev, ...accepted.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+    }
+  }
 
   async function handleImageFilesSelected(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = ''; // allow re-selecting the same file after removing it
-    setMediaError('');
+    addImageFiles(files);
+  }
 
-    if (mediaImages.length + files.length > MAX_IMAGES) {
-      setMediaError(`You can add up to ${MAX_IMAGES} images total.`);
-      return;
-    }
-    const oversized = files.find((f) => f.size > MAX_FILE_SIZE_BYTES);
-    if (oversized) {
-      setMediaError(`"${oversized.name}" is over the 10MB limit.`);
-      return;
-    }
-    setMediaImages((prev) => [...prev, ...files.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))]);
+  function handlePhotoDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    addImageFiles(Array.from(e.dataTransfer?.files || []));
   }
 
   async function removeExistingMedia(item) {
@@ -286,23 +311,63 @@ export default function CreateEvent() {
   // a media upload failure is reported but never undoes it.
   async function uploadStagedMedia(eventId) {
     // Only newly staged files — already-uploaded media (existingId) stays as is.
-    const allFiles = [...mediaImages, ...(mediaVideo ? [mediaVideo] : [])].filter((m) => m.file).map((m) => m.file);
-    if (allFiles.length === 0) return;
+    const staged = [...mediaImages.map((m) => ({ ...m, kind: 'photo' })), ...(mediaVideo ? [{ ...mediaVideo, kind: 'video' }] : [])].filter(
+      (m) => m.file,
+    );
+    if (staged.length === 0) return;
 
     setUploadingMedia(true);
-    let failures = 0;
-    for (const file of allFiles) {
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        await uploadEventMediaFile(eventId, file, user?.token);
-      } catch {
-        failures += 1;
+    const startedAt = Date.now();
+    let files = staged.map((m) => ({
+      name: m.file.name,
+      size: m.file.size,
+      previewUrl: m.previewUrl,
+      kind: m.kind,
+      status: 'waiting',
+      loaded: 0,
+    }));
+    const show = (phase) => setProgress({ phase, files, startedAt });
+    const patch = (i, changes) => {
+      files = files.map((f, j) => (j === i ? { ...f, ...changes } : f));
+      show('uploading');
+    };
+
+    // Upload whatever isn't done yet; on failures, let the organizer
+    // retry just those or carry on.
+    for (;;) {
+      for (let i = 0; i < staged.length; i += 1) {
+        if (files[i].status === 'done') continue;
+        patch(i, { status: 'uploading', loaded: 0, error: undefined });
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          await uploadEventMediaFile(eventId, staged[i].file, user?.token, ({ loaded }) =>
+            patch(i, { loaded: Math.min(loaded, staged[i].file.size) }),
+          );
+          patch(i, { status: 'done', loaded: staged[i].file.size });
+        } catch (err) {
+          patch(i, { status: 'failed', error: err instanceof ApiError ? err.message : 'Upload failed' });
+        }
       }
+      if (!files.some((f) => f.status === 'failed')) break;
+      show('failed');
+      // eslint-disable-next-line no-await-in-loop
+      const choice = await new Promise((resolve) => {
+        retryChoice.current = resolve;
+      });
+      if (choice !== 'retry') break;
+    }
+
+    const failed = files.filter((f) => f.status === 'failed').length;
+    if (!failed) {
+      show('done');
+      await new Promise((resolve) => setTimeout(resolve, 700));
     }
     setUploadingMedia(false);
-    if (failures > 0) {
-      showToast(`Event saved, but ${failures} of ${allFiles.length} media file(s) failed to upload.`, 'error');
-    }
+    // Uploaded files are now real media on the event, so a second save
+    // must not upload them again.
+    setMediaImages((prev) => prev.filter((m) => !m.file));
+    setMediaVideo((prev) => (prev?.file ? null : prev));
+    if (failed) showToast(`Event saved. ${failed} file(s) weren't uploaded — add them again from Edit.`, 'info');
   }
 
   // The map's "main" point fills the venue address fields below: the
@@ -338,17 +403,25 @@ export default function CreateEvent() {
     if (currentStep < 5) {
       navigate(steps[currentStep].path);
     } else if (isEditMode) {
+      if (hasStagedMedia()) setProgress({ phase: 'saving' });
       const result = await updateEventFull(eventId, { ...formData, status: 'published' });
       if (result) {
+        await uploadStagedMedia(eventId);
+        setProgress(null);
         showToast('Event updated successfully!', 'success');
         navigate(`/organizer/events/${eventId}/dashboard`);
+      } else {
+        setProgress(null);
       }
     } else {
       try {
+        if (hasStagedMedia()) setProgress({ phase: 'saving' });
         const created = await addEvent({ ...formData, status: 'published' });
         await uploadStagedMedia(created.id);
+        setProgress(null);
         navigate(`/organizer/events/${created.id}/dashboard`);
       } catch (err) {
+        setProgress(null);
         showToast(err instanceof ApiError ? err.message : 'Failed to publish event. Please try again.', 'error');
       }
     }
@@ -356,19 +429,27 @@ export default function CreateEvent() {
 
   const handleSaveDraft = async () => {
     if (isEditMode) {
+      if (hasStagedMedia()) setProgress({ phase: 'saving' });
       const result = await updateEventFull(eventId, formData);
       if (result) {
+        await uploadStagedMedia(eventId);
+        setProgress(null);
         showToast('Changes saved', 'info');
         navigate(`/organizer/events/${eventId}/dashboard`);
+      } else {
+        setProgress(null);
       }
       return;
     }
     try {
+      if (hasStagedMedia()) setProgress({ phase: 'saving' });
       const created = await addEvent({ ...formData, status: 'draft' });
       await uploadStagedMedia(created.id);
+      setProgress(null);
       showToast('Saved as draft in My Events', 'info');
       navigate('/organizer/events?tab=draft');
     } catch (err) {
+      setProgress(null);
       showToast(err instanceof ApiError ? err.message : 'Failed to save draft. Please try again.', 'error');
     }
   };
@@ -464,6 +545,11 @@ export default function CreateEvent() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      <UploadProgressOverlay
+        progress={progress}
+        onRetry={() => retryChoice.current?.('retry')}
+        onContinue={() => retryChoice.current?.('continue')}
+      />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -581,14 +667,28 @@ export default function CreateEvent() {
                 </label>
                 <span className="text-[11px] text-slate-400 font-medium">{mediaImages.length}/{MAX_IMAGES} images · up to 10MB each</span>
               </div>
-              <div className="flex flex-wrap gap-3">
+              <div
+                className={`flex flex-wrap gap-3 rounded-xl p-2 -m-2 transition-colors ${dragOver ? 'bg-brand-50 ring-2 ring-brand-300' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handlePhotoDrop}
+              >
                 {mediaImages.map((img, i) => (
                   <div key={img.previewUrl} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 group">
                     <img src={img.previewUrl} alt="" className="w-full h-full object-cover" />
-                    {i === 0 && (
+                    {i === 0 ? (
                       <span className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] font-bold text-center py-0.5">
                         COVER
                       </span>
+                    ) : (
+                      img.file && (
+                        <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] text-center py-0.5">
+                          {(img.file.size / (1024 * 1024)).toFixed(1)} MB
+                        </span>
+                      )
                     )}
                     <button
                       type="button"
@@ -604,6 +704,7 @@ export default function CreateEvent() {
                   <label className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 hover:border-brand-400 hover:bg-brand-50/50 flex flex-col items-center justify-center cursor-pointer transition-colors text-slate-400 hover:text-brand-500">
                     <ImageIcon className="w-5 h-5" />
                     <span className="text-[10px] font-bold mt-1">Add</span>
+                    <span className="text-[9px] leading-tight text-center px-1">or drop here</span>
                     <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={handleImageFilesSelected} />
                   </label>
                 )}
@@ -635,6 +736,9 @@ export default function CreateEvent() {
                 </label>
               )}
               {mediaError && <p className="mt-1.5 text-[11px] text-red-600">{mediaError}</p>}
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                Files upload when you save — you'll see the progress of each one.
+              </p>
             </div>
 
             <div>

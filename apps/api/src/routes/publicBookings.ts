@@ -227,6 +227,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
         bookingId: result.bookingId,
         bookingReference: result.bookingReference,
         paymentSessionId: order.paymentSessionId,
+        cashfreeMode: order.mode,
         // Seats are held until then; the checkout shows a countdown.
         holdExpiresAt: new Date(Date.now() + SEAT_HOLD_MS).toISOString(),
       });

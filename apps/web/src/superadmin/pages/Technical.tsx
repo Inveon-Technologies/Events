@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageHeader, Card, Stat, Table, Badge, Loading, Notice, Button, ConfirmAction, Select } from '../ui';
 import { useSa, useSaKey, useSaAction, bytes, duration, num, when } from '../lib';
 import { saRequest, saDownload, SaError } from '../api';
@@ -218,9 +218,11 @@ export function ServerPage() {
   const [logText, setLogText] = useState('');
   const [logError, setLogError] = useState('');
   const [restartTarget, setRestartTarget] = useState('');
+  const [live, setLive] = useState(false);
+  const logBox = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
-    const t = setInterval(reload, 20_000);
+    const t = setInterval(reload, 15_000);
     return () => clearInterval(t);
   }, [reload]);
   useEffect(() => {
@@ -236,6 +238,18 @@ export function ServerPage() {
       setLogError(err instanceof SaError ? err.message : 'Could not load the log');
     }
   }
+
+  // Live: re-read the chosen log every 10 s and keep the newest line in view.
+  useEffect(() => {
+    if (!live || !logName) return undefined;
+    loadLog();
+    const t = setInterval(loadLog, 10_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, logName, lines]);
+  useEffect(() => {
+    if (live && logBox.current) logBox.current.scrollTop = logBox.current.scrollHeight;
+  }, [logText, live]);
 
   async function request(name: string, target: string | null, label: string) {
     if (
@@ -254,7 +268,7 @@ export function ServerPage() {
     <div className="space-y-4">
       <PageHeader
         title="Server, Docker & logs"
-        subtitle="Reported by the server helper every minute. Actions are a fixed, safe list — the helper refuses anything else."
+        subtitle="Reported by the server helper every 15 seconds. Actions are a fixed, safe list — the helper refuses anything else."
         actions={
           <Button tone="secondary" onClick={reload}>
             Refresh
@@ -479,10 +493,16 @@ export function ServerPage() {
               ]}
             />
             <Button onClick={loadLog}>Show log</Button>
+            <label className="flex items-center gap-1.5 text-sm text-slate-700">
+              <input type="checkbox" checked={live} onChange={(e) => setLive(e.target.checked)} /> Live (every 10 s)
+            </label>
           </div>
           {logError && <Notice message={{ kind: 'error', text: logError }} />}
           {logText && (
-            <pre className="bg-slate-950 text-slate-100 text-[11px] leading-relaxed p-3 rounded-lg max-h-[520px] overflow-auto whitespace-pre-wrap">
+            <pre
+              ref={logBox}
+              className="bg-slate-950 text-slate-100 text-[11px] leading-relaxed p-3 rounded-lg max-h-[520px] overflow-auto whitespace-pre-wrap"
+            >
               {logText}
             </pre>
           )}

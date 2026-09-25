@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 
 // No ACL is set on upload, deliberately — buckets created since April
@@ -98,4 +98,17 @@ export function s3KeyFromUrl(url: string): string | null {
   if (!key) return null;
   key = key.split(/[?#]/)[0];
   return key && !key.split('/').some((part) => part === '..' || part === '') ? key : null;
+}
+
+// For the super admin config check: null when the bucket is reachable with
+// the configured keys, otherwise a short reason.
+export async function checkS3Access(): Promise<string | null> {
+  if (!isS3Configured()) return 'S3 is not configured';
+  try {
+    await getClient().send(new HeadBucketCommand({ Bucket: process.env.S3_BUCKET }));
+    return null;
+  } catch (err) {
+    const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+    return `${e.name ?? 'Error'} (HTTP ${e.$metadata?.httpStatusCode ?? '?'})`;
+  }
 }

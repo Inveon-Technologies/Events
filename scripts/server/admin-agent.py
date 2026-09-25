@@ -5,7 +5,9 @@ Runs on the VPS (root cron, every minute — see install-admin-agent.sh) and
 talks to the Events API only through files in OPS_DIR, which is mounted
 into the events-api container at /app/ops:
 
-  status.json        host + Docker status, written every run
+  status.json        host + Docker status, refreshed every STATUS_EVERY seconds
+  metrics.jsonl      one sample a minute (host CPU/memory/disk, each
+                     container's CPU/memory) for the portal's charts, 24 h
   logs/<name>.log    the last lines of each container's log
   requests/<id>.json actions the portal asks for (written by the API)
   pending/<id>.json  an action being run right now
@@ -31,6 +33,12 @@ OPS_DIR = os.environ.get("OPS_DIR", "/var/lib/inveon-ops")
 API_UID = int(os.environ.get("API_UID", "0"))
 LOG_LINES = int(os.environ.get("LOG_LINES", "2000"))
 KEEP_SYSTEM_BACKUPS = int(os.environ.get("KEEP_SYSTEM_BACKUPS", "3"))
+STATUS_EVERY = int(os.environ.get("STATUS_EVERY", "15"))
+METRICS_KEEP = int(os.environ.get("METRICS_KEEP", "1440"))  # one a minute → 24 h
+# Running commands inside containers from the portal is off unless the
+# installer was run with ALLOW_EXEC=1 — it is root-level power.
+ALLOW_EXEC = os.environ.get("ALLOW_EXEC") == "1"
+EXEC_TIMEOUT = int(os.environ.get("EXEC_TIMEOUT", "60"))
 # Files and folders copied into a full backup (secrets included — the
 # .zip is only readable by the API and root, and downloaded by admins).
 BACKUP_PATHS = os.environ.get(
@@ -51,6 +59,7 @@ ACTIONS = {
     "vacuum_journal",
     "restart_container",
     "system_backup",
+    "exec",
 }
 
 
@@ -149,8 +158,58 @@ def disks():
     return result
 
 
-def collect_status():
+UNITS = {"b": 1, "kb": 1e3, "kib": 1024, "mb": 1e6, "mib": 1024**2, "gb": 1e9, "gib": 1024**3, "tb": 1e12, "tib": 1024**4}
+
+
+def to_bytes(text):
+    """'123.4MiB' → 129394278; anything unreadable → 0."""
+    m = re.match(r"^\s*([\d.]+)\s*([A-Za-z]*)", text or "")
+    if not m:
+        return 0
+    return int(float(m.group(1)) * UNITS.get(m.group(2).lower(), 1))
+
+
+def to_percent(text):
+    try:
+        return round(float((text or "").strip().rstrip("%")), 2)
+    except ValueError:
+        return None
+
+
+def cpu_times():
+    try:
+        with open("/proc/stat", encoding="utf-8") as f:
+            parts = [int(x) for x in f.readline().split()[1:]]
+        idle = parts[3] + (parts[4] if len(parts) > 4 else 0)
+        return sum(parts), idle
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def append_metrics(sample):
+    path = os.path.join(OPS_DIR, "metrics.jsonl")
+    lines = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()[-(METRICS_KEEP - 1):]
+    except OSError:
+        pass
+    lines.append(json.dumps(sample, separators=(",", ":")))
+    tmp = f"{path}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    share(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def collect_status(record_metrics=False):
+    before = cpu_times()
     stats = {s.get("Name"): s for s in docker_json_lines(["stats", "--no-stream"])}
+    after = cpu_times()
+    host_cpu = None
+    if before and after and after[0] > before[0]:
+        busy = (after[0] - before[0]) - (after[1] - before[1])
+        host_cpu = round(100.0 * busy / (after[0] - before[0]), 1)
     containers = []
     for c in docker_json_lines(["ps", "-a"]):
         name = c.get("Names", "")
@@ -186,6 +245,25 @@ def collect_status():
             uptime = float(f.read().split()[0])
     except OSError:
         uptime = 0
+    memory = meminfo()
+    disk_list = disks()
+    if record_metrics:
+        root = next((d for d in disk_list if d["mount"] == "/"), disk_list[0] if disk_list else None)
+        append_metrics(
+            {
+                "t": now_iso(),
+                "cpu": host_cpu,
+                "load1": round(os.getloadavg()[0], 2),
+                "memUsedBytes": memory["totalBytes"] - memory["availableBytes"],
+                "memTotalBytes": memory["totalBytes"],
+                "diskPercent": root["usePercent"] if root else None,
+                "c": {
+                    c["name"]: [to_percent(c["cpu"]), to_bytes(c["mem"])]
+                    for c in containers
+                    if c["state"] == "running"
+                },
+            }
+        )
     write_json(
         os.path.join(OPS_DIR, "status.json"),
         {
@@ -194,8 +272,10 @@ def collect_status():
             "uptimeSeconds": int(uptime),
             "loadavg": list(os.getloadavg()),
             "cpus": os.cpu_count(),
-            "memory": meminfo(),
-            "disks": disks(),
+            "cpuPercent": host_cpu,
+            "memory": memory,
+            "disks": disk_list,
+            "execEnabled": ALLOW_EXEC,
             "docker": docker_df,
             "containers": containers,
         },
@@ -302,8 +382,21 @@ def system_backup():
     return True, f"{os.path.basename(target)} ({size // (1024 * 1024)} MB)\n" + "\n".join(notes)
 
 
-def perform(action, target):
+def exec_in_container(target, command):
+    if not ALLOW_EXEC:
+        return False, "Running commands is switched off on this server. Re-run the installer with ALLOW_EXEC=1 to allow it."
+    if not isinstance(command, str) or not command.strip() or len(command) > 2000:
+        return False, "Enter a command (up to 2000 characters)"
+    ok, out = run(["docker", "exec", target, "sh", "-c", command], timeout=EXEC_TIMEOUT)
+    return ok, out
+
+
+def perform(action, target, command=None):
     names = container_names()
+    if action == "exec":
+        if not target or not NAME.match(target) or target not in names:
+            return False, f"Unknown container {target!r}"
+        return exec_in_container(target, command)
     if action in ("truncate_container_logs", "restart_container"):
         if not target or not NAME.match(target) or (target != "all" and target not in names):
             return False, f"Unknown container {target!r}"
@@ -329,7 +422,7 @@ def process_requests():
     for fn in sorted(os.listdir(req_dir)):
         path = os.path.join(req_dir, fn)
         rid = fn[:-5] if fn.endswith(".json") else ""
-        if not REQUEST_ID.match(rid) or os.path.getsize(path) > 4096:
+        if not REQUEST_ID.match(rid) or os.path.getsize(path) > 8192:
             os.remove(path)
             continue
         try:
@@ -340,12 +433,14 @@ def process_requests():
             continue
         action = req.get("action")
         target = req.get("target")
+        command = req.get("command")
         base = {
             "id": rid,
             "action": action,
             "target": target,
             "requestedBy": str(req.get("requestedBy", ""))[:200],
             "requestedAt": str(req.get("requestedAt", ""))[:40],
+            **({"command": str(command)[:2000]} if action == "exec" else {}),
         }
         pending = os.path.join(OPS_DIR, "pending", fn)
         os.replace(path, pending)
@@ -354,10 +449,11 @@ def process_requests():
             ok, output = False, "Unknown action — refused"
         else:
             try:
-                ok, output = perform(action, target)
+                ok, output = perform(action, target, command)
             except Exception as err:  # noqa: BLE001 — report any failure to the portal
                 ok, output = False, str(err)
-        write_json(os.path.join(OPS_DIR, "results", fn), {**base, "status": "done" if ok else "failed", "output": output[-3000:], "finishedAt": now_iso()})
+        limit = 20000 if action == "exec" else 3000
+        write_json(os.path.join(OPS_DIR, "results", fn), {**base, "status": "done" if ok else "failed", "output": output[-limit:], "finishedAt": now_iso()})
         os.remove(pending)
     # Keep the newest 100 results.
     res_dir = os.path.join(OPS_DIR, "results")
@@ -371,14 +467,21 @@ def main():
     if "--loop" in sys.argv:
         loop_seconds = int(sys.argv[sys.argv.index("--loop") + 1])
     ensure_dirs()
-    containers = collect_status()
-    collect_logs(containers)
     started = time.time()
+    last_status = 0.0
+    first = True
     while True:
+        # Status and logs every STATUS_EVERY seconds so the portal looks
+        # live; a chart sample once per run (i.e. once a minute).
+        if time.time() - last_status >= STATUS_EVERY:
+            last_status = time.time()
+            containers = collect_status(record_metrics=first)
+            collect_logs(containers)
+            first = False
         process_requests()
         if time.time() - started >= loop_seconds:
             break
-        time.sleep(5)
+        time.sleep(2)
     if shutil.which("docker") is None:
         print("docker not found", file=sys.stderr)
 

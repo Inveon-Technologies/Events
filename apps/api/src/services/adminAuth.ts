@@ -206,3 +206,69 @@ export async function createPlatformAdmin(params: { email: string; name: string;
     passwordChangedAt: new Date(),
   });
 }
+
+// ---- step-up: a fresh password + emailed code before dangerous actions ----
+// (SQL console writes, commands inside containers, wiping data.) Gives a
+// 10-minute token sent as the X-Admin-Step-Up header.
+
+export const STEP_UP_MINUTES = 10;
+
+interface StepUpPayload {
+  sub: string;
+  purpose: 'platform_admin_step_up';
+  pwd: number;
+}
+
+export async function startStepUp(admin: PlatformAdmin, password: string, ip: string | undefined): Promise<{ codeSent: true }> {
+  if (!(await comparePassword(password, admin.passwordHash).catch(() => false))) {
+    await audit(admin, 'step_up.wrong_password', admin.email, null, ip);
+    throw new AdminAuthError('Wrong password', 400);
+  }
+  if (!isEmailConfigured()) throw new AdminAuthError('Email is not configured on the server, so the code cannot be sent.', 503);
+  const code = await issueOtp('admin_stepup', admin.email);
+  await sendEmail({
+    to: admin.email,
+    subject: `${code} is your Inveon admin re-check code`,
+    html: emailShell(
+      `<p style="margin:0 0 12px">Hi ${escapeHtml(admin.name)},</p>
+       <p style="margin:0 0 12px">Someone signed in as you asked to unlock <b>dangerous actions</b> (database console, container commands, data reset). Your code is:</p>
+       <p style="margin:0 0 16px;font-size:30px;font-weight:700;letter-spacing:6px">${code}</p>
+       <p style="margin:0;color:#475569;font-size:13px">From IP ${escapeHtml(ip ?? 'unknown')}. If this wasn't you, change your password now.</p>`,
+      'Confirm a dangerous action',
+    ),
+    kind: 'admin_stepup_code',
+  });
+  await audit(admin, 'step_up.code_sent', admin.email, null, ip);
+  return { codeSent: true };
+}
+
+export async function finishStepUp(
+  admin: PlatformAdmin,
+  code: string,
+  ip: string | undefined,
+): Promise<{ stepUpToken: string; expiresInMinutes: number }> {
+  const result = await checkOtp('admin_stepup', admin.email, code.trim());
+  if (!result.ok) {
+    await audit(admin, 'step_up.wrong_code', admin.email, { reason: result.reason }, ip);
+    if (result.reason === 'wrong')
+      throw new AdminAuthError(`Wrong code — ${result.attemptsLeft} attempt${result.attemptsLeft === 1 ? '' : 's'} left`, 400);
+    throw new AdminAuthError('Code expired — ask for a new one', 400);
+  }
+  await audit(admin, 'step_up.granted', admin.email, null, ip);
+  const payload: StepUpPayload = { sub: admin.id, purpose: 'platform_admin_step_up', pwd: admin.passwordChangedAt?.getTime() ?? 0 };
+  return { stepUpToken: jwt.sign(payload, secret(), { expiresIn: `${STEP_UP_MINUTES}m` }), expiresInMinutes: STEP_UP_MINUTES };
+}
+
+// Throws unless `token` is a live step-up token for this same admin.
+export function verifyStepUp(admin: PlatformAdmin, token: string | undefined): void {
+  if (!token) throw new AdminAuthError('Confirm with your password and an emailed code first', 403);
+  let payload: StepUpPayload;
+  try {
+    payload = jwt.verify(token, secret()) as unknown as StepUpPayload;
+  } catch {
+    throw new AdminAuthError('Your confirmation has expired — confirm again', 403);
+  }
+  if (payload.purpose !== 'platform_admin_step_up' || payload.sub !== admin.id || payload.pwd !== (admin.passwordChangedAt?.getTime() ?? 0)) {
+    throw new AdminAuthError('Confirm with your password and an emailed code first', 403);
+  }
+}
