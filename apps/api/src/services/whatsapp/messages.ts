@@ -5,6 +5,7 @@ import { buildVenueMapUrl } from '../mapsUrl';
 import { enqueueNotification } from '../../queue';
 import { isWhatsAppConfigured, sendWhatsAppTemplate, WhatsAppInvalidNumberError, WhatsAppMessage } from './client';
 import { logger } from '../../logger';
+import { certificateTicketsForBooking } from '../certificates';
 
 // What each WhatsApp message says. The params are listed in the order of
 // the template's {{1}}, {{2}}, … — the approved template texts are in
@@ -136,6 +137,12 @@ export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Bo
       const feedback = base2 ? `${base2}/bookings/${encodeURIComponent(booking.bookingReference)}/feedback` : myBookingsUrl();
       // Hi {{1}}, thank you for joining {{2}} with {{3}}! {{4}} Please rate your experience at {{5}}. …
       return { ...base, params: [name, event.name, organizer?.name ?? 'us', photos, feedback] };
+    }
+    case 'certificateReady': {
+      // Hi {{1}}, thank you for attending {{2}}! … Button: Download Certificate → /api/certificates/{{1}}
+      if (booking.status !== 'confirmed' || !publicBaseUrl()) return null;
+      if ((await certificateTicketsForBooking(booking, event)).length === 0) return null;
+      return { ...base, params: [name, event.name], urlButtons: [ticketLinkToken(booking.bookingReference)] };
     }
     default:
       return null;

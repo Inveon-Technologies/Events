@@ -18,6 +18,7 @@ export const WHATSAPP_MESSAGES = {
   eventReminder: 'event_reminder',
   bookingCancelled: 'booking_cancelled',
   postEventThanks: 'post_event_thanks',
+  certificateReady: 'certificate_ready',
 } as const;
 export type WhatsAppMessage = keyof typeof WHATSAPP_MESSAGES;
 

@@ -29,6 +29,7 @@ import EventBookings from './pages/event-detail/EventBookings';
 import EventParticipants from './pages/event-detail/EventParticipants';
 import EventPayments from './pages/event-detail/EventPayments';
 import EventTickets from './pages/event-detail/EventTickets';
+import EventCertificate from './pages/event-detail/EventCertificate';
 
 // Global Operations
 import Bookings from './pages/operations/Bookings';
@@ -99,6 +100,7 @@ export default function OrganizerPortalRoutes() {
         <Route path="events/:id/participants" element={<EventParticipants />} />
         <Route path="events/:id/payments" element={<EventPayments />} />
         <Route path="events/:id/tickets" element={<EventTickets />} />
+        <Route path="events/:id/certificate" element={<EventCertificate />} />
 
         {/* Global Operations */}
         <Route path="bookings" element={<Bookings />} />

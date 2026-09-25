@@ -82,6 +82,7 @@ function apiBookingToMockShape(b) {
 function ticketDesignPayload(data) {
   return {
     ticketBackgroundUrl: data.ticketBackgroundUrl || null,
+    certificateEnabled: Boolean(data.certificateEnabled),
     partners: (data.partners || [])
       .filter((p) => (p.name || '').trim() || p.logoUrl)
       .map((p) => ({ name: (p.name || '').trim(), role: (p.role || '').trim() || null, logoUrl: p.logoUrl || null })),

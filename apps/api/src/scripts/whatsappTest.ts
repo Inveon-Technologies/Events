@@ -61,6 +61,10 @@ function samples(): Record<WhatsAppMessage, { params: string[]; headerImage?: { 
     bookingCancelled: {
       params: ['Rahul', SAMPLE_REF, 'Rajgad Sunrise Trek', 'This is a test message — nothing was cancelled.'],
     },
+    certificateReady: {
+      params: ['Rahul', 'Rajgad Sunrise Trek'],
+      urlButtons: [`${SAMPLE_REF}.sample`],
+    },
     postEventThanks: {
       params: [
         'Rahul',
@@ -135,7 +139,7 @@ async function main(): Promise<void> {
       if (h) console.log(`  → ${h}`);
     }
   }
-  console.log(failed ? `\n${failed} of 4 failed.` : '\nAll 4 sent — check WhatsApp on the test phone.');
+  console.log(failed ? `\n${failed} failed.` : '\nAll sent — check WhatsApp on the test phone.');
   process.exitCode = failed ? 1 : 0;
 }
 

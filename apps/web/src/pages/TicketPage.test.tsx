@@ -125,4 +125,35 @@ describe('TicketPage (/t/:token)', () => {
     expect(await screen.findByRole('heading', { name: 'Ticket not found' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('link', { name: 'Find my booking' })).toHaveAttribute('href', '/bookings/lookup'));
   });
+
+  it('offers the certificate download for a checked-in attendee only', async () => {
+    renderAt(
+      detail({
+        tickets: [
+          {
+            id: 't1',
+            ticketReference: 'INV-BKG-2026-8F3K2Q-1',
+            attendeeName: 'Rahul Sharma',
+            tierName: 'General',
+            status: 'checked_in',
+            certificateAvailable: true,
+          },
+          {
+            id: 't2',
+            ticketReference: 'INV-BKG-2026-8F3K2Q-2',
+            attendeeName: 'Priya Sharma',
+            tierName: 'General',
+            status: 'valid',
+            certificateAvailable: false,
+          },
+        ],
+      }),
+    );
+    expect(await screen.findByRole('link', { name: /Download Certificate/ })).toHaveAttribute(
+      'href',
+      `/api/t/${encodeURIComponent(TOKEN)}/tickets/t1/certificate.pdf`,
+    );
+    await userEvent.click(screen.getByRole('tab', { name: 'Priya Sharma' }));
+    expect(screen.queryByRole('link', { name: /Download Certificate/ })).not.toBeInTheDocument();
+  });
 });

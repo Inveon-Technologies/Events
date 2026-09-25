@@ -110,6 +110,22 @@ export async function uploadDesignImage(file: File, token: string | null): Promi
   return data as { url: string };
 }
 
+// Server-rendered certificate preview (the same renderer attendees'
+// PDFs use), for a design that may not be saved yet. Returns an object URL.
+export async function fetchCertificatePreview(eventId: string, design: unknown, participant: string, token: string | null): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/api/organizer/events/${eventId}/certificate/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: JSON.stringify({ design, participant }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    notifyIfSessionExpired(res.status, token);
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Preview failed', data);
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
 export async function deleteEventMediaFile(eventId: string, mediaId: string, token: string | null): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/organizer/events/${eventId}/media/${mediaId}`, {
     method: 'DELETE',

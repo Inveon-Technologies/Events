@@ -93,6 +93,9 @@ export default function CreateEvent() {
     // up to 10 Partners & Supporters, as uploaded image URLs.
     ticketBackgroundUrl: null,
     partners: [],
+    // Participation certificates for checked-in attendees (designed in
+    // the event's Certificate tab).
+    certificateEnabled: false,
     totalCapacity: 0,
     tags: [],
     genderRestriction: '', // '' = open to all genders (the default); 'male' or 'female' otherwise
@@ -145,6 +148,7 @@ export default function CreateEvent() {
           venueName: data.venueAddress || '',
           bannerImage: data.bannerImage || '',
           ticketBackgroundUrl: data.ticketBackgroundUrl || null,
+          certificateEnabled: Boolean(data.certificateEnabled),
           partners: (data.partners || []).map((p, i) => ({ id: `partner-${i}`, name: p.name || '', role: p.role || '', logoUrl: p.logoUrl || null })),
           genderRestriction: data.genderRestriction || '',
           ticketTiers: data.ticketTiers.length
@@ -1092,6 +1096,32 @@ export default function CreateEvent() {
                 value={{ ticketBackgroundUrl: formData.ticketBackgroundUrl, partners: formData.partners }}
                 onChange={(design) => setFormData((prev) => ({ ...prev, ...design }))}
               />
+            </section>
+
+            <section className="p-4 border border-slate-200 rounded-xl flex flex-wrap items-center gap-3" aria-label="Participation certificates">
+              <div className="flex-1 min-w-[220px]">
+                <h4 className="text-sm font-bold text-slate-900">Participation certificates</h4>
+                <p className="text-[11px] text-slate-500">
+                  Checked-in attendees get a certificate after the event — by email, WhatsApp and on their ticket page.{' '}
+                  {isEditMode ? (
+                    <NavLink to={`/organizer/events/${eventId}/certificate`} className="font-semibold text-brand-600 hover:underline">
+                      Design the certificate →
+                    </NavLink>
+                  ) : (
+                    'You can design it in the event\u2019s Certificate tab after saving.'
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={formData.certificateEnabled}
+                aria-label="Send participation certificates"
+                onClick={() => setFormData((prev) => ({ ...prev, certificateEnabled: !prev.certificateEnabled }))}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${formData.certificateEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${formData.certificateEnabled ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
             </section>
 
             <TicketPreview formData={formData} coverUrl={mediaImages[0]?.previewUrl || formData.bannerImage || null} />

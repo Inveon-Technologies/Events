@@ -1,4 +1,4 @@
-import { Router, Request } from 'express';
+import { Router, Request, Response } from 'express';
 import {
   createBooking,
   SoldOutError,
@@ -33,6 +33,7 @@ import {
   NotFoundError as TicketsNotFoundError,
 } from '../services/customerTickets';
 import { loadTicketArtworkData, renderTicketCardPng, renderTicketPdf } from '../services/ticketArtwork';
+import { renderBookingCertificatesPdf, CertificateNotAvailableError } from '../services/certificates';
 import {
   initiateCustomerLogin,
   verifyCustomerLoginOtp,
@@ -396,6 +397,37 @@ publicBookingsRouter.get('/t/:token/tickets.pdf', bookingLookupLimit, asyncHandl
 // variable part has to be the end of its URL.
 publicBookingsRouter.get('/ticket-pdf/:token', bookingLookupLimit, asyncHandler(async (req, res) => {
   res.redirect(302, `/api/t/${encodeURIComponent(req.params.token)}/tickets.pdf`);
+}));
+
+// Participation certificates (checked-in attendees of events that issue
+// them): one ticket's, or the whole booking's in one PDF. The second URL
+// ends in the token for the WhatsApp certificate button.
+async function sendCertificates(res: Response, token: string, ticketId?: string): Promise<void> {
+  await withTicketToken(res, async () => {
+    const booking = await findBookingByToken(token);
+    try {
+      const { pdf } = await renderBookingCertificatesPdf(booking, ticketId);
+      res
+        .set('Cache-Control', 'private, no-store')
+        .set('Content-Disposition', `inline; filename="Certificate-${booking.bookingReference}.pdf"`)
+        .type('application/pdf')
+        .send(pdf);
+    } catch (err) {
+      if (err instanceof CertificateNotAvailableError) {
+        res.status(404).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  });
+}
+
+publicBookingsRouter.get('/t/:token/tickets/:ticketId/certificate.pdf', bookingLookupLimit, asyncHandler(async (req, res) => {
+  await sendCertificates(res, req.params.token, req.params.ticketId);
+}));
+
+publicBookingsRouter.get('/certificates/:token', bookingLookupLimit, asyncHandler(async (req, res) => {
+  await sendCertificates(res, req.params.token);
 }));
 
 // The WhatsApp confirmation's header image, fetched by WhatsApp's servers
