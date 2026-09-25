@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
+import { EventTicket, type TicketPartner, type TicketStatusTone } from '../components/ticket/EventTicket';
 
 // The ticket page behind the signed link sent on WhatsApp and email
 // (/t/:token). The link is the access — no login or email needed.
@@ -9,6 +10,7 @@ import { Icon } from '../components/Icon';
 interface TicketRow {
   id: string;
   ticketReference: string;
+  displayReference?: string;
   attendeeName: string;
   tierName: string;
   status: 'valid' | 'checked_in' | 'cancelled';
@@ -23,8 +25,12 @@ interface TicketDetail {
   venueAddress: string | null;
   venueMapUrl: string | null;
   bannerUrl: string | null;
+  ticketBackgroundUrl?: string | null;
+  partners?: TicketPartner[];
+  eventTagline?: string | null;
   bookedAt: string;
   organizerName: string;
+  organizerLogoUrl?: string | null;
   organizerContactPhone: string | null;
   locationPoints?: { type: string; label: string }[] | null;
   paymentMethod: 'online' | 'cash' | null;
@@ -56,46 +62,18 @@ function ticketId(ticketReference: string): string {
   return `${m[1].replace(/-BKG-/, '-TKT-')}-${m[2].padStart(2, '0')}`;
 }
 
-function paymentLabel(d: TicketDetail): { text: string; tone: 'ok' | 'warn' | 'muted' } {
-  if (d.totalAmountPaise === 0) return { text: 'FREE', tone: 'ok' };
-  if (d.paymentStatus === 'paid') return { text: 'PAID', tone: 'ok' };
-  if (d.paymentStatus === 'refunded') return { text: 'REFUNDED', tone: 'muted' };
-  return { text: d.paymentMethod === 'cash' ? 'PAY AT VENUE' : 'PENDING', tone: 'warn' };
+function paymentText(d: TicketDetail): string {
+  if (d.totalAmountPaise === 0) return 'Free';
+  if (d.paymentStatus === 'paid') return 'Paid';
+  if (d.paymentStatus === 'refunded') return 'Refunded';
+  return d.paymentMethod === 'cash' ? 'Pay at venue' : 'Pending';
 }
 
-function ticketStatus(d: TicketDetail, t: TicketRow | undefined): { text: string; tone: 'ok' | 'warn' | 'bad' | 'muted' } {
+function ticketStatus(d: TicketDetail, t: TicketRow | undefined): { text: string; tone: TicketStatusTone } {
   if (d.bookingStatus === 'cancelled' || t?.status === 'cancelled') return { text: 'CANCELLED', tone: 'bad' };
   if (t?.status === 'checked_in') return { text: 'CHECKED IN', tone: 'muted' };
   if (d.bookingStatus === 'pending') return { text: 'PENDING', tone: 'warn' };
   return { text: 'CONFIRMED', tone: 'ok' };
-}
-
-const TONES = {
-  ok: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  warn: 'bg-amber-50 text-amber-700 border-amber-100',
-  bad: 'bg-rose-50 text-rose-700 border-rose-100',
-  muted: 'bg-slate-100 text-slate-600 border-slate-200',
-};
-
-function Pill({ text, tone }: { text: string; tone: keyof typeof TONES }) {
-  return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold rounded-full border ${TONES[tone]}`}>
-      {tone === 'ok' && <Icon name="check_circle" className="text-[14px]" filled />}
-      {text}
-    </span>
-  );
-}
-
-function Field({ icon, label, value }: { icon: string; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2.5 min-w-0">
-      <Icon name={icon} className="text-[20px] text-brand-600 mt-0.5 shrink-0" />
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">{label}</p>
-        <p className="text-sm font-bold text-ink break-words">{value}</p>
-      </div>
-    </div>
-  );
 }
 
 const DELIVERY: Record<string, { text: string; className: string; icon: string }> = {
@@ -194,17 +172,16 @@ export function TicketPage() {
 
   const tickets = detail.tickets.filter((t) => t.status !== 'cancelled');
   const ticket = tickets[Math.min(active, tickets.length - 1)];
-  const showQr = detail.bookingStatus !== 'cancelled' && ticket;
+  const showQr = detail.bookingStatus !== 'cancelled' && Boolean(ticket);
   const eventDate = new Date(detail.eventDate);
   const reporting = new Date(detail.gateOpenTime ?? detail.eventDate);
-  const dateText = eventDate.toLocaleDateString('en-IN', { ...IST, day: 'numeric', month: 'long', year: 'numeric' });
-  const weekday = eventDate.toLocaleDateString('en-IN', { ...IST, weekday: 'long' });
+  const dateText = eventDate.toLocaleDateString('en-IN', { ...IST, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const timeText = reporting.toLocaleTimeString('en-IN', { ...IST, hour: 'numeric', minute: '2-digit' }).toUpperCase();
   const timeCaption = detail.gateOpenTime ? 'Reporting Time' : 'Starts At';
   const place = locationLabel(detail);
   const pdfUrl = `/api/t/${encodeURIComponent(token)}/tickets.pdf`;
-  const payment = paymentLabel(detail);
   const status = ticketStatus(detail, ticket);
+  const shown = ticket ?? detail.tickets[0];
 
   async function share() {
     const data = { title: `${detail!.eventName} — ticket`, text: `My ticket for ${detail!.eventName}`, url: detail!.ticketPageUrl };
@@ -223,8 +200,8 @@ export function TicketPage() {
 
   return (
     <Layout>
-      <div className="bg-gradient-to-b from-orange-50 via-white to-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+      <div className="bg-white lg:bg-[#d7e2ed] pb-24 lg:pb-0">
+        <div className="max-w-[1360px] mx-auto px-3.5 sm:px-6 py-4 lg:py-7 space-y-4 lg:space-y-5">
           <nav className="flex items-center gap-1.5 text-xs text-ink-muted" aria-label="Breadcrumb">
             <Link to="/" aria-label="Home">
               <Icon name="home" className="text-[18px]" />
@@ -234,13 +211,8 @@ export function TicketPage() {
               My Tickets
             </Link>
             <Icon name="chevron_right" className="text-[16px]" />
-            <span className="text-ink">Ticket Details</span>
+            <span className="text-ink">Your Ticket</span>
           </nav>
-
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-ink tracking-tight">Your Event Ticket</h1>
-            <p className="text-sm text-ink-muted mt-1">Show this ticket at the event check-in</p>
-          </div>
 
           {detail.bookingStatus === 'cancelled' && (
             <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-sm text-rose-800" role="alert">
@@ -248,115 +220,76 @@ export function TicketPage() {
             </div>
           )}
 
-          {/* The ticket */}
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
-            <div className="order-1 relative min-h-[220px] bg-gradient-to-br from-brand-600 to-slate-900">
-              {detail.bannerUrl && <img src={detail.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/20 to-transparent" />
-              <div className="absolute bottom-0 p-5 text-white">
-                <p className="text-sm opacity-90">{detail.organizerName}</p>
-                <p className="text-2xl font-extrabold leading-tight">{detail.eventName}</p>
-                <p className="text-sm mt-1.5 flex items-center gap-1">
-                  <Icon name="location_on" className="text-[16px]" />
-                  {place}
-                </p>
-              </div>
+          {tickets.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="Participants">
+              <span className="text-xs font-semibold text-ink-muted mr-1">{tickets.length} tickets:</span>
+              {tickets.map((t, i) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === active}
+                  onClick={() => setActive(i)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                    i === active ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-ink border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {t.attendeeName}
+                </button>
+              ))}
             </div>
+          )}
 
-            <div className="p-5 sm:p-6 space-y-5 order-3 lg:order-2">
-              <div className="hidden lg:block">
-                <p className="text-sm text-ink-muted">{detail.organizerName}</p>
-                <h2 className="text-xl sm:text-2xl font-extrabold text-ink">{detail.eventName}</h2>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <Field icon="calendar_month" label={weekday} value={dateText} />
-                <Field icon="schedule" label={timeCaption} value={timeText} />
-                <Field icon="location_on" label="Location" value={place} />
-              </div>
+          <EventTicket
+            data={{
+              organizerName: detail.organizerName,
+              organizerLogoUrl: detail.organizerLogoUrl ?? null,
+              organizerPhone: detail.organizerContactPhone,
+              eventName: detail.eventName,
+              tagline: detail.eventTagline ?? null,
+              eventDate: detail.eventDate,
+              gateOpenTime: detail.gateOpenTime,
+              venueAddress: detail.venueAddress,
+              backgroundUrl: detail.ticketBackgroundUrl ?? detail.bannerUrl,
+              partners: detail.partners ?? [],
+              bookingReference: detail.bookingReference,
+              attendeeName: shown?.attendeeName ?? '—',
+              tierName: shown?.tierName ?? '—',
+              ticketId: shown ? shown.displayReference ?? ticketId(shown.ticketReference) : '—',
+              statusText: status.text,
+              statusTone: status.tone,
+              quantity: 1,
+              qrSrc: showQr ? `/api/t/${encodeURIComponent(token)}/tickets/${ticket!.id}/qr` : null,
+            }}
+          />
 
-              {tickets.length > 1 && (
-                <div className="flex flex-wrap gap-2" role="tablist" aria-label="Participants">
-                  {tickets.map((t, i) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={i === active}
-                      onClick={() => setActive(i)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${i === active ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-ink border-slate-200 hover:bg-slate-50'}`}
-                    >
-                      {t.attendeeName}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-100">
-                <Field icon="person" label="Participant" value={ticket?.attendeeName ?? '—'} />
-                <Field icon="confirmation_number" label="Ticket ID" value={ticket ? ticketId(ticket.ticketReference) : '—'} />
-                <div className="flex items-start gap-2.5">
-                  <Icon name="credit_card" className="text-[20px] text-brand-600 mt-0.5" />
-                  <div>
-                    <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">Payment Status</p>
-                    <Pill {...payment} />
-                  </div>
-                </div>
-                <Field icon="local_activity" label="Ticket Type" value={ticket?.tierName ?? '—'} />
-                <Field icon="receipt_long" label="Booking ID" value={detail.bookingReference} />
-                <div className="flex items-start gap-2.5">
-                  <Icon name="verified" className="text-[20px] text-brand-600 mt-0.5" />
-                  <div>
-                    <p className="text-[11px] font-semibold text-ink-muted uppercase tracking-wide">Ticket Status</p>
-                    <Pill {...status} />
-                  </div>
-                </div>
-              </div>
+          {/* Actions — a fixed dock on phones, as in the mobile design. */}
+          <div className="fixed lg:static bottom-0 inset-x-0 z-40 bg-white/95 lg:bg-transparent backdrop-blur-lg lg:backdrop-blur-none border-t border-slate-200 lg:border-0 px-4 py-3 lg:p-0 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.25)] lg:shadow-none">
+            <div className="max-w-[420px] lg:max-w-none mx-auto flex lg:grid lg:grid-cols-3 gap-2.5 lg:gap-3">
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noopener"
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs lg:text-sm uppercase lg:normal-case tracking-wide lg:tracking-normal shadow-lg shadow-brand-600/30 lg:shadow-none"
+              >
+                <Icon name="download" className="text-[20px]" /> Download Ticket PDF
+              </a>
+              <button
+                type="button"
+                onClick={share}
+                aria-label="Share Ticket"
+                className="flex items-center justify-center gap-2 py-3 px-3.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-brand-600 font-semibold text-sm"
+              >
+                <Icon name="share" className="text-[20px]" /> <span className="hidden lg:inline">{copied ? 'Link copied' : 'Share Ticket'}</span>
+              </button>
+              <Link
+                to="/bookings/my"
+                className="hidden lg:flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-brand-600 font-semibold text-sm"
+              >
+                <Icon name="arrow_back" className="text-[20px]" /> Back to My Tickets
+              </Link>
             </div>
-
-            {/* On phones the QR comes straight after the photo — it's what the gate needs. */}
-            <div className="order-2 lg:order-3 lg:border-l-2 border-b-2 lg:border-b-0 border-dashed border-slate-200 p-5 flex items-center justify-center">
-              <div className="bg-slate-50 rounded-2xl p-5 text-center w-full lg:w-64">
-                <p className="text-sm font-extrabold text-ink tracking-wide">SCAN AT ENTRY</p>
-                {showQr ? (
-                  <img
-                    src={`/api/t/${encodeURIComponent(token)}/tickets/${ticket.id}/qr`}
-                    alt={`QR code for ${ticket.attendeeName}`}
-                    className="w-52 h-52 mx-auto my-3 bg-white rounded-xl p-2"
-                  />
-                ) : (
-                  <div className="w-52 h-52 mx-auto my-3 rounded-xl bg-white flex items-center justify-center text-xs text-ink-muted">
-                    No active ticket
-                  </div>
-                )}
-                {showQr && tickets.length > 1 && <p className="text-sm font-bold text-ink">{ticket.attendeeName}</p>}
-                <p className="text-xs text-ink-muted">Show this QR code at event check-in.</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <a
-              href={pdfUrl}
-              target="_blank"
-              rel="noopener"
-              className="flex items-center justify-center gap-2 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm"
-            >
-              <Icon name="download" className="text-[20px]" /> Download Ticket PDF
-            </a>
-            <button
-              type="button"
-              onClick={share}
-              className="flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-brand-600 font-semibold text-sm"
-            >
-              <Icon name="share" className="text-[20px]" /> {copied ? 'Link copied' : 'Share Ticket'}
-            </button>
-            <Link
-              to="/bookings/my"
-              className="flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-brand-600 font-semibold text-sm"
-            >
-              <Icon name="arrow_back" className="text-[20px]" /> Back to My Tickets
-            </Link>
+            {copied && <p className="lg:hidden text-center text-[11px] text-emerald-700 mt-1.5">Ticket link copied</p>}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4">
@@ -370,6 +303,7 @@ export function TicketPage() {
                   ['schedule', timeCaption, timeText],
                   ['location_on', 'Location', place],
                   ['person', 'Organizer', detail.organizerName],
+                  ['credit_card', 'Payment', paymentText(detail)],
                 ].map(([icon, label, value]) => (
                   <div key={label} className="flex items-center gap-2">
                     <Icon name={icon} className="text-[18px] text-ink-muted" />

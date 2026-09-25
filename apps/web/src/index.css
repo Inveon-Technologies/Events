@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Cinzel:wght@700;800;900&family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 
 @tailwind base;
@@ -70,4 +70,14 @@ body {
   direction: ltr;
   -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
+}
+
+/* QR stub of the digital ticket (components/ticket/EventTicket.tsx). */
+.ticket-mandala {
+  background-color: #fbf7ee;
+  background-image:
+    radial-gradient(circle at 100% 100%, rgba(217, 163, 67, 0.12) 0%, rgba(217, 163, 67, 0.03) 40%, transparent 65%),
+    radial-gradient(circle at 50% 120%, rgba(217, 163, 67, 0.15) 0%, transparent 50%),
+    radial-gradient(#d4af37 0.65px, transparent 0.65px);
+  background-size: 100% 100%, 100% 100%, 14px 14px;
 }
