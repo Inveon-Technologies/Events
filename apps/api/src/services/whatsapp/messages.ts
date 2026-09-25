@@ -46,7 +46,8 @@ function locationLine(event: Event): string {
   return venue || shortPlace(pickup?.label) || 'See your ticket page';
 }
 
-async function build(message: WhatsAppMessage, booking: Booking, event: Event): Promise<Built> {
+// Exported for the send-test script (scripts/whatsappTest.ts).
+export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Booking, event: Event): Promise<Built> {
   const name = booking.primaryContactName;
   const base = { recipientName: name, to: booking.primaryContactWhatsapp };
 
@@ -149,7 +150,7 @@ export async function deliverWhatsApp(message: WhatsAppMessage, bookingId: strin
   const event = await Event.findByPk(booking.eventId);
   if (!event) return;
 
-  const built = await build(message, booking, event);
+  const built = await buildWhatsAppMessage(message, booking, event);
   if (!built) return;
 
   // The confirmation's outcome is shown on the ticket page ("Ticket

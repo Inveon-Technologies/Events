@@ -11,7 +11,7 @@ The app sends four WhatsApp messages once this is set up:
 
 Messages go through the background queue, like emails: a failed send is
 retried 5 times, and WhatsApp problems never block a booking. Nothing is
-sent until the settings in step 7 are in place.
+sent until the settings in step 7 are in place; step 8 sends a test.
 
 ---
 
@@ -184,7 +184,10 @@ The app sends each message by triggering an AiSensy **API campaign**. In
 
 1. In AiSensy: **Manage → API Key**. Copy the key and keep it secret; it
    can send messages as your business.
-2. On the server, add to `apps/api/.env`:
+2. Add these to the API's environment. On the production VPS that's the
+   `events-api` service's environment in the website stack
+   (`/home/ubuntu/inveontechnologies-website`); with this repo's own
+   `docker/docker-compose.yml` it's `apps/api/.env`:
    ```
    WHATSAPP_PROVIDER=aisensy
    AISENSY_API_KEY=<the key>
@@ -193,12 +196,46 @@ The app sends each message by triggering an AiSensy **API campaign**. In
    `WEB_PUBLIC_URL` is required: WhatsApp downloads the ticket picture from
    it, and the buttons open pages on it.
 3. Restart the API (`docker compose up -d events-api`), or redeploy.
-4. **Test:** book a free ticket on a test event with your own WhatsApp
-   number. The confirmation should arrive within a few seconds. The API
-   log shows `WhatsApp message sent`:
-   ```
-   docker compose logs events-api --since 5m | grep -i whatsapp
-   ```
+
+## 8. Send a test message
+
+Send all four messages to your own WhatsApp number in one go, with
+sample values (country code first, e.g. `91` for India). On the
+production VPS, run it from `/home/ubuntu/inveontechnologies-website`
+(with this repo's own compose file the service is called `api` instead
+of `events-api`):
+
+```
+docker compose exec events-api node dist/scripts/whatsappTest.js 919922565938
+```
+
+Each line shows ✓ sent, or ✗ with the provider's error and what to fix:
+
+```
+✓ booking_confirmation   sent (picture: https://…/images/whatsapp-sample-card.jpg)
+✓ event_reminder         sent
+✓ booking_cancelled      sent
+✗ post_event_thanks      WhatsApp provider returned 400: … campaign …
+  → Check the API campaign exists with exactly this name and is Live (step 6).
+```
+
+The sample ticket's buttons open a "ticket not found" page — that's
+expected. To test the real ticket, with its own picture and working
+buttons, add a real booking's ID; the message goes to your test number,
+not the customer's:
+
+```
+docker compose exec events-api node dist/scripts/whatsappTest.js 919922565938 --booking INV-BKG-2026-XXXXXXXX
+```
+
+Then make a real free booking with your number: the confirmation should
+arrive within seconds, and the API log shows `WhatsApp message sent`:
+
+```
+docker compose logs events-api --since 5m | grep -i whatsapp
+```
+
+(On a development machine: `npm run whatsapp:test -- 919922565938`.)
 
 To switch WhatsApp off again, remove `WHATSAPP_PROVIDER` and restart.
 
