@@ -275,7 +275,7 @@ function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: numbe
   if (partners.length > 0) {
     label('SUPPORTED BY', W / 2, top + H * 0.022, W * 0.0082);
     const rowTop = top + H * 0.029;
-    const rowH = H * 0.05;
+    const rowH = H * 0.062;
     const cellW = Math.min(width / partners.length, W * 0.16);
     const startX = W / 2 - (cellW * partners.length) / 2;
     partners.forEach((p, i) => {
@@ -284,12 +284,12 @@ function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: numbe
         ctx.fillStyle = '#d6c08a';
         ctx.fillRect(cx, rowTop + rowH * 0.15, 1.5, rowH * 0.7);
       }
-      if (p.logo) contain(ctx, p.logo, cx + cellW * 0.12, rowTop, cellW * 0.76, rowH * 0.62);
+      if (p.logo) contain(ctx, p.logo, cx + cellW * 0.12, rowTop, cellW * 0.76, rowH * 0.52);
       ctx.save();
       ctx.textAlign = 'center';
       ctx.fillStyle = '#1e293b';
       ctx.font = `bold ${W * 0.0074}px "Montserrat"`;
-      const roleY = p.logo ? rowTop + rowH * 0.8 : rowTop + rowH * 0.45;
+      const roleY = p.logo ? rowTop + rowH * 0.7 : rowTop + rowH * 0.45;
       ctx.fillText((p.role || p.name).toUpperCase(), cx + cellW / 2, roleY, cellW - 8);
       if (p.role) {
         ctx.fillStyle = '#64748b';

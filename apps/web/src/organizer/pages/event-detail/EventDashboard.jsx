@@ -192,6 +192,16 @@ function EventDashboardContent({ event }) {
         >
           Ticket Tiers ({event.ticketTiers?.length || 0})
         </NavLink>
+        <NavLink
+          to={`/organizer/events/${event.id}/certificate`}
+          className={({ isActive }) =>
+            `px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              isActive ? 'bg-brand-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+            }`
+          }
+        >
+          Certificate
+        </NavLink>
       </div>
 
       {/* KPI Cards */}
