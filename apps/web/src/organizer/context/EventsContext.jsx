@@ -77,6 +77,17 @@ function apiBookingToMockShape(b) {
 // Map pins as the API expects them (without the geocoding helper fields
 // LocationPicker keeps for filling the address form), plus the main
 // venue's coordinates — the venue point, or the only point.
+// Title background + Partners & Supporters (see TicketDesignEditor).
+// Rows with neither a name nor a logo are left out.
+function ticketDesignPayload(data) {
+  return {
+    ticketBackgroundUrl: data.ticketBackgroundUrl || null,
+    partners: (data.partners || [])
+      .filter((p) => (p.name || '').trim() || p.logoUrl)
+      .map((p) => ({ name: (p.name || '').trim(), role: (p.role || '').trim() || null, logoUrl: p.logoUrl || null })),
+  };
+}
+
 function locationPayload(points) {
   const cleaned = (points || []).map((p) => ({
     type: p.type,
@@ -204,6 +215,7 @@ export function EventsProvider({ children }) {
         pincode: newEvent.pincode,
         ...locationPayload(newEvent.locationPoints),
         bannerImage: newEvent.bannerImage,
+        ...ticketDesignPayload(newEvent),
         genderRestriction: newEvent.genderRestriction || null,
         cancellationPolicy: newEvent.cancellationPolicy?.description || undefined,
         allowSelfServiceCancellation: Boolean(newEvent.cancellationPolicy?.refundable),
@@ -284,6 +296,7 @@ export function EventsProvider({ children }) {
           pincode: formData.pincode,
           ...locationPayload(formData.locationPoints),
           bannerImage: formData.bannerImage,
+          ...ticketDesignPayload(formData),
           genderRestriction: formData.genderRestriction || null,
           cancellationPolicy: formData.cancellationPolicy?.description || undefined,
           allowSelfServiceCancellation: Boolean(formData.cancellationPolicy?.refundable),

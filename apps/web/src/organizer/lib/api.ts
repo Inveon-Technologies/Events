@@ -91,6 +91,25 @@ export async function uploadEventMediaFile(
   return data as UploadedEventMedia;
 }
 
+// Ticket-design image (title background or partner logo). Uploaded
+// straight away — it isn't tied to an event — and the returned URL is
+// saved on the event with the rest of the form.
+export async function uploadDesignImage(file: File, token: string | null): Promise<{ url: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE_URL}/api/organizer/uploads/image`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: formData,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    notifyIfSessionExpired(res.status, token);
+    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed', data);
+  }
+  return data as { url: string };
+}
+
 export async function deleteEventMediaFile(eventId: string, mediaId: string, token: string | null): Promise<void> {
   const res = await fetch(`${API_BASE_URL}/api/organizer/events/${eventId}/media/${mediaId}`, {
     method: 'DELETE',
