@@ -46,6 +46,10 @@ services:
     # leaving broken images everywhere.
     volumes:
       - uploads:/app/uploads
+      # Super admin portal: .zip backups, and the server helper's folder
+      # (scripts/server/install-admin-agent.sh).
+      - backups:/app/backups
+      - /var/lib/inveon-ops:/app/ops
     # Wait for Postgres to actually accept connections, not just for its
     # container to exist — otherwise the API's first queries (and the
     # migration step) race the database's startup.
@@ -107,3 +111,4 @@ volumes:
   redis_data:
   uploads:
   web_static:
+  backups:
