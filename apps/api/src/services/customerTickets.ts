@@ -2,6 +2,7 @@ import { Booking, Event, Organizer, Payment, Ticket, TicketCategory } from '../m
 import type { EventLocationPoint } from '../models/Event';
 import { generateTicketQrPng } from './qrCode';
 import { buildVenueMapUrl } from './mapsUrl';
+import { ticketPageUrl, verifyTicketLinkToken } from './ticketLinks';
 
 export class NotFoundError extends Error {}
 
@@ -57,6 +58,11 @@ export interface CustomerBookingDetail {
   // confirmed booking (attendees), never for a cancelled one.
   galleryUrl: string | null;
   galleryNote: string | null;
+  // Shareable link to this booking's ticket page (no login needed).
+  ticketPageUrl: string;
+  // How the confirmation reached the customer: 'sent' | 'failed' |
+  // 'skipped' (channel not set up), or null while not attempted yet.
+  delivery: { email: string | null; whatsapp: string | null };
 }
 
 async function findVerifiedBooking(bookingReference: string, email: string): Promise<Booking> {
@@ -68,7 +74,23 @@ async function findVerifiedBooking(bookingReference: string, email: string): Pro
 }
 
 export async function getBookingDetail(bookingReference: string, email: string): Promise<CustomerBookingDetail> {
-  const booking = await findVerifiedBooking(bookingReference, email);
+  return buildBookingDetail(await findVerifiedBooking(bookingReference, email));
+}
+
+// The ticket page behind a signed link (see ticketLinks.ts) — the link
+// itself is the proof of access, no email needed.
+export async function getBookingDetailByToken(token: string): Promise<CustomerBookingDetail> {
+  return buildBookingDetail(await findBookingByToken(token));
+}
+
+export async function findBookingByToken(token: string): Promise<Booking> {
+  const reference = verifyTicketLinkToken(token);
+  const booking = reference ? await Booking.findOne({ where: { bookingReference: reference } }) : null;
+  if (!booking) throw new NotFoundError('Ticket not found');
+  return booking;
+}
+
+export async function buildBookingDetail(booking: Booking): Promise<CustomerBookingDetail> {
   const event = await Event.findByPk(booking.eventId);
   if (!event) throw new NotFoundError('Booking not found');
   const organizer = await Organizer.findByPk(event.organizerId);
@@ -131,6 +153,8 @@ export async function getBookingDetail(bookingReference: string, email: string):
     refundCutoffPassed,
     galleryUrl: booking.status === 'confirmed' ? event.galleryUrl ?? null : null,
     galleryNote: booking.status === 'confirmed' ? event.galleryNote ?? null : null,
+    ticketPageUrl: ticketPageUrl(booking.bookingReference),
+    delivery: { email: booking.confirmationEmailStatus ?? null, whatsapp: booking.confirmationWhatsappStatus ?? null },
     tickets: tickets.map((ticket, i) => ({
       id: ticket.id,
       ticketReference: `${booking.bookingReference}-${i + 1}`,
@@ -143,7 +167,14 @@ export async function getBookingDetail(bookingReference: string, email: string):
 }
 
 export async function getTicketQrImage(bookingReference: string, email: string, ticketId: string): Promise<Buffer> {
-  const booking = await findVerifiedBooking(bookingReference, email);
+  return qrForBookingTicket(await findVerifiedBooking(bookingReference, email), ticketId);
+}
+
+export async function getTicketQrImageByToken(token: string, ticketId: string): Promise<Buffer> {
+  return qrForBookingTicket(await findBookingByToken(token), ticketId);
+}
+
+async function qrForBookingTicket(booking: Booking, ticketId: string): Promise<Buffer> {
 
   const ticket = await Ticket.findOne({ where: { id: ticketId, bookingId: booking.id } });
   if (!ticket) throw new NotFoundError('Ticket not found');

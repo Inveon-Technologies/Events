@@ -20,6 +20,8 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare cancelledBy: CancelledBy | null;
   declare refundAmountPaise: number | null;
   declare refundStatus: string | null;
+  declare confirmationEmailStatus: CreationOptional<string | null>;
+  declare confirmationWhatsappStatus: CreationOptional<string | null>;
   declare readonly createdAt: CreationOptional<Date>;
   declare readonly updatedAt: CreationOptional<Date>;
 }
@@ -40,6 +42,8 @@ Booking.init(
     cancelledBy: { type: DataTypes.STRING, allowNull: true },
     refundAmountPaise: { type: DataTypes.INTEGER, allowNull: true },
     refundStatus: { type: DataTypes.STRING, allowNull: true },
+    confirmationEmailStatus: { type: DataTypes.STRING(16), allowNull: true },
+    confirmationWhatsappStatus: { type: DataTypes.STRING(16), allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

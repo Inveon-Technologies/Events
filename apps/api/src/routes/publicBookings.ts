@@ -24,7 +24,15 @@ import {
   ValidationError as CancellationValidationError,
   NotFoundError as CancellationNotFoundError,
 } from '../services/bookingCancellation';
-import { getBookingDetail, getTicketQrImage, NotFoundError as TicketsNotFoundError } from '../services/customerTickets';
+import {
+  findBookingByToken,
+  getBookingDetail,
+  getBookingDetailByToken,
+  getTicketQrImage,
+  getTicketQrImageByToken,
+  NotFoundError as TicketsNotFoundError,
+} from '../services/customerTickets';
+import { loadTicketArtworkData, renderTicketCardPng, renderTicketPdf } from '../services/ticketArtwork';
 import {
   initiateCustomerLogin,
   verifyCustomerLoginOtp,
@@ -336,6 +344,79 @@ publicBookingsRouter.get('/bookings/:bookingReference/tickets/:ticketId/qr', boo
     }
     throw err;
   }
+}));
+
+// ---- Ticket page behind a signed link (/t/:token, see ticketLinks.ts) ----
+// The token is the proof of access. Responses are private: they carry
+// entry QR codes.
+
+async function withTicketToken(res: Parameters<Parameters<typeof asyncHandler>[0]>[1], work: () => Promise<void>): Promise<void> {
+  try {
+    await work();
+  } catch (err) {
+    if (err instanceof TicketsNotFoundError) {
+      res.status(404).json({ error: 'Ticket not found. Check the link, or find your booking with its reference and email.' });
+      return;
+    }
+    throw err;
+  }
+}
+
+publicBookingsRouter.get('/t/:token', bookingLookupLimit, asyncHandler(async (req, res) => {
+  await withTicketToken(res, async () => {
+    const detail = await getBookingDetailByToken(req.params.token);
+    res.set('Cache-Control', 'private, no-store').status(200).json(detail);
+  });
+}));
+
+publicBookingsRouter.get('/t/:token/tickets/:ticketId/qr', bookingLookupLimit, asyncHandler(async (req, res) => {
+  await withTicketToken(res, async () => {
+    const png = await getTicketQrImageByToken(req.params.token, req.params.ticketId);
+    res.set('Cache-Control', 'private, max-age=300').type('image/png').send(png);
+  });
+}));
+
+publicBookingsRouter.get('/t/:token/tickets.pdf', bookingLookupLimit, asyncHandler(async (req, res) => {
+  await withTicketToken(res, async () => {
+    const booking = await findBookingByToken(req.params.token);
+    const pdf = await renderTicketPdf(await loadTicketArtworkData(booking));
+    res
+      .set('Cache-Control', 'private, no-store')
+      .set('Content-Disposition', `inline; filename="Tickets-${booking.bookingReference}.pdf"`)
+      .type('application/pdf')
+      .send(pdf);
+  });
+}));
+
+// Same PDF at a URL that ends in the token: a WhatsApp URL button's
+// variable part has to be the end of its URL.
+publicBookingsRouter.get('/ticket-pdf/:token', bookingLookupLimit, asyncHandler(async (req, res) => {
+  res.redirect(302, `/api/t/${encodeURIComponent(req.params.token)}/tickets.pdf`);
+}));
+
+// The WhatsApp confirmation's header image, fetched by WhatsApp's servers
+// when a message is sent. Not rate-limited per IP: those fetches all come
+// from a few provider IPs, and a limit would strip images off messages on
+// a busy day. The signed token already stops guessing; a short cache keeps
+// a repeated fetch from re-rendering.
+const CARD_CACHE_TTL_MS = 10 * 60 * 1000;
+const cardCache = new Map<string, { png: Buffer; expires: number }>();
+
+publicBookingsRouter.get('/t/:token/card.png', asyncHandler(async (req, res) => {
+  await withTicketToken(res, async () => {
+    const booking = await findBookingByToken(req.params.token);
+    const key = `${booking.id}:${booking.status}:${booking.updatedAt.getTime()}`;
+    const now = Date.now();
+    let cached = cardCache.get(key);
+    if (!cached || cached.expires < now) {
+      cached = { png: await renderTicketCardPng(await loadTicketArtworkData(booking)), expires: now + CARD_CACHE_TTL_MS };
+      if (cardCache.size >= 200) {
+        for (const [k, v] of cardCache) if (v.expires < now || cardCache.size >= 200) cardCache.delete(k);
+      }
+      cardCache.set(key, cached);
+    }
+    res.set('Cache-Control', 'private, max-age=300').type('image/png').send(cached.png);
+  });
 }));
 
 publicBookingsRouter.post('/bookings/login/initiate', customerLoginSendLimit, asyncHandler(async (req, res) => {
