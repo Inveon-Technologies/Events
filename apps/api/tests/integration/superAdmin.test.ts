@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { createApp } from '../../src/app';
 import { sequelize } from '../../src/db/connection';
-import { connectRedis } from '../../src/db/redis';
+import { connectRedis, redis } from '../../src/db/redis';
 import {
   Organizer,
   User,
@@ -120,6 +120,7 @@ describe('super admin portal (real DB)', () => {
     resetSettingsCacheForTests();
     fs.rmSync(opsDir, { recursive: true, force: true });
     fs.rmSync(backupDir, { recursive: true, force: true });
+    await redis.quit();
     await sequelize.close();
   });
 
