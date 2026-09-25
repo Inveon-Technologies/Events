@@ -9,7 +9,7 @@ import {
 } from '../services/bookingCreation';
 import { createCashfreeOrderForBooking, NotFoundError as OrderNotFoundError } from '../services/cashfreeOrders';
 import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
-import { listPublicEvents, getPublicEvent } from '../services/publicEvents';
+import { listPublicEvents, getPublicEvent, getPublicEventAvailability } from '../services/publicEvents';
 import { listPublicOrganizers, getPublicOrganizer } from '../services/publicOrganizers';
 import {
   submitReview,
@@ -18,6 +18,7 @@ import {
   ValidationError as ReviewValidationError,
 } from '../services/eventReviews';
 import { enqueueNotification } from '../queue';
+import { releaseCustomersOwnHolds, SEAT_HOLD_MS } from '../services/pendingBookingExpiry';
 import { enqueueWhatsApp } from '../services/whatsapp/messages';
 import {
   customerCancelBooking,
@@ -145,6 +146,16 @@ publicBookingsRouter.get('/events/:eventId', asyncHandler(async (req, res) => {
   res.status(200).json(event);
 }));
 
+publicBookingsRouter.get('/events/:eventId/availability', asyncHandler(async (req, res) => {
+  const availability = await getPublicEventAvailability(req.params.eventId, SEAT_HOLD_MS);
+  if (!availability) {
+    res.status(404).json({ error: 'Event not found' });
+    return;
+  }
+  res.set('Cache-Control', 'no-store');
+  res.status(200).json(availability);
+}));
+
 publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const {
@@ -169,6 +180,13 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
   ) {
     res.status(400).json({ error: 'Missing or invalid booking fields' });
     return;
+  }
+
+  // Retrying after abandoning a payment: give this customer's own
+  // earlier seat hold back first, so it can't make the event look sold
+  // out to them. Best effort — never blocks the new booking.
+  if (paymentMethod === 'online') {
+    await releaseCustomersOwnHolds(eventId, primaryContactEmail).catch((err) => req.log?.warn({ err }, 'Could not release earlier seat holds'));
   }
 
   try {
@@ -209,6 +227,8 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
         bookingId: result.bookingId,
         bookingReference: result.bookingReference,
         paymentSessionId: order.paymentSessionId,
+        // Seats are held until then; the checkout shows a countdown.
+        holdExpiresAt: new Date(Date.now() + SEAT_HOLD_MS).toISOString(),
       });
       return;
     }
@@ -526,11 +546,15 @@ publicBookingsRouter.get('/bookings/my', asyncHandler(async (req, res) => {
     return;
   }
 
+  // Only a bad or expired token is a 401 — a failure loading the
+  // bookings must not look like "logged out" to the customer.
+  let email: string;
   try {
-    const { email } = verifyCustomerSessionToken(authHeader.slice('Bearer '.length));
-    const bookings = await getCustomerBookings(email);
-    res.status(200).json({ bookings });
+    ({ email } = verifyCustomerSessionToken(authHeader.slice('Bearer '.length)));
   } catch {
     res.status(401).json({ error: 'Your session has expired — please log in again' });
+    return;
   }
+  const bookings = await getCustomerBookings(email);
+  res.status(200).json({ bookings });
 }));

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { fetchEventData, EventDetails, EventNotFoundError } from '../lib/eventDetails';
+import { fetchEventData, EventDetails, EventNotFoundError, useLiveAvailability } from '../lib/eventDetails';
 import { EventUnavailablePage } from './EventUnavailablePage';
 import { EventLocationMap } from '../components/map/EventLocationMap';
 import { formatINR } from '../lib/format';
@@ -47,6 +47,7 @@ export function EventDetailsPage() {
       cancelled = true;
     };
   }, [eventId, reloadKey]);
+  useLiveAvailability(event?.id, setEvent);
 
   if (loadError === 'not_found') {
     return <EventUnavailablePage reference={eventId ?? '404'} />;

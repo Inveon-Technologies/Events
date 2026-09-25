@@ -127,9 +127,8 @@ export async function uploadOrganizerLogo(params: UploadLogoParams): Promise<{ l
 
   if (previousUrl) {
     const s3Key = s3KeyFromUrl(previousUrl);
-    if (s3Key) {
-      await deleteFileFromS3(s3Key).catch(() => {});
-    } else {
+    if (s3Key) await deleteFileFromS3(s3Key).catch(() => {});
+    if (previousUrl.startsWith(`${UPLOAD_URL_PREFIX}/`) && !previousUrl.includes('..')) {
       const relativePath = previousUrl.replace(`${UPLOAD_URL_PREFIX}/`, '');
       await fs.unlink(path.join(UPLOAD_DIR, relativePath)).catch(() => {});
     }

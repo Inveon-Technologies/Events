@@ -50,6 +50,8 @@ interface TicketRow {
   tierName: string;
   status: 'valid' | 'checked_in' | 'cancelled';
   checkedInAt: string | null;
+  certificateAvailable?: boolean;
+  certificateUrl?: string | null;
 }
 
 interface BookingDetail {
@@ -87,6 +89,8 @@ interface BookingDetail {
   locationPoints?: LocationPoint[] | null;
   galleryNote?: string | null;
   ticketPageUrl?: string;
+  certificatesEnabled?: boolean;
+  certificatesUrl?: string | null;
 }
 
 export function ManageBookingPage() {
@@ -394,6 +398,44 @@ export function ManageBookingPage() {
               </div>
             )}
 
+            {/* Photos not shared yet — say where they'll appear, after the event */}
+            {!detail.galleryUrl && detail.bookingStatus === 'confirmed' && new Date(detail.eventDate).getTime() < Date.now() && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 text-xs text-ink-muted">
+                <Icon name="photo_library" className="text-[18px] text-brand-500 shrink-0" />
+                <span>
+                  Event photos &amp; videos will appear here as soon as {detail.organizerName} shares them.
+                </span>
+              </div>
+            )}
+
+            {/* Participation certificates — for attendees who checked in */}
+            {detail.certificatesEnabled && (
+              <div
+                className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-100 shadow-sm p-5 flex flex-col sm:flex-row sm:items-center gap-4"
+                data-testid="certificate-card"
+              >
+                <div className="w-11 h-11 rounded-xl bg-white text-amber-600 flex items-center justify-center shrink-0 shadow-sm">
+                  <Icon name="workspace_premium" className="text-[22px]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-ink">Certificate of participation</h3>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    {detail.certificatesUrl
+                      ? 'Your certificate is ready. Download it below, or one for each checked-in attendee from their ticket.'
+                      : 'Available for every attendee who checks in at the event — come back here after you attend.'}
+                  </p>
+                </div>
+                {detail.certificatesUrl && (
+                  <a
+                    href={detail.certificatesUrl}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg text-center shrink-0 inline-flex items-center justify-center gap-1"
+                  >
+                    <Icon name="download" className="text-[16px]" /> Download certificate
+                  </a>
+                )}
+              </div>
+            )}
+
             {/* Where to go: venue / pickup points with times, notes, directions */}
             {detail.locationPoints && detail.locationPoints.length > 0 && detail.bookingStatus !== 'cancelled' && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
@@ -444,6 +486,14 @@ export function ManageBookingPage() {
                     >
                       <Icon name="qr_code_2" className="text-[16px]" /> View Ticket &amp; QR
                     </button>
+                    {ticket.certificateUrl && (
+                      <a
+                        href={ticket.certificateUrl}
+                        className="mt-2 w-full py-2 px-3 border border-amber-500 bg-amber-50/60 text-amber-700 hover:bg-amber-600 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                      >
+                        <Icon name="workspace_premium" className="text-[16px]" /> Download Certificate
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>

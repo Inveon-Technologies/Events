@@ -16,8 +16,11 @@ export default function EventGalleryCard({ eventId, eventDate }) {
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // The server's own event start time (UTC ISO) wins over the page's
+  // date + time strings, which are Indian local time.
+  const [startsAt, setStartsAt] = useState(eventDate);
 
-  const eventHasHappened = new Date(eventDate).getTime() <= Date.now();
+  const eventHasHappened = new Date(startsAt).getTime() <= Date.now();
 
   useEffect(() => {
     let cancelled = false;
@@ -27,6 +30,7 @@ export default function EventGalleryCard({ eventId, eventDate }) {
         setUrl(data.galleryUrl || '');
         setNote(data.galleryNote || '');
         setSavedUrl(data.galleryUrl || null);
+        if (data.eventDate) setStartsAt(data.eventDate);
       })
       .catch(() => {})
       .finally(() => {
@@ -58,10 +62,20 @@ export default function EventGalleryCard({ eventId, eventDate }) {
   }
 
   return (
-    <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
+    <div
+      className={`p-5 rounded-xl border shadow-xs space-y-3 ${
+        eventHasHappened && loaded && !savedUrl ? 'bg-brand-50/60 border-brand-200' : 'bg-white border-slate-200/80'
+      }`}
+      data-testid="event-gallery-card"
+    >
       <div className="flex items-center gap-2">
         <Images className="w-5 h-5 text-brand-600" />
-        <h3 className="font-bold text-slate-900 text-sm">Event photos &amp; videos</h3>
+        <h3 className="font-bold text-slate-900 text-sm">Event photos &amp; videos (Google Drive link)</h3>
+        {eventHasHappened && loaded && !savedUrl && (
+          <span className="ml-auto text-[10px] font-bold uppercase tracking-wide text-brand-700 bg-white border border-brand-200 rounded-full px-2 py-0.5">
+            Share now
+          </span>
+        )}
       </div>
 
       {!eventHasHappened ? (

@@ -5,18 +5,31 @@ import { sequelize } from '../../src/db/connection';
 import { Organizer, User, Event, TicketCategory, Booking, Payment, Ticket } from '../../src/models';
 import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
-import { cashfreeCreateOrder, cashfreeCreateRefund, cashfreeGetOrder, CashfreeApiError } from '../../src/services/cashfreeClient';
-import { expireStalePendingOnlineBookings, PENDING_ONLINE_BOOKING_TTL_MS } from '../../src/services/pendingBookingExpiry';
+import {
+  cashfreeCreateOrder,
+  cashfreeCreateRefund,
+  cashfreeGetOrder,
+  cashfreeGetOrderPayments,
+  CashfreeApiError,
+} from '../../src/services/cashfreeClient';
+import { expireStalePendingOnlineBookings, releaseCustomersOwnHolds, SEAT_HOLD_MS } from '../../src/services/pendingBookingExpiry';
 import { generateBookingReference } from '../../src/services/bookingCreation';
 
 jest.mock('../../src/services/cashfreeClient', () => {
   const actual = jest.requireActual('../../src/services/cashfreeClient');
-  return { ...actual, cashfreeCreateOrder: jest.fn(), cashfreeCreateRefund: jest.fn(), cashfreeGetOrder: jest.fn() };
+  return {
+    ...actual,
+    cashfreeCreateOrder: jest.fn(),
+    cashfreeCreateRefund: jest.fn(),
+    cashfreeGetOrder: jest.fn(),
+    cashfreeGetOrderPayments: jest.fn().mockResolvedValue([]),
+  };
 });
 
 const mockCreateOrder = cashfreeCreateOrder as jest.MockedFunction<typeof cashfreeCreateOrder>;
 const mockCreateRefund = cashfreeCreateRefund as jest.MockedFunction<typeof cashfreeCreateRefund>;
 const mockGetOrder = cashfreeGetOrder as jest.MockedFunction<typeof cashfreeGetOrder>;
+const mockGetOrderPayments = cashfreeGetOrderPayments as jest.MockedFunction<typeof cashfreeGetOrderPayments>;
 
 const WEBHOOK_SECRET = 'test-webhook-secret-integrity';
 
@@ -34,7 +47,10 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
   function signedWebhook(payload: unknown) {
     const rawBody = JSON.stringify(payload);
     const timestamp = Date.now().toString();
-    const signature = crypto.createHmac('sha256', WEBHOOK_SECRET).update(timestamp + rawBody).digest('base64');
+    const signature = crypto
+      .createHmac('sha256', WEBHOOK_SECRET)
+      .update(timestamp + rawBody)
+      .digest('base64');
     return request(app)
       .post('/api/webhooks/cashfree')
       .set('Content-Type', 'application/json')
@@ -43,7 +59,9 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
       .send(rawBody);
   }
 
-  async function createEvent(opts: { quota?: number; price?: number; status?: 'draft' | 'published' | 'cancelled'; daysAhead?: number; maxPerBooking?: number } = {}) {
+  async function createEvent(
+    opts: { quota?: number; price?: number; status?: 'draft' | 'published' | 'cancelled'; daysAhead?: number; maxPerBooking?: number } = {},
+  ) {
     const event = await Event.create({
       organizerId,
       name: `Integrity Event ${suffix}-${Math.random()}`,
@@ -74,8 +92,11 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
     };
   }
 
-  async function createOnlineBooking(eventId: string, tierId: string, quantity = 1) {
-    const res = await request(app).post(`/api/events/${eventId}/bookings`).send(bookingBody(tierId, { quantity }));
+  let customerSeq = 0;
+  async function createOnlineBooking(eventId: string, tierId: string, quantity = 1, email?: string) {
+    customerSeq += 1;
+    const primaryContactEmail = email ?? `integrity-${suffix}-${customerSeq}@example.com`;
+    const res = await request(app).post(`/api/events/${eventId}/bookings`).send(bookingBody(tierId, { quantity, primaryContactEmail }));
     expect(res.status).toBe(201);
     const payment = (await Payment.findOne({ where: { bookingId: res.body.bookingId } }))!;
     return { bookingId: res.body.bookingId as string, bookingReference: res.body.bookingReference as string, payment };
@@ -143,16 +164,20 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
   describe('booking-time validation', () => {
     it('rejects a fractional quantity instead of issuing extra tickets for a partial price', async () => {
       const { event, tier } = await createEvent();
-      const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id, { quantity: 1.4 }));
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(bookingBody(tier.id, { quantity: 1.4 }));
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/whole number/i);
       expect(await quotaRemaining(tier.id)).toBe(10);
       expect(await Booking.count({ where: { eventId: event.id } })).toBe(0);
     });
 
-    it('enforces the tier\'s max_per_booking', async () => {
+    it("enforces the tier's max_per_booking", async () => {
       const { event, tier } = await createEvent({ maxPerBooking: 2 });
-      const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id, { quantity: 3 }));
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(bookingBody(tier.id, { quantity: 3 }));
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/at most 2/);
       expect(await quotaRemaining(tier.id)).toBe(10);
@@ -341,7 +366,9 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
   describe('check-in', () => {
     it('admits a ticket exactly once when two gates scan it at the same moment', async () => {
       const { event, tier } = await createEvent({ price: 0 });
-      const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id, { paymentMethod: 'cash' }));
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(bookingBody(tier.id, { paymentMethod: 'cash' }));
       const ticket = (await Ticket.findOne({ where: { bookingId: res.body.bookingId } }))!;
 
       const scans = await Promise.all(
@@ -374,10 +401,7 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
         .set('Authorization', `Bearer ${staffToken}`)
         .send({ reason: 'x' });
       expect(cancel.status).toBe(403);
-      const verification = await request(app)
-        .post('/api/organizer/verification')
-        .set('Authorization', `Bearer ${staffToken}`)
-        .send({});
+      const verification = await request(app).post('/api/organizer/verification').set('Authorization', `Bearer ${staffToken}`).send({});
       expect(verification.status).toBe(403);
       // Staff can still do day-to-day work.
       const bookings = await request(app).get('/api/organizer/bookings').set('Authorization', `Bearer ${staffToken}`);
@@ -387,7 +411,7 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
 
   describe('stale pending online bookings', () => {
     async function age(bookingId: string) {
-      const past = new Date(Date.now() - PENDING_ONLINE_BOOKING_TTL_MS - 60000);
+      const past = new Date(Date.now() - SEAT_HOLD_MS - 1000);
       await sequelize.query('UPDATE bookings SET created_at = :past WHERE id = :id', { replacements: { past, id: bookingId } });
     }
 
@@ -427,9 +451,67 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
       expect((await Booking.findByPk(stale.bookingId))!.status).toBe('pending');
     });
 
+    it('holds seats for only two minutes, so a sold-out show frees up quickly', async () => {
+      expect(SEAT_HOLD_MS).toBe(2 * 60 * 1000);
+      const { event, tier } = await createEvent({ quota: 3 });
+      const hold = await createOnlineBooking(event.id, tier.id, 3);
+      expect(await quotaRemaining(tier.id)).toBe(0);
+      const full = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(bookingBody(tier.id, { quantity: 1 }));
+      expect(full.status).toBe(409);
+
+      await age(hold.bookingId);
+      mockGetOrder.mockResolvedValue({ order_status: 'ACTIVE' } as never);
+      mockGetOrderPayments.mockResolvedValue([]);
+      await expireStalePendingOnlineBookings();
+
+      expect((await Booking.findByPk(hold.bookingId))!.status).toBe('cancelled');
+      expect(await quotaRemaining(tier.id)).toBe(3);
+      const live = await request(app).get(`/api/events/${event.id}/availability`);
+      expect(live.status).toBe(200);
+      expect(live.body).toEqual({ eventId: event.id, tiers: [{ id: tier.id, available: 3 }], holdMinutes: 2 });
+    });
+
+    it('keeps the hold while a payment is going through at the gateway', async () => {
+      const { event, tier } = await createEvent({ quota: 5 });
+      const hold = await createOnlineBooking(event.id, tier.id);
+      await age(hold.bookingId);
+      mockGetOrder.mockResolvedValue({ order_status: 'ACTIVE' } as never);
+      mockGetOrderPayments.mockResolvedValue([{ cf_payment_id: 'p1', payment_status: 'PENDING' }] as never);
+
+      await expireStalePendingOnlineBookings();
+      expect((await Booking.findByPk(hold.bookingId))!.status).toBe('pending');
+      mockGetOrderPayments.mockResolvedValue([]);
+    });
+
+    it("releases the same customer's abandoned hold when they try again", async () => {
+      const { event, tier } = await createEvent({ quota: 3 });
+      const email = `Retry-${suffix}@Example.com`;
+      const first = await createOnlineBooking(event.id, tier.id, 3, email);
+      expect(await quotaRemaining(tier.id)).toBe(0);
+      mockGetOrder.mockResolvedValue({ order_status: 'ACTIVE' } as never);
+      mockGetOrderPayments.mockResolvedValue([]);
+
+      // Someone else is still blocked…
+      const other = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id));
+      expect(other.status).toBe(409);
+      // …but the same customer retrying gets their seats back.
+      const retry = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(bookingBody(tier.id, { quantity: 3, primaryContactEmail: email.toLowerCase() }));
+      expect(retry.status).toBe(201);
+      expect(retry.body.holdExpiresAt).toBeTruthy();
+      expect((await Booking.findByPk(first.bookingId))!.status).toBe('cancelled');
+      expect(await quotaRemaining(tier.id)).toBe(0);
+      expect(await releaseCustomersOwnHolds(event.id, 'nobody@example.com')).toBe(0);
+    });
+
     it('never touches cash bookings, which wait for the organizer', async () => {
       const { event, tier } = await createEvent({ quota: 5 });
-      const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id, { paymentMethod: 'cash' }));
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(bookingBody(tier.id, { paymentMethod: 'cash' }));
       await age(res.body.bookingId);
 
       await expireStalePendingOnlineBookings();

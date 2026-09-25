@@ -3,7 +3,7 @@ import type { EventLocationPoint, EventPartner } from '../models/Event';
 import { getEventTicketDesign } from './ticketDesign';
 import { generateTicketQrPng } from './qrCode';
 import { buildVenueMapUrl } from './mapsUrl';
-import { ticketDisplayReference, ticketPageUrl, verifyTicketLinkToken } from './ticketLinks';
+import { ticketDisplayReference, ticketLinkToken, ticketPageUrl, verifyTicketLinkToken } from './ticketLinks';
 import { contactMatchesBooking, findBookingByReference, parseLoginContact, type LoginContact } from './customerAuth';
 
 export class NotFoundError extends Error {}
@@ -17,6 +17,8 @@ export interface CustomerTicketRow {
   // A participation certificate can be downloaded for this ticket
   // (event issues them and the attendee checked in).
   certificateAvailable: boolean;
+  // Same-origin download link for that certificate, when available.
+  certificateUrl: string | null;
   tierName: string;
   status: 'valid' | 'checked_in' | 'cancelled';
   checkedInAt: string | null;
@@ -72,6 +74,10 @@ export interface CustomerBookingDetail {
   galleryNote: string | null;
   // Shareable link to this booking's ticket page (no login needed).
   ticketPageUrl: string;
+  // The event issues participation certificates (to checked-in
+  // attendees), and a link to all of this booking's in one PDF.
+  certificatesEnabled: boolean;
+  certificatesUrl: string | null;
   // How the confirmation reached the customer: 'sent' | 'failed' |
   // 'skipped' (channel not set up), or null while not attempted yet.
   delivery: { email: string | null; whatsapp: string | null };
@@ -141,6 +147,11 @@ export async function buildBookingDetail(booking: Booking): Promise<CustomerBook
     }
   }
 
+  const linkToken = ticketLinkToken(booking.bookingReference);
+  const certificateTickets = tickets.filter(
+    (ticket) => event.certificateEnabled && booking.status === 'confirmed' && ticket.status === 'checked_in',
+  );
+
   return {
     bookingReference: booking.bookingReference,
     bookingStatus: booking.status,
@@ -179,11 +190,14 @@ export async function buildBookingDetail(booking: Booking): Promise<CustomerBook
     galleryNote: booking.status === 'confirmed' ? event.galleryNote ?? null : null,
     ticketPageUrl: ticketPageUrl(booking.bookingReference),
     delivery: { email: booking.confirmationEmailStatus ?? null, whatsapp: booking.confirmationWhatsappStatus ?? null },
+    certificatesEnabled: Boolean(event.certificateEnabled) && booking.status === 'confirmed',
+    certificatesUrl: certificateTickets.length > 0 ? `/api/certificates/${linkToken}` : null,
     tickets: tickets.map((ticket, i) => ({
       id: ticket.id,
       ticketReference: `${booking.bookingReference}-${i + 1}`,
       displayReference: ticketDisplayReference(booking.bookingReference, i),
-      certificateAvailable: event.certificateEnabled && booking.status === 'confirmed' && ticket.status === 'checked_in',
+      certificateAvailable: certificateTickets.includes(ticket),
+      certificateUrl: certificateTickets.includes(ticket) ? `/api/t/${linkToken}/tickets/${ticket.id}/certificate.pdf` : null,
       attendeeName: ticket.attendeeName,
       tierName: tierById.get(ticket.ticketCategoryId)?.name ?? 'General',
       status: ticket.status,

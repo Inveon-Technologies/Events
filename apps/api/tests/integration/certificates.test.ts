@@ -195,6 +195,16 @@ describe('participation certificates', () => {
     const detail = await request(app).get(`/api/t/${token}`);
     expect(detail.body.tickets.map((t: { certificateAvailable: boolean }) => t.certificateAvailable)).toEqual([true, false]);
 
+    // Manage Booking (booking ID + email) gets ready-made download links.
+    const manage = await request(app).get(`/api/bookings/${reference}/tickets?email=rahul-cert-${suffix}@example.com`);
+    expect(manage.status).toBe(200);
+    expect(manage.body.certificatesEnabled).toBe(true);
+    expect(manage.body.certificatesUrl).toBe(`/api/certificates/${token}`);
+    expect(manage.body.tickets.map((t: { certificateUrl: string | null }) => t.certificateUrl)).toEqual([
+      `/api/t/${token}/tickets/${tickets[0].id}/certificate.pdf`,
+      null,
+    ]);
+
     const one = await request(app).get(`/api/t/${token}/tickets/${tickets[0].id}/certificate.pdf`).buffer(true);
     expect(one.status).toBe(200);
     expect(one.headers['content-type']).toBe('application/pdf');

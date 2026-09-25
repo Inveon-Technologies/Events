@@ -144,11 +144,12 @@ function assertUnderLimit(mediaType: 'photo' | 'video', existing: EventMedia[]):
   }
 }
 
+// A file may be on S3 or on local disk (uploaded before S3 was set up),
+// so both are tried.
 async function removeStoredFile(url: string): Promise<void> {
   const s3Key = s3KeyFromUrl(url);
-  if (s3Key) {
-    await deleteFileFromS3(s3Key).catch(() => undefined);
-  } else {
+  if (s3Key) await deleteFileFromS3(s3Key).catch(() => undefined);
+  if (url.startsWith(`${UPLOAD_URL_PREFIX}/`) && !url.includes('..')) {
     await fs.unlink(path.join(UPLOAD_DIR, url.replace(`${UPLOAD_URL_PREFIX}/`, ''))).catch(() => undefined);
   }
 }

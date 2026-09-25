@@ -105,6 +105,30 @@ describe('organizer dashboards and tables show real data only', () => {
     expect(screen.queryByText(/Blood|Direct Base Arrival/)).not.toBeInTheDocument();
   });
 
+  it('event bookings page: after the event the Drive link box and certificate status are right there', async () => {
+    stubApi({
+      '/organizer/events/evt-1/certificate': { enabled: true },
+      '/organizer/events/evt-1/gallery': { galleryUrl: 'https://drive.google.com/drive/folders/xyz', galleryNote: null },
+    });
+    const fetchMock = globalThis.fetch;
+    const inner = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((url, init) => {
+      if (String(url).endsWith('/organizer/events/evt-1') && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ id: 'evt-1', eventDate: '2020-01-01T10:00:00.000Z', galleryUrl: null }) });
+      }
+      return inner(url, init);
+    });
+    renderAt('/organizer/events/evt-1/bookings');
+    const card = await screen.findByTestId('event-gallery-card');
+    const input = await within(card).findByLabelText('Photos and videos link');
+    await userEvent.type(input, 'https://drive.google.com/drive/folders/xyz');
+    await userEvent.click(within(card).getByRole('button', { name: 'Share with attendees' }));
+    await waitFor(() => expect(calls.some(([m, u]) => m === 'PUT' && u.endsWith('/organizer/events/evt-1/gallery'))).toBe(true));
+    const cert = screen.getByTestId('certificate-status-card');
+    await waitFor(() => expect(within(cert).getByText('On')).toBeInTheDocument());
+    expect(within(cert).getByRole('link', { name: /edit certificate design/i })).toHaveAttribute('href', '/organizer/events/evt-1/certificate');
+  });
+
   it('notifications come from the real activity feed, and read state sticks', async () => {
     stubApi({
       '/organizer/notifications': { notifications: [{ id: 'booking:b1:created', category: 'bookings', title: 'New booking', message: 'Asha booked 2 tickets for Harishchandragad Night Trek (₹1,500).', createdAt: new Date().toISOString(), link: '/organizer/bookings' }] },

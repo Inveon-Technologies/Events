@@ -282,6 +282,18 @@ export async function cashfreeGetOrder(orderId: string): Promise<CashfreeOrderRe
   return cashfreeRequest<CashfreeOrderResponse>('GET', `/orders/${encodeURIComponent(orderId)}`);
 }
 
+// Payment attempts on an order. A PENDING one means the customer is
+// paying right now (e.g. approving a UPI request) — its seats must not
+// be released under them.
+export interface CashfreeOrderPayment {
+  cf_payment_id: string | number;
+  payment_status: 'SUCCESS' | 'NOT_ATTEMPTED' | 'FAILED' | 'USER_DROPPED' | 'VOID' | 'CANCELLED' | 'PENDING';
+}
+
+export async function cashfreeGetOrderPayments(orderId: string): Promise<CashfreeOrderPayment[]> {
+  return cashfreeRequest<CashfreeOrderPayment[]>('GET', `/orders/${encodeURIComponent(orderId)}/payments`);
+}
+
 // ---- Refunds ----
 
 export interface CreateRefundParams {

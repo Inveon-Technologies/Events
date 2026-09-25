@@ -41,6 +41,11 @@ services:
       - ../apps/api/.env
     environment:
       - NODE_ENV=production
+    # Uploaded images (when S3 isn't configured) live here. Without a
+    # volume they were inside the container and vanished on every deploy,
+    # leaving broken images everywhere.
+    volumes:
+      - uploads:/app/uploads
     # Wait for Postgres to actually accept connections, not just for its
     # container to exist — otherwise the API's first queries (and the
     # migration step) race the database's startup.
@@ -100,4 +105,5 @@ services:
 volumes:
   pg_data:
   redis_data:
+  uploads:
   web_static:

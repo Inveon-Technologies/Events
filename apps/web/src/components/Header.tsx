@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Logo } from './Logo';
 import { Icon } from './Icon';
+import { clearCustomerSession, useCustomerSession } from '../lib/customerSession';
 
 const NAV_LINKS = [
   { to: '/', label: 'Explore' },
@@ -16,6 +17,13 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
+  const session = useCustomerSession();
+
+  function logout() {
+    clearCustomerSession();
+    setMobileOpen(false);
+    navigate('/');
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
@@ -113,13 +121,23 @@ export function Header() {
 
           <div className="w-px h-5 bg-slate-200 hidden sm:block"></div>
 
-          {/* Login button */}
-          <Link
-            to="/bookings/lookup"
-            className="hidden sm:inline-block text-sm font-semibold text-slate-700 hover:text-brand-600 px-2 sm:px-3 py-2 transition-colors"
-          >
-            Login
-          </Link>
+          {/* Login, or My Bookings once the customer has signed in */}
+          {session ? (
+            <Link
+              to="/bookings/my"
+              title={session.email}
+              className="hidden sm:inline-flex items-center gap-1.5 text-sm font-semibold text-slate-700 hover:text-brand-600 px-2 sm:px-3 py-2 transition-colors"
+            >
+              <Icon name="confirmation_number" className="text-[18px]" /> My Bookings
+            </Link>
+          ) : (
+            <Link
+              to="/bookings/lookup"
+              className="hidden sm:inline-block text-sm font-semibold text-slate-700 hover:text-brand-600 px-2 sm:px-3 py-2 transition-colors"
+            >
+              Login
+            </Link>
+          )}
 
           {/* Host an Event Primary button */}
           <Link
@@ -186,13 +204,32 @@ export function Header() {
             </NavLink>
           ))}
           <div className="pt-2 flex flex-col gap-2">
-            <Link
-              to="/bookings/lookup"
-              onClick={() => setMobileOpen(false)}
-              className="w-full py-2.5 text-center text-sm font-semibold text-slate-800 border border-slate-200 rounded-lg"
-            >
-              Login
-            </Link>
+            {session ? (
+              <>
+                <Link
+                  to="/bookings/my"
+                  onClick={() => setMobileOpen(false)}
+                  className="w-full py-2.5 text-center text-sm font-semibold text-slate-800 border border-slate-200 rounded-lg"
+                >
+                  My Bookings
+                </Link>
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="w-full py-2 text-center text-sm font-medium text-slate-500 hover:text-slate-800"
+                >
+                  Log out ({session.email})
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/bookings/lookup"
+                onClick={() => setMobileOpen(false)}
+                className="w-full py-2.5 text-center text-sm font-semibold text-slate-800 border border-slate-200 rounded-lg"
+              >
+                Login
+              </Link>
+            )}
             <Link
               to="/organizer/login"
               onClick={() => setMobileOpen(false)}

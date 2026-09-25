@@ -178,3 +178,26 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     ratingSummary,
   };
 }
+
+export interface PublicEventAvailability {
+  eventId: string;
+  tiers: { id: string; available: number }[];
+  holdMinutes: number;
+}
+
+// Just the live seat counts — cheap enough for every open event and
+// checkout page to poll, so "N left" tracks other people's bookings and
+// released seat holds without reloading the whole event.
+export async function getPublicEventAvailability(idOrSlug: string, holdMs: number): Promise<PublicEventAvailability | null> {
+  const where = UUID_PATTERN.test(idOrSlug)
+    ? { [Op.or]: [{ id: idOrSlug }, { slug: idOrSlug }], status: 'published' as const }
+    : { slug: idOrSlug, status: 'published' as const };
+  const event = await Event.findOne({ where, attributes: ['id'] });
+  if (!event) return null;
+  const categories = await TicketCategory.findAll({ where: { eventId: event.id }, attributes: ['id', 'quotaRemaining'] });
+  return {
+    eventId: event.id,
+    tiers: categories.map((c) => ({ id: c.id, available: c.quotaRemaining })),
+    holdMinutes: Math.round(holdMs / 60000),
+  };
+}
