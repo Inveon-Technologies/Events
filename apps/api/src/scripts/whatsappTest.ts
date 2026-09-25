@@ -75,7 +75,8 @@ function samples(): Record<WhatsAppMessage, { params: string[]; headerImage?: { 
 function hint(message: string): string {
   if (/campaign/i.test(message)) return 'Check the API campaign exists with exactly this name and is Live (step 6).';
   if (/template/i.test(message)) return 'Check the template is Approved and its {{…}} count matches (step 5).';
-  if (/media|image|download/i.test(message)) return 'WhatsApp could not fetch the picture — open the image URL above on a phone; it must load over HTTPS.';
+  if (/media|image|download/i.test(message))
+    return 'WhatsApp could not fetch the picture — open the image URL above on a phone; it must load over HTTPS.';
   if (/401|403|api ?key|unauthori/i.test(message)) return 'The API key is wrong or revoked (step 7).';
   return '';
 }
@@ -93,7 +94,9 @@ async function main(): Promise<void> {
   }
   const provider = whatsAppProvider();
   if (!provider) {
-    console.error('WhatsApp is not configured: set WHATSAPP_PROVIDER=aisensy and AISENSY_API_KEY (or the Meta settings) in apps/api/.env, then restart.');
+    console.error(
+      'WhatsApp is not configured: set WHATSAPP_PROVIDER=aisensy and AISENSY_API_KEY (or the Meta settings) in apps/api/.env, then restart.',
+    );
     process.exit(2);
   }
   if (!publicBase()) {
