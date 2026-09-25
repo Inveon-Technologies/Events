@@ -43,7 +43,7 @@ function samples(): Record<WhatsAppMessage, { params: string[]; headerImage?: { 
         'Pune → Rajgad',
         'INV-TKT-2026-8F3K2Q-01',
         SAMPLE_REF,
-        'Eco Pandhari Club: 0788 750 3856',
+        'Eco Pandhari Club, 0788 750 3856',
       ],
       headerImage: { url: `${base}/images/whatsapp-sample-card.jpg`, filename: 'ticket.jpg' },
       urlButtons: [`${SAMPLE_REF}.sample`, `${SAMPLE_REF}.sample`],

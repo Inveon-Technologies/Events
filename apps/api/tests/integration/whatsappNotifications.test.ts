@@ -155,7 +155,7 @@ describe('WhatsApp notifications', () => {
       'Rajgad Base',
       `${reference.replace('-BKG-', '-TKT-')}-01 to -02 (2 tickets)`,
       reference,
-      `WhatsApp Org ${suffix} via your ticket page`,
+      `WhatsApp Org ${suffix} (contact details on your ticket page)`,
     ]);
     expect(msg.media).toEqual({ url: `https://events.test.example/api/t/${token}/card.png`, filename: `Ticket-${reference}.png` });
     expect(msg.buttons).toEqual([

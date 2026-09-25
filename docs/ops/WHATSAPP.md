@@ -72,7 +72,9 @@ template below:
 - **Language:** English
 - **Name:** as shown
 - **Body:** copy the text exactly, including where each `{{number}}` sits.
-  The app fills them in this order.
+  The app fills them in this order. Don't start or end the body with a
+  variable, and don't put two variables next to each other — WhatsApp
+  rejects those.
 - **Samples:** Meta asks for example values; use the ones given.
 
 Submit, then wait for **Approved**. That's usually minutes, at most a day.
@@ -93,15 +95,20 @@ Ticket PDF** buttons. The app draws the picture for each booking.
 Hi {{1}},
 Your booking for *{{2}}* is confirmed. {{3}}
 
-📅 {{4}}
+📅 Date: {{4}}
 ⏰ {{5}}
-📍 {{6}}
+📍 Location: {{6}}
 🎫 Ticket ID: {{7}}
 🧾 Booking ID: {{8}}
+📞 Organizer: {{9}}
 
-Need help? Contact {{9}}.
+Show the QR code from your ticket at the entry gate. See you there!
 ```
-Samples: `Rahul` · `Rajgad Sunrise Trek` · `Your payment has been verified and your ticket is ready.` · `Saturday, 18 October 2026` · `Reporting time: 5:30 AM` · `Pune → Rajgad` · `INV-TKT-2026-8F3K2Q-01` · `INV-BKG-2026-8F3K2Q` · `Eco Pandhari Club: 0788 750 3856`
+The last line must stay fixed text: WhatsApp rejects a body that starts or
+ends with a variable ("Variables can't be at the start or end of the
+template").
+
+Samples: `Rahul` · `Rajgad Sunrise Trek` · `Your payment has been verified and your ticket is ready.` · `Saturday, 18 October 2026` · `Reporting time: 5:30 AM` · `Pune → Rajgad` · `INV-TKT-2026-8F3K2Q-01` · `INV-BKG-2026-8F3K2Q` · `Eco Pandhari Club, 0788 750 3856`
 
 **Footer:**
 ```
@@ -127,7 +134,7 @@ What the app fills in, for reference:
 | `{{5}}` | "Reporting time: …" if the event has a gate-open time, else "Starts at: …" |
 | `{{6}}` | "Pickup → Venue" when the event has a pickup point, else the venue |
 | `{{7}}` | One ticket: its ID. Several: "…-01 to -03 (3 tickets)". Each person's QR code is on the ticket page and in the PDF. |
-| `{{9}}` | "Organizer: phone" if the organizer added a phone number, else "Organizer via your ticket page" |
+| `{{9}}` | "Organizer name, phone" if the organizer added a phone number, else "Organizer name (contact details on your ticket page)" |
 | Buttons | The booking's private ticket link (no login needed) |
 
 If the WhatsApp message fails, the booking still goes through, the ticket

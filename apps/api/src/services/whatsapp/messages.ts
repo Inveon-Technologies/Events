@@ -78,11 +78,12 @@ export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Bo
       const time = `${event.gateOpenTime ? 'Reporting time' : 'Starts at'}: ${reporting.toLocaleTimeString('en-IN', { ...IST, hour: 'numeric', minute: '2-digit' }).toUpperCase()}`;
       const organizer = await Organizer.findByPk(event.organizerId, { attributes: ['name', 'contactPhone'] });
       const help = organizer?.contactPhone
-        ? `${organizer.name}: ${organizer.contactPhone}`
-        : `${organizer?.name ?? 'the organizer'} via your ticket page`;
+        ? `${organizer.name}, ${organizer.contactPhone}`
+        : `${organizer?.name ?? 'Event organizer'} (contact details on your ticket page)`;
       const token = ticketLinkToken(booking.bookingReference);
       // 🎟️ *Booking Confirmed!* Hi {{1}}, your booking for *{{2}}* is confirmed. {{3}}
-      // 📅 {{4}}  ⏰ {{5}}  📍 {{6}}  🎫 Ticket ID: {{7}}  🧾 Booking ID: {{8}}  Need help? Contact {{9}}.
+      // 📅 {{4}}  ⏰ {{5}}  📍 {{6}}  🎫 Ticket ID: {{7}}  🧾 Booking ID: {{8}}  📞 Organizer: {{9}}
+      // Show the QR code … (fixed last line: WhatsApp won't approve a body that ends with a variable)
       // Buttons: View Ticket → /t/{{1}}, Download Ticket PDF → /api/ticket-pdf/{{1}}
       return {
         ...base,
