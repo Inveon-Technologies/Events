@@ -38,6 +38,10 @@ import {
   verifyCustomerLoginOtp,
   getCustomerBookings,
   NotFoundError as CustomerAuthNotFoundError,
+  ContactMismatchError,
+  LoginValidationError,
+  OtpCooldownError,
+  OtpDeliveryError,
   InvalidOtpError,
 } from '../services/customerAuth';
 import { verifyCustomerSessionToken } from '../auth/jwt';
@@ -420,23 +424,37 @@ publicBookingsRouter.get('/t/:token/card.png', asyncHandler(async (req, res) => 
 }));
 
 publicBookingsRouter.post('/bookings/login/initiate', customerLoginSendLimit, asyncHandler(async (req, res) => {
-  const { bookingReference, email } = req.body as Record<string, unknown>;
-  if (typeof bookingReference !== 'string' || typeof email !== 'string') {
-    res.status(400).json({ error: 'Booking reference and email are required' });
+  const body = req.body as Record<string, unknown>;
+  // `contact` is the "email or mobile" field; `email` is what older
+  // clients send.
+  const contact = typeof body.contact === 'string' ? body.contact : body.email;
+  if (typeof body.bookingReference !== 'string' || typeof contact !== 'string') {
+    res.status(400).json({ error: 'Booking ID and email or mobile number are required' });
     return;
   }
 
   try {
-    await initiateCustomerLogin(bookingReference, email);
-    // Always 200, even on a real not-found — telling the caller whether
-    // the combination matched would let someone confirm a real booking
-    // reference exists by guessing, the same enumeration-safety
-    // reasoning used throughout this codebase's other customer-facing
-    // verification endpoints, just applied one layer earlier here.
-    res.status(200).json({ success: true });
+    const result = await initiateCustomerLogin(body.bookingReference, contact);
+    res.status(200).json({ success: true, ...result });
   } catch (err) {
+    if (err instanceof LoginValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     if (err instanceof CustomerAuthNotFoundError) {
-      res.status(200).json({ success: true });
+      res.status(404).json({ error: err.message, code: 'BOOKING_NOT_FOUND' });
+      return;
+    }
+    if (err instanceof ContactMismatchError) {
+      res.status(404).json({ error: err.message, code: 'CONTACT_MISMATCH' });
+      return;
+    }
+    if (err instanceof OtpCooldownError) {
+      res.status(429).set('Retry-After', String(err.retryAfterSeconds)).json({ error: err.message, retryAfterSeconds: err.retryAfterSeconds });
+      return;
+    }
+    if (err instanceof OtpDeliveryError) {
+      res.status(503).json({ error: err.message });
       return;
     }
     throw err;
@@ -444,16 +462,23 @@ publicBookingsRouter.post('/bookings/login/initiate', customerLoginSendLimit, as
 }));
 
 publicBookingsRouter.post('/bookings/login/verify', customerLoginVerifyLimit, asyncHandler(async (req, res) => {
-  const { email, code } = req.body as Record<string, unknown>;
-  if (typeof email !== 'string' || typeof code !== 'string') {
-    res.status(400).json({ error: 'Email and code are required' });
+  const { bookingReference, email, code } = req.body as Record<string, unknown>;
+  if (typeof code !== 'string' || (typeof bookingReference !== 'string' && typeof email !== 'string')) {
+    res.status(400).json({ error: 'Booking ID and the 6-digit code are required' });
     return;
   }
 
   try {
-    const result = await verifyCustomerLoginOtp(email, code);
+    const result = await verifyCustomerLoginOtp(
+      { bookingReference: typeof bookingReference === 'string' ? bookingReference : undefined, email: typeof email === 'string' ? email : undefined },
+      code,
+    );
     res.status(200).json(result);
   } catch (err) {
+    if (err instanceof LoginValidationError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
     if (err instanceof InvalidOtpError) {
       res.status(401).json({ error: err.message });
       return;

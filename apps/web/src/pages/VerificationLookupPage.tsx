@@ -1,51 +1,105 @@
-import { useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
+import {
+  getCustomerSession,
+  normalizeBookingReference,
+  saveCustomerSession,
+  validateBookingReference,
+  validateEmailOrPhone,
+} from '../lib/customerSession';
 
 type Step = 'login' | 'otp';
+
+interface FieldErrors {
+  bookingReference?: string;
+  contact?: string;
+}
 
 export function VerificationLookupPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('login');
   const [bookingReference, setBookingReference] = useState('');
-  const [email, setEmail] = useState('');
+  const [contact, setContact] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [sentTo, setSentTo] = useState('');
+  const [expiresInMinutes, setExpiresInMinutes] = useState(10);
+  const [resendIn, setResendIn] = useState(0);
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  async function handleSendCode(e: React.FormEvent) {
-    e.preventDefault();
+  // Already logged in — straight to the bookings list.
+  useEffect(() => {
+    if (getCustomerSession()) navigate('/bookings/my', { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    if (resendIn <= 0) return undefined;
+    const timer = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendIn]);
+
+  function validate(): boolean {
+    const next: FieldErrors = {};
+    const refError = validateBookingReference(bookingReference);
+    const contactError = validateEmailOrPhone(contact);
+    if (refError) next.bookingReference = refError;
+    if (contactError) next.contact = contactError;
+    setFieldErrors(next);
+    return !refError && !contactError;
+  }
+
+  async function requestCode(): Promise<boolean> {
     setError('');
-    if (!bookingReference.trim() || !email.trim()) {
-      setError('Enter both your Booking ID and registered email.');
-      return;
-    }
+    setNotice('');
     setLoading(true);
     try {
       const res = await fetch('/api/bookings/login/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingReference: bookingReference.trim(), email: email.trim() }),
+        body: JSON.stringify({ bookingReference: normalizeBookingReference(bookingReference), contact: contact.trim() }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || 'Something went wrong. Please try again.');
-        return;
+        if (res.status === 429 && typeof data.retryAfterSeconds === 'number') setResendIn(data.retryAfterSeconds);
+        if (data.code === 'BOOKING_NOT_FOUND') setFieldErrors({ bookingReference: data.error });
+        else if (data.code === 'CONTACT_MISMATCH') setFieldErrors({ contact: data.error });
+        else setError(data.error || 'Something went wrong. Please try again.');
+        return false;
       }
-      // The server deliberately gives the identical response whether or
-      // not this booking/email combination is real — this UI moves to
-      // the OTP step regardless, exactly the way the real login flow is
-      // supposed to work (an invalid combination just never actually
-      // receives a code).
-      setStep('otp');
-      setTimeout(() => otpInputRefs.current[0]?.focus(), 50);
+      setSentTo(data.sentTo || '');
+      setExpiresInMinutes(data.expiresInMinutes || 10);
+      setResendIn(data.resendAfterSeconds || 30);
+      return true;
     } catch {
-      setError('Could not reach the server. Please try again.');
+      setError('Could not reach the server. Please check your connection and try again.');
+      return false;
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSendCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validate()) return;
+    if (await requestCode()) {
+      setStep('otp');
+      setOtpDigits(['', '', '', '', '', '']);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 50);
+    }
+  }
+
+  async function handleResend() {
+    if (resendIn > 0 || loading) return;
+    if (await requestCode()) {
+      setOtpDigits(['', '', '', '', '', '']);
+      setNotice('A new code is on its way. Codes sent earlier no longer work.');
+      otpInputRefs.current[0]?.focus();
     }
   }
 
@@ -79,9 +133,10 @@ export function VerificationLookupPage() {
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setNotice('');
     const code = otpDigits.join('');
     if (code.length !== 6) {
-      setError('Enter the 6-digit code sent to your email.');
+      setError('Enter all 6 digits of the code sent to your email.');
       return;
     }
     setLoading(true);
@@ -89,7 +144,7 @@ export function VerificationLookupPage() {
       const res = await fetch('/api/bookings/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), code }),
+        body: JSON.stringify({ bookingReference: normalizeBookingReference(bookingReference), code }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -98,8 +153,8 @@ export function VerificationLookupPage() {
         otpInputRefs.current[0]?.focus();
         return;
       }
-      localStorage.setItem('inveon_customer_session', JSON.stringify({ token: data.token, email: email.trim() }));
-      navigate('/bookings/my');
+      saveCustomerSession({ token: data.token, email: data.email });
+      navigate('/bookings/my', { replace: true });
     } catch {
       setError('Could not reach the server. Please try again.');
     } finally {
@@ -115,35 +170,69 @@ export function VerificationLookupPage() {
         </h1>
         <p className="text-sm text-ink-muted text-center mb-8">
           {step === 'login'
-            ? "Enter your Booking ID and registered email. We'll send an instant passwordless code to access your tickets and bookings."
-            : `We sent a 6-digit code to ${email}. Enter it below to continue.`}
+            ? 'Enter your Booking ID and the email address or mobile number you booked with. We\'ll email you a one-time login code.'
+            : `We sent a 6-digit code to ${sentTo || 'your booking email'}. It's valid for ${expiresInMinutes} minutes.`}
         </p>
 
         <div className="bg-white rounded-2xl shadow-card p-6">
           {step === 'login' ? (
-            <form onSubmit={handleSendCode} className="space-y-4">
+            <form onSubmit={handleSendCode} noValidate className="space-y-4">
               <label className="flex flex-col gap-1">
                 <span className="text-xs font-medium text-ink-muted">Booking ID</span>
                 <input
                   value={bookingReference}
-                  onChange={(e) => setBookingReference(e.target.value)}
-                  placeholder="INV-BKG-2026-12345"
-                  className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  onChange={(e) => {
+                    setBookingReference(e.target.value.toUpperCase());
+                    if (fieldErrors.bookingReference) setFieldErrors((f) => ({ ...f, bookingReference: undefined }));
+                  }}
+                  onBlur={() => bookingReference && setFieldErrors((f) => ({ ...f, bookingReference: validateBookingReference(bookingReference) || undefined }))}
+                  placeholder="INV-BKG-2026-AB12CD"
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-invalid={Boolean(fieldErrors.bookingReference)}
+                  aria-describedby="booking-ref-error"
+                  className={`border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 ${
+                    fieldErrors.bookingReference ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
+                  }`}
                 />
+                {fieldErrors.bookingReference && (
+                  <span id="booking-ref-error" role="alert" className="text-xs text-danger-600">
+                    {fieldErrors.bookingReference}
+                  </span>
+                )}
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-ink-muted">Registered email</span>
+                <span className="text-xs font-medium text-ink-muted">Email or mobile number</span>
                 <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-100"
+                  value={contact}
+                  onChange={(e) => {
+                    setContact(e.target.value);
+                    if (fieldErrors.contact) setFieldErrors((f) => ({ ...f, contact: undefined }));
+                  }}
+                  onBlur={() => contact && setFieldErrors((f) => ({ ...f, contact: validateEmailOrPhone(contact) || undefined }))}
+                  placeholder="you@example.com or 98765 43210"
+                  autoComplete="email"
+                  aria-invalid={Boolean(fieldErrors.contact)}
+                  aria-describedby="contact-error"
+                  className={`border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                    fieldErrors.contact ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
+                  }`}
                 />
+                {fieldErrors.contact && (
+                  <span id="contact-error" role="alert" className="text-xs text-danger-600">
+                    {fieldErrors.contact}
+                  </span>
+                )}
               </label>
 
-              {error && <p className="text-xs text-danger-600">{error}</p>}
+              {error && (
+                <p role="alert" className="text-xs text-danger-600">
+                  {error}
+                  {resendIn > 0 && ` (${resendIn}s)`}
+                </p>
+              )}
 
               <Button type="submit" className="w-full" disabled={loading}>
                 <Icon name="mail" className="text-[18px]" /> {loading ? 'Sending…' : 'Send Login Code'}
@@ -170,11 +259,27 @@ export function VerificationLookupPage() {
                 ))}
               </div>
 
-              {error && <p className="text-xs text-danger-600 text-center">{error}</p>}
+              {error && (
+                <p role="alert" className="text-xs text-danger-600 text-center">
+                  {error}
+                </p>
+              )}
+              {notice && <p className="text-xs text-emerald-700 text-center">{notice}</p>}
 
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Verifying…' : 'Verify & Continue'}
               </Button>
+
+              <p className="text-xs text-ink-muted text-center">
+                Didn't get it? Check your spam or promotions folder.{' '}
+                {resendIn > 0 ? (
+                  <span>Resend in {resendIn}s</span>
+                ) : (
+                  <button type="button" onClick={handleResend} disabled={loading} className="font-semibold text-brand-600 hover:text-brand-700">
+                    Resend code
+                  </button>
+                )}
+              </p>
 
               <button
                 type="button"
@@ -182,17 +287,18 @@ export function VerificationLookupPage() {
                   setStep('login');
                   setOtpDigits(['', '', '', '', '', '']);
                   setError('');
+                  setNotice('');
                 }}
                 className="w-full text-xs text-ink-muted hover:text-ink text-center"
               >
-                ← Use a different Booking ID or email
+                ← Use a different Booking ID, email or mobile
               </button>
             </form>
           )}
         </div>
 
         <p className="text-xs text-ink-muted text-center mt-6">
-          Can't find your Booking ID? Check the confirmation email from Inveon Events.
+          Can't find your Booking ID? It's in the confirmation email and WhatsApp message from Inveon Events — the Ticket ID on your ticket works too.
         </p>
       </div>
     </Layout>

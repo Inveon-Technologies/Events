@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
 import { EventLocationMap } from '../components/map/EventLocationMap';
 import type { LocationPoint } from '../lib/mapPoints';
+import { getCustomerSession, normalizeBookingReference, validateBookingReference, validateEmailOrPhone } from '../lib/customerSession';
 
 function formatINR(paise: number) {
   return `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;
@@ -85,18 +86,25 @@ interface BookingDetail {
   galleryUrl?: string | null;
   locationPoints?: LocationPoint[] | null;
   galleryNote?: string | null;
+  ticketPageUrl?: string;
 }
 
 export function ManageBookingPage() {
   const location = useLocation();
-  const stateBookingRef = (location.state as { bookingReference?: string; email?: string } | null)?.bookingReference ?? '';
-  const stateEmail = (location.state as { bookingReference?: string; email?: string } | null)?.email ?? '';
+  const { bookingId: routeBookingRef } = useParams();
+  const routeState = location.state as { bookingReference?: string; email?: string } | null;
+  // Router state when coming from "My Bookings"; otherwise the Booking
+  // ID in the URL plus the logged-in session's email, so a reload or a
+  // shared /bookings/<id>/manage link still opens without retyping.
+  const stateBookingRef = routeState?.bookingReference || routeBookingRef || '';
+  const stateEmail = routeState?.email || getCustomerSession()?.email || '';
   const [bookingReference, setBookingReference] = useState(stateBookingRef);
   const [email, setEmail] = useState(stateEmail);
   const [verified, setVerified] = useState(false);
   const [detail, setDetail] = useState<BookingDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{ bookingReference?: string; contact?: string }>({});
 
   const [showCancelForm, setShowCancelForm] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
@@ -111,19 +119,29 @@ export function ManageBookingPage() {
 
   async function loadBooking(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!bookingReference.trim() || !email.trim()) {
-      setError('Enter your Booking ID and the email used to book.');
-      return;
-    }
+    const refError = validateBookingReference(bookingReference);
+    const contactError = validateEmailOrPhone(email);
+    setFieldErrors({ bookingReference: refError || undefined, contact: contactError || undefined });
+    if (refError || contactError) return;
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/bookings/${encodeURIComponent(bookingReference.trim())}/tickets?email=${encodeURIComponent(email.trim())}`);
+      const reference = normalizeBookingReference(bookingReference);
+      const res = await fetch(`/api/bookings/${encodeURIComponent(reference)}/tickets?email=${encodeURIComponent(email.trim())}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || 'Could not find that booking.');
+        setError(
+          res.status === 404
+            ? 'No booking matches this Booking ID with that email or mobile number. Please recheck both and try again.'
+            : data.error || 'Could not load that booking. Please try again.',
+        );
         return;
       }
+      // Canonical values from the server: the Booking ID as stored, and
+      // the booking's email (cancelling and QR lookups need it even when
+      // the customer typed a mobile number).
+      setBookingReference(data.bookingReference);
+      setEmail(data.primaryContactEmail || email.trim());
       setDetail(data);
       setVerified(true);
     } catch {
@@ -202,32 +220,65 @@ export function ManageBookingPage() {
         <div className="max-w-md mx-auto px-4 sm:px-6 py-16">
           <h1 className="text-xl font-bold text-ink mb-2 text-center">Manage Your Booking</h1>
           <p className="text-sm text-ink-muted text-center mb-8">
-            Enter your Booking ID and the email used to book to view your tickets.
+            Enter your Booking ID and the email or mobile number used to book.
           </p>
-          <form onSubmit={loadBooking} className="bg-white rounded-2xl shadow-card p-6 space-y-4">
+          <form onSubmit={loadBooking} noValidate className="bg-white rounded-2xl shadow-card p-6 space-y-4">
             <label className="flex flex-col gap-1">
               <span className="text-xs font-medium text-ink-muted">Booking ID</span>
               <input
                 value={bookingReference}
-                onChange={(e) => setBookingReference(e.target.value)}
-                placeholder="INV-BKG-2026-12345"
-                className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-100"
+                onChange={(e) => {
+                  setBookingReference(e.target.value.toUpperCase());
+                  setFieldErrors((f) => ({ ...f, bookingReference: undefined }));
+                }}
+                placeholder="INV-BKG-2026-AB12CD"
+                autoCapitalize="characters"
+                spellCheck={false}
+                aria-invalid={Boolean(fieldErrors.bookingReference)}
+                className={`border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 ${
+                  fieldErrors.bookingReference ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
+                }`}
               />
+              {fieldErrors.bookingReference && (
+                <span role="alert" className="text-xs text-danger-600">
+                  {fieldErrors.bookingReference}
+                </span>
+              )}
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-ink-muted">Email used to book</span>
+              <span className="text-xs font-medium text-ink-muted">Email or mobile number used to book</span>
               <input
-                type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-100"
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setFieldErrors((f) => ({ ...f, contact: undefined }));
+                }}
+                placeholder="you@example.com or 98765 43210"
+                aria-invalid={Boolean(fieldErrors.contact)}
+                className={`border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  fieldErrors.contact ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
+                }`}
               />
+              {fieldErrors.contact && (
+                <span role="alert" className="text-xs text-danger-600">
+                  {fieldErrors.contact}
+                </span>
+              )}
             </label>
-            {error && <p className="text-xs text-danger-600">{error}</p>}
+            {error && (
+              <p role="alert" className="text-xs text-danger-600">
+                {error}
+              </p>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Looking up…' : 'View My Booking'}
             </Button>
+            <p className="text-xs text-ink-muted text-center">
+              Want to see all your bookings?{' '}
+              <Link to="/bookings/lookup" className="font-semibold text-brand-600 hover:text-brand-700">
+                Log in with a one-time code
+              </Link>
+            </p>
           </form>
         </div>
       </Layout>
@@ -253,7 +304,15 @@ export function ManageBookingPage() {
           }`}
         >
           <Icon name={detail.bookingStatus === 'cancelled' ? 'cancel' : 'check_circle'} className="text-[18px]" filled />
-          <span>{detail.bookingStatus === 'cancelled' ? 'This booking has been cancelled' : 'Booking Confirmed'}</span>
+          <span className="flex-1">{detail.bookingStatus === 'cancelled' ? 'This booking has been cancelled' : 'Booking Confirmed'}</span>
+          {detail.bookingStatus === 'confirmed' && detail.ticketPageUrl && (
+            <a
+              href={detail.ticketPageUrl}
+              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+            >
+              <Icon name="confirmation_number" className="text-[16px]" /> Open Digital Ticket
+            </a>
+          )}
         </div>
 
         {detail.bookingStatus === 'cancelled' && detail.refundAmountPaise !== null && (

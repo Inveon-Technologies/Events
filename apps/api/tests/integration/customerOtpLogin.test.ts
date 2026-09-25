@@ -71,8 +71,11 @@ describe('real customer OTP login (real DB)', () => {
     });
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     mockSendEmail.mockClear();
+    // Each test requests fresh codes; the 30s resend cooldown has its
+    // own test below.
+    await redis.del(`otp-cooldown:customer_login:${customerEmail}`);
   });
 
   afterAll(async () => {
@@ -111,11 +114,102 @@ describe('real customer OTP login (real DB)', () => {
     expect(otpCalls).toHaveLength(1);
   });
 
-  it('initiate returns the identical success response for a wrong combo, but never actually sends an email — real enumeration safety', async () => {
-    const res = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: 'DOES-NOT-EXIST', email: customerEmail });
-    expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
+  it('initiate says clearly when the Booking ID does not exist, and sends nothing', async () => {
+    const res = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: 'INV-BKG-2026-NOPE00', contact: customerEmail });
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('BOOKING_NOT_FOUND');
+    expect(res.body.error).toMatch(/couldn't find a booking/);
     expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('initiate says clearly when the email or phone does not match the booking', async () => {
+    const wrongEmail = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: 'someone-else@example.com' });
+    expect(wrongEmail.status).toBe(404);
+    expect(wrongEmail.body.code).toBe('CONTACT_MISMATCH');
+    expect(wrongEmail.body.error).toMatch(/email address doesn't match/);
+
+    const wrongPhone = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: '9999999999' });
+    expect(wrongPhone.status).toBe(404);
+    expect(wrongPhone.body.error).toMatch(/mobile number doesn't match/);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+  });
+
+  it('initiate rejects badly formatted input with a 400 and a field-level message', async () => {
+    const badEmail = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: 'not-an-email@' });
+    expect(badEmail.status).toBe(400);
+    expect(badEmail.body.error).toMatch(/valid email/);
+
+    const badPhone = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: '12345' });
+    expect(badPhone.status).toBe(400);
+    expect(badPhone.body.error).toMatch(/10-digit mobile/);
+
+    const badRef = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: '??', contact: customerEmail });
+    expect(badRef.status).toBe(400);
+
+    const missing = await request(app).post('/api/bookings/login/initiate').send({});
+    expect(missing.status).toBe(400);
+  });
+
+  it('logs in with the mobile number and a lower-case Booking ID, and the code is verified with the Booking ID alone', async () => {
+    const res = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA.toLowerCase(), contact: '+91 90000 00001' });
+    expect(res.status).toBe(200);
+    // The code always goes to the booking's email; the response only
+    // shows a masked version of it.
+    expect(res.body.sentTo).toMatch(/^o\*+.@example\.com$/);
+    expect(res.body.expiresInMinutes).toBe(10);
+
+    const code = extractOtpFromEmail();
+    const verifyRes = await request(app).post('/api/bookings/login/verify').send({ bookingReference: bookingRefA.toLowerCase(), code });
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.email).toBe(customerEmail);
+    const my = await request(app).get('/api/bookings/my').set('Authorization', `Bearer ${verifyRes.body.token}`);
+    expect(my.body.bookings).toHaveLength(2);
+  });
+
+  it('accepts the Ticket ID printed on the ticket in place of the Booking ID', async () => {
+    const ticketId = `${bookingRefA.replace('-BKG-', '-TKT-')}-01`;
+    const res = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: ticketId, contact: customerEmail });
+    expect(res.status).toBe(200);
+  });
+
+  it('asks the customer to wait before resending a code within 30 seconds', async () => {
+    const first = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: customerEmail });
+    expect(first.status).toBe(200);
+    const second = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: customerEmail });
+    expect(second.status).toBe(429);
+    expect(second.body.retryAfterSeconds).toBeGreaterThan(0);
+    expect(second.body.error).toMatch(/Please wait/);
+  });
+
+  it('reports a failed code email instead of pretending it was sent, and lets the customer retry at once', async () => {
+    mockSendEmail.mockRejectedValueOnce(new Error('SMTP down'));
+    const res = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: customerEmail });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatch(/couldn't send/);
+    const retry = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: customerEmail });
+    expect(retry.status).toBe(200);
+  });
+
+  it('verify explains a wrong code with the attempts left, and an expired one', async () => {
+    await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: customerEmail });
+    const code = extractOtpFromEmail();
+    const wrong = await request(app).post('/api/bookings/login/verify').send({ bookingReference: bookingRefA, code: code === '000000' ? '000001' : '000000' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.error).toMatch(/incorrect\. 4 attempts left/);
+
+    await redis.del(`otp:customer_login:${customerEmail}`);
+    const expired = await request(app).post('/api/bookings/login/verify').send({ bookingReference: bookingRefA, code });
+    expect(expired.status).toBe(401);
+    expect(expired.body.error).toMatch(/expired/);
+
+    const malformed = await request(app).post('/api/bookings/login/verify').send({ bookingReference: bookingRefA, code: '12ab' });
+    expect(malformed.status).toBe(400);
+  });
+
+  it('the ticket lookup also accepts the mobile number and any Booking ID casing', async () => {
+    const res = await request(app).get(`/api/bookings/${bookingRefA.toLowerCase()}/tickets`).query({ email: '9000000001' });
+    expect(res.status).toBe(200);
+    expect(res.body.bookingReference).toBe(bookingRefA);
   });
 
   it('verify rejects a wrong OTP code', async () => {
@@ -137,6 +231,7 @@ describe('real customer OTP login (real DB)', () => {
     expect(myBookingsRes.body.bookings).toHaveLength(2);
     const eventNames = myBookingsRes.body.bookings.map((b: { eventName: string }) => b.eventName).sort();
     expect(eventNames).toEqual([`OTP Login Event A ${suffix}`, `OTP Login Event B ${suffix}`].sort());
+    expect(myBookingsRes.body.bookings[0].ticketPagePath).toMatch(/^\/t\/INV-BKG-/);
   });
 
   it('lists older bookings stored with different email casing (before emails were normalized)', async () => {

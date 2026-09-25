@@ -3,6 +3,7 @@ import type { EventLocationPoint } from '../models/Event';
 import { generateTicketQrPng } from './qrCode';
 import { buildVenueMapUrl } from './mapsUrl';
 import { ticketPageUrl, verifyTicketLinkToken } from './ticketLinks';
+import { contactMatchesBooking, findBookingByReference, parseLoginContact, type LoginContact } from './customerAuth';
 
 export class NotFoundError extends Error {}
 
@@ -65,9 +66,17 @@ export interface CustomerBookingDetail {
   delivery: { email: string | null; whatsapp: string | null };
 }
 
-async function findVerifiedBooking(bookingReference: string, email: string): Promise<Booking> {
-  const booking = await Booking.findOne({ where: { bookingReference: bookingReference.trim() } });
-  if (!booking || booking.primaryContactEmail.toLowerCase() !== email.trim().toLowerCase()) {
+// `contact` is the booking's email or mobile number; the reference is
+// matched case-insensitively (see customerAuth.ts).
+async function findVerifiedBooking(bookingReference: string, contact: string): Promise<Booking> {
+  const booking = await findBookingByReference(bookingReference);
+  let parsed: LoginContact | null = null;
+  try {
+    parsed = parseLoginContact(contact);
+  } catch {
+    parsed = null;
+  }
+  if (!booking || !parsed || !contactMatchesBooking(booking, parsed)) {
     throw new NotFoundError('Booking not found');
   }
   return booking;

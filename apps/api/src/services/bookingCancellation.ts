@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import { findBookingByReference } from './customerAuth';
 import { sequelize } from '../db/connection';
 import { Event, Booking, Payment, User } from '../models';
 import { releaseBookingTickets } from './bookingTickets';
@@ -122,7 +123,7 @@ async function performCancellation(params: {
 }
 
 export async function customerCancelBooking(bookingReference: string, email: string, reason: string): Promise<CancellationResult> {
-  const booking = await Booking.findOne({ where: { bookingReference: bookingReference.trim() } });
+  const booking = await findBookingByReference(bookingReference);
   if (!booking || booking.primaryContactEmail.toLowerCase() !== email.trim().toLowerCase()) {
     // Same "not found" for a wrong email as for a nonexistent booking —
     // matches the same enumeration-safety reasoning as the feedback

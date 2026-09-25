@@ -1,4 +1,5 @@
-import { Booking, Event, EventReview } from '../models';
+import { Event, EventReview } from '../models';
+import { findBookingByReference } from './customerAuth';
 
 export class NotFoundError extends Error {}
 export class ValidationError extends Error {}
@@ -24,7 +25,7 @@ export async function submitReview(params: SubmitReviewParams): Promise<Submitte
   // for "prove you were the customer" (an order number + the email it
   // was placed under), not the higher bar a cancellation or ticket
   // view would warrant.
-  const booking = await Booking.findOne({ where: { bookingReference: params.bookingReference.trim() } });
+  const booking = await findBookingByReference(params.bookingReference);
   if (!booking) throw new NotFoundError('Booking not found');
 
   if (booking.primaryContactEmail.toLowerCase() !== params.email.trim().toLowerCase()) {
