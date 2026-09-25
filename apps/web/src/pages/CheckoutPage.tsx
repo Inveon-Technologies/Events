@@ -694,6 +694,17 @@ export function CheckoutPage() {
                           {isSubmittingBooking ? 'Processing…' : 'Proceed to Secure Payment'} <span className="material-symbols-outlined text-base">arrow_forward</span>
                         </button>
                       </div>
+                      <p className="pt-2 text-right text-[11px] text-on-surface-variant">
+                        By continuing you agree to our{' '}
+                        <Link to="/terms" target="_blank" className="underline hover:text-primary">
+                          Terms &amp; Conditions
+                        </Link>{' '}
+                        and{' '}
+                        <Link to="/refund-policy" target="_blank" className="underline hover:text-primary">
+                          Refunds &amp; Cancellations policy
+                        </Link>
+                        .
+                      </p>
                     </div>
                   </section>
                 )}
@@ -905,9 +916,12 @@ export function CheckoutPage() {
               >
                 Refund Policy
               </button>
-              <a href="mailto:support@inveontechnologies.in" className="hover:text-primary transition text-body-sm text-on-surface-variant">
+              <Link to="/terms" target="_blank" className="hover:text-primary transition text-body-sm text-on-surface-variant">
+                Terms
+              </Link>
+              <Link to="/contact" target="_blank" className="hover:text-primary transition text-body-sm text-on-surface-variant">
                 Contact Support
-              </a>
+              </Link>
             </div>
           </footer>
 

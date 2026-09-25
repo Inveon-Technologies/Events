@@ -94,6 +94,9 @@ export function createApp(): Express {
       supportPhone: b.supportPhone,
       primaryColor: b.primaryColor,
       companyName: invoice.companyName,
+      // Shown on the public Contact / policy pages.
+      companyAddress: invoice.companyAddress,
+      companyGstin: invoice.companyGstin,
       certificateFooter: getCertificateFooter(),
     });
   });

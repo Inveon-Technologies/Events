@@ -1,4 +1,4 @@
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
@@ -41,9 +41,14 @@ export function PaymentFailedPage() {
           </Button>
           <p className="text-xs text-ink-muted">
             Payment already deducted?{' '}
-            <a href="mailto:support@inveontechnologies.in" className="text-brand-500 font-semibold hover:underline">
+            It's refunded automatically if no booking was confirmed (see our{' '}
+            <Link to="/refund-policy" className="text-brand-500 font-semibold hover:underline">
+              refund policy
+            </Link>
+            ).{' '}
+            <Link to="/contact" className="text-brand-500 font-semibold hover:underline">
               Still having issues? Contact support
-            </a>
+            </Link>
           </p>
         </div>
       </div>

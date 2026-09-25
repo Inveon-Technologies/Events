@@ -215,7 +215,7 @@ export default function SignUp() {
               className="mt-0.5 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
             />
             <span className="text-[11px] text-slate-600 leading-tight select-none">
-              I agree to Inveon Events <a href="#terms" className="text-brand-600 font-semibold underline">Terms of Service</a>, <a href="#privacy" className="text-brand-600 font-semibold underline">Privacy Policy</a>, and Organizer Merchant Guidelines.
+              I agree to Inveon Events <a href="/terms" target="_blank" rel="noreferrer" className="text-brand-600 font-semibold underline">Terms &amp; Conditions</a> (including the organizer responsibilities) and <a href="/privacy" target="_blank" rel="noreferrer" className="text-brand-600 font-semibold underline">Privacy Policy</a>.
             </span>
           </label>
         </div>
