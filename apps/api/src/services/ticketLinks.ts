@@ -50,3 +50,8 @@ export function ticketPdfUrl(bookingReference: string): string {
 export function ticketCardUrl(bookingReference: string): string {
   return `${publicBase()}/api/t/${ticketLinkToken(bookingReference)}/card.png`;
 }
+
+// Ticket number shown to people: INV-BKG-2026-8F3K2Q + #1 → INV-TKT-2026-8F3K2Q-01.
+export function ticketDisplayReference(bookingReference: string, index: number): string {
+  return `${bookingReference.replace(/-BKG-/, '-TKT-')}-${String(index + 1).padStart(2, '0')}`;
+}

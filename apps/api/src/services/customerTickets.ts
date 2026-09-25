@@ -1,8 +1,9 @@
 import { Booking, Event, Organizer, Payment, Ticket, TicketCategory } from '../models';
-import type { EventLocationPoint } from '../models/Event';
+import type { EventLocationPoint, EventPartner } from '../models/Event';
+import { getEventTicketDesign } from './ticketDesign';
 import { generateTicketQrPng } from './qrCode';
 import { buildVenueMapUrl } from './mapsUrl';
-import { ticketPageUrl, verifyTicketLinkToken } from './ticketLinks';
+import { ticketDisplayReference, ticketPageUrl, verifyTicketLinkToken } from './ticketLinks';
 import { contactMatchesBooking, findBookingByReference, parseLoginContact, type LoginContact } from './customerAuth';
 
 export class NotFoundError extends Error {}
@@ -10,6 +11,8 @@ export class NotFoundError extends Error {}
 export interface CustomerTicketRow {
   id: string;
   ticketReference: string;
+  // As printed on the ticket: INV-TKT-2026-XXXXXX-01.
+  displayReference: string;
   attendeeName: string;
   tierName: string;
   status: 'valid' | 'checked_in' | 'cancelled';
@@ -34,7 +37,12 @@ export interface CustomerBookingDetail {
   venueAddress: string | null;
   venueMapUrl: string | null;
   bannerUrl: string | null;
+  // Title background chosen by the organizer (falls back to the cover
+  // photo) and their Partners & Supporters, for the ticket design.
+  ticketBackgroundUrl: string | null;
+  partners: EventPartner[];
   organizerName: string;
+  organizerLogoUrl: string | null;
   organizerContactEmail: string | null;
   organizerContactPhone: string | null;
   packingChecklist: { item: string; mandatory: boolean }[] | null;
@@ -109,6 +117,7 @@ export async function buildBookingDetail(booking: Booking): Promise<CustomerBook
   const tierById = new Map(tiers.map((t) => [t.id, t]));
 
   const payment = await Payment.findOne({ where: { bookingId: booking.id }, order: [['createdAt', 'DESC']] });
+  const design = await getEventTicketDesign(event);
 
   const refundCutoffPassed =
     event.refundCutoffDays !== null
@@ -139,8 +148,11 @@ export async function buildBookingDetail(booking: Booking): Promise<CustomerBook
     gateOpenTime: event.gateOpenTime?.toISOString() ?? null,
     venueAddress: event.venueAddress,
     venueMapUrl: buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude),
-    bannerUrl: event.bannerUrl,
+    bannerUrl: design.coverUrl,
+    ticketBackgroundUrl: design.backgroundUrl,
+    partners: design.partners,
     organizerName: organizer?.name ?? 'Event Organizer',
+    organizerLogoUrl: organizer?.logoUrl ?? null,
     organizerContactEmail: organizer?.contactEmail ?? null,
     organizerContactPhone: organizer?.contactPhone ?? null,
     packingChecklist: event.packingChecklist,
@@ -167,6 +179,7 @@ export async function buildBookingDetail(booking: Booking): Promise<CustomerBook
     tickets: tickets.map((ticket, i) => ({
       id: ticket.id,
       ticketReference: `${booking.bookingReference}-${i + 1}`,
+      displayReference: ticketDisplayReference(booking.bookingReference, i),
       attendeeName: ticket.attendeeName,
       tierName: tierById.get(ticket.ticketCategoryId)?.name ?? 'General',
       status: ticket.status,

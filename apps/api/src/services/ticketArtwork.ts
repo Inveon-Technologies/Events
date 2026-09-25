@@ -1,12 +1,12 @@
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
 import { createCanvas, GlobalFonts, loadImage, type SKRSContext2D, type Image } from '@napi-rs/canvas';
 import PDFDocument from 'pdfkit';
 import { Op } from 'sequelize';
 import { Booking, Event, Organizer, Ticket, TicketCategory } from '../models';
 import { generateTicketQrPng } from './qrCode';
-import { UPLOAD_DIR } from './eventMedia';
-import { logger } from '../logger';
+import { loadStoredImage } from './designAssets';
+import { getEventTicketDesign } from './ticketDesign';
+import { ticketDisplayReference } from './ticketLinks';
 
 // The ticket as a picture and as a PDF, from the same data:
 //   - renderTicketCardPng: a 16:9 card (event photo, details, QR) used as
@@ -47,10 +47,7 @@ export interface TicketArtworkData {
   tickets: TicketArtworkTicket[]; // active tickets only
 }
 
-// Ticket number shown to people: INV-BKG-2026-8F3K2Q + #1 → INV-TKT-2026-8F3K2Q-01.
-export function ticketDisplayReference(bookingReference: string, index: number): string {
-  return `${bookingReference.replace(/-BKG-/, '-TKT-')}-${String(index + 1).padStart(2, '0')}`;
-}
+export { ticketDisplayReference };
 
 function shortPlace(text: string | null | undefined): string {
   if (!text) return '';
@@ -62,26 +59,6 @@ function locationLabel(event: Event): string {
   const pickup = event.locationPoints?.find((p) => p.type === 'pickup' || p.type === 'meeting');
   if (pickup && venue && shortPlace(pickup.label) !== venue) return `${shortPlace(pickup.label)} → ${venue}`;
   return venue || shortPlace(pickup?.label) || 'See event page';
-}
-
-const MAX_BANNER_BYTES = 8 * 1024 * 1024;
-
-// The event's banner, whether stored locally (/api/uploads/…) or on S3.
-// Best-effort: a missing or slow banner gives a plain card, never an error.
-async function loadBanner(bannerUrl: string | null): Promise<Buffer | null> {
-  if (!bannerUrl) return null;
-  try {
-    const local = bannerUrl.match(/^\/api\/uploads\/([^/?#]+)$/);
-    if (local) return await fs.readFile(path.join(UPLOAD_DIR, path.basename(local[1])));
-    if (!/^https:\/\//.test(bannerUrl)) return null;
-    const res = await fetch(bannerUrl, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
-    return buf.length <= MAX_BANNER_BYTES ? buf : null;
-  } catch (err) {
-    logger.warn({ err, bannerUrl }, 'Could not load event banner for the ticket');
-    return null;
-  }
 }
 
 export async function loadTicketArtworkData(booking: Booking): Promise<TicketArtworkData> {
@@ -117,7 +94,7 @@ export async function loadTicketArtworkData(booking: Booking): Promise<TicketArt
     timeLabel: reporting.toLocaleTimeString('en-IN', { ...IST, hour: 'numeric', minute: '2-digit' }),
     timeCaption: event.gateOpenTime ? 'Reporting time' : 'Starts at',
     locationLabel: locationLabel(event),
-    banner: await loadBanner(event.bannerUrl),
+    banner: await loadStoredImage((await getEventTicketDesign(event)).backgroundUrl),
     tickets,
   };
 }

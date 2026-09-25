@@ -3,6 +3,7 @@ import multer from 'multer';
 import os from 'os';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
+import { storeDesignImage, DesignAssetValidationError } from '../services/designAssets';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
@@ -14,6 +15,7 @@ import {
   NotFoundError as EventCreationNotFoundError,
   ForbiddenError as EventCreationForbiddenError,
   CreateEventTicketTier,
+  CreateEventPartner,
 } from '../services/eventCreation';
 import { uploadEventMedia, deleteEventMedia, duplicateEventMedia, MediaValidationError, NotFoundError, ForbiddenError, MAX_FILE_SIZE_BYTES } from '../services/eventMedia';
 import {
@@ -279,6 +281,22 @@ organizerRouter.get('/events/:eventId/financials', asyncHandler(async (req, res)
   }
 }));
 
+// Validated in sanitizePartners (eventCreation.ts); this only keeps the
+// shape, so a wrong-typed body can't reach it.
+function parsePartners(raw: unknown): CreateEventPartner[] | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null) return null;
+  if (!Array.isArray(raw)) return [{ name: '', logoUrl: 'invalid' }];
+  return raw.map((p) => {
+    const row = (p && typeof p === 'object' ? p : {}) as Record<string, unknown>;
+    return {
+      name: typeof row.name === 'string' ? row.name : '',
+      role: typeof row.role === 'string' ? row.role : null,
+      logoUrl: typeof row.logoUrl === 'string' ? row.logoUrl : null,
+    };
+  });
+}
+
 organizerRouter.post('/events', asyncHandler(async (req, res) => {
   const organizerId = req.user?.organizerId;
   if (!organizerId) {
@@ -321,6 +339,8 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       packingChecklist,
       faqItems,
       locationPoints,
+      ticketBackgroundUrl: typeof body.ticketBackgroundUrl === 'string' ? body.ticketBackgroundUrl : undefined,
+      partners: parsePartners(body.partners),
       status,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -392,6 +412,9 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       packingChecklist: body.packingChecklist !== undefined ? parsePackingChecklist(body) : undefined,
       faqItems: body.faqItems !== undefined ? parseFaqItems(body) : undefined,
       locationPoints: body.locationPoints !== undefined ? parseLocationPoints(body) : undefined,
+      ticketBackgroundUrl:
+        typeof body.ticketBackgroundUrl === 'string' || body.ticketBackgroundUrl === null ? (body.ticketBackgroundUrl as string | null) : undefined,
+      partners: body.partners !== undefined ? parsePartners(body.partners) : undefined,
       status: body.status === 'draft' || body.status === 'published' || body.status === 'closed' ? body.status : undefined,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -858,6 +881,52 @@ organizerRouter.patch('/profile', asyncHandler(async (req, res) => {
     throw err;
   }
 }));
+
+// Ticket-design images (title background, partner logos). Not tied to
+// an event, so the wizard can upload before the event exists; the
+// returned URL is then saved on the event.
+organizerRouter.post(
+  '/uploads/image',
+  (req, res, next) => {
+    mediaUpload.single('file')(req, res, (err: unknown) => {
+      if (err) {
+        if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({ error: `File is too large — the limit is ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB` });
+          return;
+        }
+        res.status(400).json({ error: 'Upload failed — please try again' });
+        return;
+      }
+      next();
+    });
+  },
+  asyncHandler(async (req, res) => {
+    const organizerId = req.user?.organizerId;
+    if (!organizerId) {
+      res.status(400).json({ error: 'This account has no associated organizer' });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'No file was uploaded' });
+      return;
+    }
+    try {
+      const result = await storeDesignImage({
+        organizerId,
+        mimeType: req.file.mimetype,
+        sizeBytes: req.file.size,
+        tempFilePath: req.file.path,
+      });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof DesignAssetValidationError) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }),
+);
 
 organizerRouter.post(
   '/profile/logo',

@@ -1,9 +1,24 @@
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Organizer, Booking, EventMedia } from '../models';
-import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem, CreateEventLocationPoint } from './eventCreation';
-import type { EventLocationPoint } from '../models/Event';
+import type {
+  CreateEventTicketTier,
+  CreateEventScheduleItem,
+  CreateEventPackingItem,
+  CreateEventFaqItem,
+  CreateEventLocationPoint,
+  CreateEventPartner,
+} from './eventCreation';
+import type { EventLocationPoint, EventPartner } from '../models/Event';
 import { istParts, parseIstDateTime } from './istTime';
-import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems, sanitizeLocationPoints } from './eventCreation';
+import {
+  ValidationError,
+  sanitizeScheduleItems,
+  sanitizePackingChecklist,
+  sanitizeFaqItems,
+  sanitizeLocationPoints,
+  sanitizePartners,
+  sanitizeTicketBackgroundUrl,
+} from './eventCreation';
 
 export class NotFoundError extends Error {}
 export class ForbiddenError extends Error {}
@@ -31,6 +46,8 @@ export interface OrganizerEventDetail {
   packingChecklist: CreateEventPackingItem[] | null;
   faqItems: CreateEventFaqItem[] | null;
   locationPoints: EventLocationPoint[] | null;
+  ticketBackgroundUrl: string | null;
+  partners: EventPartner[];
   cancellationPolicy: string | null;
   allowSelfServiceCancellation: boolean;
   refundCutoffDays: number | null;
@@ -75,6 +92,8 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     packingChecklist: event.packingChecklist,
     faqItems: event.faqItems,
     locationPoints: event.locationPoints ?? null,
+    ticketBackgroundUrl: event.ticketBackgroundUrl ?? null,
+    partners: event.partners ?? [],
     cancellationPolicy: event.cancellationPolicy,
     allowSelfServiceCancellation: event.allowSelfServiceCancellation,
     refundCutoffDays: event.refundCutoffDays,
@@ -118,6 +137,8 @@ export interface UpdateEventParams {
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
   locationPoints?: CreateEventLocationPoint[];
+  ticketBackgroundUrl?: string | null;
+  partners?: CreateEventPartner[] | null;
   cancellationPolicy?: string;
   allowSelfServiceCancellation?: boolean;
   refundCutoffDays?: number;
@@ -290,6 +311,9 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         packingChecklist: params.packingChecklist !== undefined ? sanitizePackingChecklist(params.packingChecklist) : event.packingChecklist,
         faqItems: params.faqItems !== undefined ? sanitizeFaqItems(params.faqItems) : event.faqItems,
         locationPoints: params.locationPoints !== undefined ? sanitizeLocationPoints(params.locationPoints) : event.locationPoints,
+        ticketBackgroundUrl:
+          params.ticketBackgroundUrl !== undefined ? sanitizeTicketBackgroundUrl(params.ticketBackgroundUrl) : event.ticketBackgroundUrl,
+        partners: params.partners !== undefined ? sanitizePartners(params.partners) : event.partners,
         cancellationPolicy: params.cancellationPolicy !== undefined ? params.cancellationPolicy.trim() || null : event.cancellationPolicy,
         allowSelfServiceCancellation: nextAllowSelfService,
         refundCutoffDays: nextAllowSelfService ? nextRefundCutoffDays : null,
