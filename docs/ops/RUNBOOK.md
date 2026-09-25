@@ -195,7 +195,13 @@ Nightly, on the VPS (`crontab -e` as the deploy user):
 - Redis holds only the job queue, OTPs and rate limits. It persists to
   its own volume (AOF) and isn't backed up separately.
 - Uploaded images: on S3 when `S3_BUCKET` is set; otherwise in the API's
-  uploads volume. Back that volume up too, or move uploads to S3.
+  uploads volume (`/app/uploads`). Back that volume up too, or move
+  uploads to S3. **The production stack (inveontechnologies-website)
+  must mount a named volume at `/app/uploads` on `events-api`** when S3
+  isn't used — without one, every upload disappears on the next deploy
+  and shows as a broken image. Either way images are served by the API
+  at `/api/uploads/…` (streamed from S3 when it's used), so the S3
+  bucket can stay private.
 
 **Monthly restore drill** (touches nothing live):
 

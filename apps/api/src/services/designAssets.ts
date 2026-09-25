@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import crypto from 'crypto';
 import { moveFile } from './fileMove';
-import { isS3Configured, uploadFileToS3, s3KeyFromUrl } from './s3Storage';
+import { isS3Configured, uploadFileToS3, s3KeyFromUrl, getS3Object } from './s3Storage';
 import { sniffImageMimeType, UPLOAD_DIR, UPLOAD_URL_PREFIX, MAX_FILE_SIZE_BYTES } from './eventMedia';
 import { logger } from '../logger';
 
@@ -85,11 +85,18 @@ export async function loadStoredImage(url: string | null | undefined, maxBytes =
   try {
     const local = localUploadPath(url);
     if (local) {
-      const buf = await fs.readFile(local);
-      return buf.length <= maxBytes ? buf : null;
+      const buf = await fs.readFile(local).catch(() => null);
+      if (buf) return buf.length <= maxBytes ? buf : null;
+    }
+    // Our own image on S3 (current /api/uploads link or an older direct
+    // bucket URL): read it with the API's credentials, public or not.
+    const key = s3KeyFromUrl(url);
+    if (key) {
+      const obj = await getS3Object(key);
+      return obj && obj.body.length <= maxBytes ? obj.body : null;
     }
     if (!/^https:\/\//.test(url)) return null;
-    const res = await fetch(url, { signal: AbortSignal.timeout(s3KeyFromUrl(url) ? 8000 : 5000), redirect: 'error' });
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000), redirect: 'error' });
     if (!res.ok) return null;
     const declared = Number(res.headers.get('content-length') ?? 0);
     if (declared > maxBytes) return null;

@@ -121,7 +121,34 @@ describe('S3 media storage (real DB, real HTTP upload, AWS SDK mocked)', () => {
     expect(command.input.ContentType).toBe('image/jpeg');
     expect(command.input.ACL).toBeUndefined(); // buckets with ACLs disabled reject this outright
 
-    expect(res.body.url).toBe(`https://inveon-events-uploads-test.s3.ap-south-1.amazonaws.com/${command.input.Key}`);
+    // Linked through the API, not the bucket: the bucket never has to be public.
+    expect(res.body.url).toBe(`/api/uploads/${command.input.Key}`);
+  });
+
+  it('serves S3-stored images through /api/uploads with the API\'s credentials (private bucket), for every folder', async () => {
+    setS3Env();
+    const png = Buffer.from('89504e470d0a1a0a', 'hex');
+    mockSend.mockImplementation(async (command: { input: { Key: string } }) => {
+      if (command.input.Key === 'organizers/org-1/logo.png') {
+        return { ContentType: 'image/png', Body: { transformToByteArray: async () => new Uint8Array(png) } };
+      }
+      throw Object.assign(new Error('missing'), { name: 'NoSuchKey' });
+    });
+
+    const res = await request(app).get('/api/uploads/organizers/org-1/logo.png').buffer(true);
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.headers['cache-control']).toContain('max-age');
+    expect(Buffer.from(res.body).equals(png)).toBe(true);
+    expect(mockSend.mock.calls[0][0].input).toEqual({ Bucket: 'inveon-events-uploads-test', Key: 'organizers/org-1/logo.png' });
+
+    const missing = await request(app).get('/api/uploads/organizers/org-1/nope.png');
+    expect(missing.status).toBe(404);
+
+    mockSend.mockClear();
+    const escape = await request(app).get('/api/uploads/..%2F..%2Fetc%2Fpasswd');
+    expect(escape.status).toBe(404);
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it('deleting S3-stored media calls DeleteObjectCommand with the matching key, not a local file delete', async () => {

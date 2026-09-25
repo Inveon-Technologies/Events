@@ -5,6 +5,7 @@ import { publicBookingsRouter } from './routes/publicBookings';
 import { webhooksRouter } from './routes/webhooks';
 import { integrationApiRouter } from './routes/integrationApi';
 import { UPLOAD_DIR } from './services/eventMedia';
+import { getS3Object, isS3Configured, MEDIA_URL_PREFIX, s3KeyFromUrl } from './services/s3Storage';
 import { logger } from './logger';
 import { requestLogger } from './middleware/requestLogger';
 
@@ -48,7 +49,35 @@ export function createApp(): Express {
   // only proxies /api/* to this container (see the /api/health comment
   // above), so anything outside that prefix would never actually be
   // reachable through the public domain without a separate nginx change.
-  app.use('/api/uploads', express.static(UPLOAD_DIR));
+  // Local disk first (dev, or files from before S3 was set up), then the
+  // S3 bucket — read with the API's own credentials, so the bucket stays
+  // private. File names are random UUIDs that never change, hence the
+  // long cache.
+  app.use('/api/uploads', express.static(UPLOAD_DIR, { maxAge: '30d' }), async (req: Request, res: Response, next: NextFunction) => {
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || !isS3Configured()) {
+      next();
+      return;
+    }
+    const key = s3KeyFromUrl(`${MEDIA_URL_PREFIX}${decodeURIComponent(req.path)}`);
+    if (!key) {
+      next();
+      return;
+    }
+    try {
+      const obj = await getS3Object(key);
+      if (!obj) {
+        res.status(404).json({ error: 'File not found' });
+        return;
+      }
+      res
+        .set('Cache-Control', 'public, max-age=2592000, immutable')
+        .set('X-Content-Type-Options', 'nosniff')
+        .type(obj.contentType || 'application/octet-stream')
+        .send(obj.body);
+    } catch (err) {
+      next(err);
+    }
+  });
 
   app.use('/api/v1', integrationApiRouter);
   app.use('/api/auth', authRouter);
