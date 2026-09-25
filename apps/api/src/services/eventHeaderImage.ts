@@ -1,5 +1,5 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas';
-import { coverImage, fitText, registerFonts } from './ticketArtwork';
+import { coverImage, fitText, registerFonts } from './canvasKit';
 import { loadStoredImage } from './designAssets';
 import { logger } from '../logger';
 
