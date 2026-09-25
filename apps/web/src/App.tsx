@@ -14,6 +14,7 @@ import { MyBookingsPage } from './pages/MyBookingsPage';
 import { BookingNotFoundPage } from './pages/BookingNotFoundPage';
 import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
 import { FeedbackPage } from './pages/FeedbackPage';
+import { TicketPage } from './pages/TicketPage';
 import { OrganizerApp } from './organizer/OrganizerApp';
 
 // A bare /bookings/<reference> link goes to the real booking management
@@ -46,6 +47,8 @@ export default function App() {
       <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/bookings/:bookingReference/feedback" element={<FeedbackPage />} />
       <Route path="/bookings/:bookingId" element={<BookingReferenceRedirect />} />
+      {/* Ticket page behind the signed link sent on WhatsApp and email */}
+      <Route path="/t/:token" element={<TicketPage />} />
 
       {/* Organizer back office — entire nested app, all 44 pages */}
       <Route path="/organizer/*" element={<OrganizerApp />} />

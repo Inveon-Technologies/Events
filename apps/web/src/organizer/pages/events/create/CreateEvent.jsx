@@ -23,6 +23,9 @@ import { useEvents } from '../../../context/EventsContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
 import LocationPicker from '../../../components/LocationPicker';
+import TicketDesignEditor from '../../../components/TicketDesignEditor';
+import TicketPreview from '../../../components/TicketPreview';
+import { istParts } from '../../../lib/istTime';
 import { ApiError, apiRequest, uploadEventMediaFile, deleteEventMediaFile } from '../../../lib/api';
 
 const MAX_IMAGES = 5;
@@ -86,6 +89,10 @@ export default function CreateEvent() {
     // points in order, each with coordinates, optional time and note.
     locationPoints: [],
     bannerImage: '',
+    // Ticket design (see TicketDesignEditor): title background image and
+    // up to 10 Partners & Supporters, as uploaded image URLs.
+    ticketBackgroundUrl: null,
+    partners: [],
     totalCapacity: 0,
     tags: [],
     genderRestriction: '', // '' = open to all genders (the default); 'male' or 'female' otherwise
@@ -133,10 +140,12 @@ export default function CreateEvent() {
           title: data.title,
           shortDescription: data.shortDescription || '',
           description: data.description || '',
-          startDate: data.eventDate.slice(0, 10),
-          startTime: data.eventDate.slice(11, 16),
+          startDate: istParts(data.eventDate).date,
+          startTime: istParts(data.eventDate).time,
           venueName: data.venueAddress || '',
           bannerImage: data.bannerImage || '',
+          ticketBackgroundUrl: data.ticketBackgroundUrl || null,
+          partners: (data.partners || []).map((p, i) => ({ id: `partner-${i}`, name: p.name || '', role: p.role || '', logoUrl: p.logoUrl || null })),
           genderRestriction: data.genderRestriction || '',
           ticketTiers: data.ticketTiers.length
             ? data.ticketTiers.map((t) => ({ id: t.id, name: t.name, price: t.price, quantity: t.quantity, sold: t.sold, description: t.description || '' }))
@@ -1074,6 +1083,19 @@ export default function CreateEvent() {
         {/* STEP 5: Preview & Publish */}
         {currentStep === 5 && (
           <div className="space-y-5">
+            <section className="p-4 border border-slate-200 rounded-xl space-y-4" aria-label="Ticket design">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Ticket design</h4>
+                <p className="text-[11px] text-slate-500">Personalize the ticket attendees receive, then check it in the preview below before publishing.</p>
+              </div>
+              <TicketDesignEditor
+                value={{ ticketBackgroundUrl: formData.ticketBackgroundUrl, partners: formData.partners }}
+                onChange={(design) => setFormData((prev) => ({ ...prev, ...design }))}
+              />
+            </section>
+
+            <TicketPreview formData={formData} coverUrl={mediaImages[0]?.previewUrl || formData.bannerImage || null} />
+
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Sparkles className="w-5 h-5 text-emerald-600 shrink-0" />

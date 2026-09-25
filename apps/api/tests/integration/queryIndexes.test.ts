@@ -7,6 +7,12 @@ import { sequelize } from '../../src/db/connection';
 async function planFor(sql: string): Promise<string> {
   return sequelize.transaction(async (t) => {
     await sequelize.query('SET LOCAL enable_seqscan = off', { transaction: t });
+    // For ORDER BY … LIMIT queries the index's job is to return rows
+    // already in order. On tiny tables the planner may instead pick a
+    // narrower index plus an explicit sort (it did on CI, depending on
+    // when autovacuum last analyzed); ruling out sorting keeps the check
+    // about the ordered index, not about the table statistics of the day.
+    if (/ORDER BY/i.test(sql)) await sequelize.query('SET LOCAL enable_sort = off', { transaction: t });
     const rows = await sequelize.query<{ 'QUERY PLAN': string }>(`EXPLAIN ${sql}`, { type: QueryTypes.SELECT, transaction: t });
     return rows.map((r) => r['QUERY PLAN']).join('\n');
   });

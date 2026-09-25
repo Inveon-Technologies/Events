@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNotifications } from './NotificationContext';
 import { useAuth } from './AuthContext';
+import { istParts } from '../lib/istTime';
 import { apiRequest, ApiError } from '../lib/api';
 
 const EventsContext = createContext();
@@ -25,8 +26,8 @@ function apiEventToMockShape(e) {
     status: e.displayStatus,
     shortDescription: '',
     description: '',
-    startDate: d.toISOString().slice(0, 10),
-    startTime: d.toISOString().slice(11, 16),
+    startDate: istParts(d).date,
+    startTime: istParts(d).time,
     endDate: '',
     endTime: '',
     timezone: 'IST (UTC+5:30)',
@@ -57,7 +58,7 @@ function apiBookingToMockShape(b) {
     // human-readable reference) — real mutation endpoints (cancel,
     // etc.) need the actual primary key, not the reference string.
     bookingId: b.id,
-    bookingDate: `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`,
+    bookingDate: `${istParts(d).date} ${istParts(d).time}`,
     eventId: b.eventId,
     eventName: b.eventName,
     customerName: b.customerName,
@@ -76,6 +77,17 @@ function apiBookingToMockShape(b) {
 // Map pins as the API expects them (without the geocoding helper fields
 // LocationPicker keeps for filling the address form), plus the main
 // venue's coordinates — the venue point, or the only point.
+// Title background + Partners & Supporters (see TicketDesignEditor).
+// Rows with neither a name nor a logo are left out.
+function ticketDesignPayload(data) {
+  return {
+    ticketBackgroundUrl: data.ticketBackgroundUrl || null,
+    partners: (data.partners || [])
+      .filter((p) => (p.name || '').trim() || p.logoUrl)
+      .map((p) => ({ name: (p.name || '').trim(), role: (p.role || '').trim() || null, logoUrl: p.logoUrl || null })),
+  };
+}
+
 function locationPayload(points) {
   const cleaned = (points || []).map((p) => ({
     type: p.type,
@@ -203,6 +215,7 @@ export function EventsProvider({ children }) {
         pincode: newEvent.pincode,
         ...locationPayload(newEvent.locationPoints),
         bannerImage: newEvent.bannerImage,
+        ...ticketDesignPayload(newEvent),
         genderRestriction: newEvent.genderRestriction || null,
         cancellationPolicy: newEvent.cancellationPolicy?.description || undefined,
         allowSelfServiceCancellation: Boolean(newEvent.cancellationPolicy?.refundable),
@@ -283,6 +296,7 @@ export function EventsProvider({ children }) {
           pincode: formData.pincode,
           ...locationPayload(formData.locationPoints),
           bannerImage: formData.bannerImage,
+          ...ticketDesignPayload(formData),
           genderRestriction: formData.genderRestriction || null,
           cancellationPolicy: formData.cancellationPolicy?.description || undefined,
           allowSelfServiceCancellation: Boolean(formData.cancellationPolicy?.refundable),

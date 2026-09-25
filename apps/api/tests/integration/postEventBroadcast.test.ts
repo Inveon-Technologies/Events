@@ -12,6 +12,14 @@ jest.mock('../../src/services/email', () => {
   return { ...actual, sendEmail: jest.fn().mockResolvedValue(undefined), isEmailConfigured: jest.fn().mockReturnValue(true) };
 });
 
+// Bookings made in setup trigger the booking confirmation email, which
+// renders a banner, QR codes and an invoice PDF in the background (the
+// queue is off in tests). Slow under Jest and not what this suite checks.
+jest.mock('../../src/services/bookingEmails', () => {
+  const actual = jest.requireActual('../../src/services/bookingEmails');
+  return { ...actual, deliverBookingConfirmationEmail: jest.fn().mockResolvedValue(undefined) };
+});
+
 const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
 const mockIsEmailConfigured = isEmailConfigured as jest.MockedFunction<typeof isEmailConfigured>;
 

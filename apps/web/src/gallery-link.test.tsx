@@ -41,8 +41,8 @@ describe('post-event photos & videos link', () => {
     }));
 
     renderAt('/bookings/x/manage');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-GALLERY1');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'asha@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-GALLERY1');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'asha@example.com');
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
     const link = await screen.findByRole('link', { name: /view photos & videos/i });
@@ -55,8 +55,8 @@ describe('post-event photos & videos link', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ ...bookingDetail, galleryUrl: null, galleryNote: null }) }));
 
     renderAt('/bookings/x/manage');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-GALLERY1');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'asha@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-GALLERY1');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'asha@example.com');
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
     await waitFor(() => expect(screen.getByText('Summit Trek')).toBeInTheDocument());

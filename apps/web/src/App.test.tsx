@@ -547,8 +547,8 @@ describe('App routing', () => {
 
     renderApp('/feedback');
 
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-99999');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'customer@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-99999');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'customer@example.com');
     await user.click(screen.getAllByRole('radio', { name: '4 stars' })[0]);
     await user.type(screen.getByPlaceholderText(/tell other travellers/i), 'Great time!');
     await user.click(screen.getByRole('button', { name: /submit feedback/i }));
@@ -577,8 +577,8 @@ describe('App routing', () => {
 
     renderApp('/feedback');
 
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-00000');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'wrong@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-00000');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'wrong@example.com');
     await user.click(screen.getAllByRole('radio', { name: '3 stars' })[0]);
     await user.click(screen.getByRole('button', { name: /submit feedback/i }));
 
@@ -594,8 +594,8 @@ describe('App routing', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderApp('/feedback');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-11111');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'someone@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-11111');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'someone@example.com');
     await user.click(screen.getByRole('button', { name: /submit feedback/i }));
 
     expect(screen.getByText(/select a star rating/i)).toBeInTheDocument();
@@ -1046,8 +1046,8 @@ describe('App routing', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderApp('/bookings/some-id/manage');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-77777');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'attendee@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-77777');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'attendee@example.com');
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
     await waitFor(() => expect(screen.getByText('Manage Test Event')).toBeInTheDocument());
@@ -1114,8 +1114,8 @@ describe('App routing', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderApp('/bookings/some-id/manage');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-88888');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'canceller@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-88888');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'canceller@example.com');
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: /manage ticket cancellation/i })).toBeInTheDocument());
@@ -1178,8 +1178,8 @@ describe('App routing', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     renderApp('/bookings/some-id/manage');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-99999');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'rich-content@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-99999');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'rich-content@example.com');
     await user.click(screen.getByRole('button', { name: /view my booking/i }));
 
     await waitFor(() => expect(screen.getByText('Rich Content Event')).toBeInTheDocument());
@@ -1216,7 +1216,7 @@ describe('App routing', () => {
         return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true }) });
       }
       if (urlStr.includes('/bookings/login/verify')) {
-        return Promise.resolve({ ok: true, status: 200, json: async () => ({ token: 'real-session-token' }) });
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ token: 'real-session-token', email: 'real-customer@example.com' }) });
       }
       if (urlStr.includes('/bookings/my')) {
         return Promise.resolve({
@@ -1235,8 +1235,8 @@ describe('App routing', () => {
     localStorage.removeItem('inveon_customer_session');
 
     renderApp('/bookings/lookup');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-12345'), 'INV-BKG-2026-11111');
-    await user.type(screen.getByPlaceholderText('you@example.com'), 'real-customer@example.com');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-11111');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'real-customer@example.com');
     await user.click(screen.getByRole('button', { name: /send login code/i }));
 
     await waitFor(() => {
@@ -1244,7 +1244,7 @@ describe('App routing', () => {
       expect(call).toBeTruthy();
     });
     const [, initiateOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'))!;
-    expect(JSON.parse(initiateOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', email: 'real-customer@example.com' });
+    expect(JSON.parse(initiateOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', contact: 'real-customer@example.com' });
 
     // Real 6-box OTP entry — pasted as one atomic clipboard event
     // (matching the real paste handler this page supports for OTP
@@ -1263,7 +1263,7 @@ describe('App routing', () => {
       expect(call).toBeTruthy();
     });
     const [, verifyOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'))!;
-    expect(JSON.parse(verifyOpts.body)).toEqual({ email: 'real-customer@example.com', code: '123456' });
+    expect(JSON.parse(verifyOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', code: '123456' });
 
     // Real navigation to the real hub, real session stored, real bookings shown.
     await waitFor(() => expect(screen.getByText('Real Hub Event One')).toBeInTheDocument());

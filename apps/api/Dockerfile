@@ -29,6 +29,8 @@ RUN npm ci --omit=dev \
   && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg /root/.npm
 COPY --from=build /app/dist ./dist
+# Fonts for the WhatsApp ticket card image (services/ticketCard.ts).
+COPY --from=build /app/assets ./assets
 
 # Don't run as root in production.
 RUN addgroup -S nodejs && adduser -S nodejs -G nodejs

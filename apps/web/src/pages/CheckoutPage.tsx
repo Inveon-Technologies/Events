@@ -593,6 +593,11 @@ export function CheckoutPage() {
                                     required
                                   />
                                 </div>
+                                {index === 0 && (
+                                  <p className="mt-1 text-[11px] text-on-surface-variant">
+                                    We&apos;ll send your tickets and event updates to this number on WhatsApp.
+                                  </p>
+                                )}
                               </div>
                             </div>
 

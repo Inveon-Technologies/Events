@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { Icon } from '../components/Icon';
+import { clearCustomerSession, getCustomerSession } from '../lib/customerSession';
 
 interface CustomerBooking {
   bookingReference: string;
@@ -13,6 +14,7 @@ interface CustomerBooking {
   totalAmountPaise: number;
   ticketCount: number;
   galleryAvailable?: boolean;
+  ticketPagePath?: string;
 }
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'cancelled';
@@ -25,15 +27,6 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function getSession(): { token: string; email: string } | null {
-  try {
-    const raw = localStorage.getItem('inveon_customer_session');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function MyBookingsPage() {
   const navigate = useNavigate();
   const [bookings, setBookings] = useState<CustomerBooking[] | null>(null);
@@ -42,7 +35,7 @@ export function MyBookingsPage() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    const session = getSession();
+    const session = getCustomerSession();
     if (!session) {
       navigate('/bookings/lookup');
       return;
@@ -51,7 +44,7 @@ export function MyBookingsPage() {
     fetch('/api/bookings/my', { headers: { Authorization: `Bearer ${session.token}` } })
       .then(async (res) => {
         if (!res.ok) {
-          localStorage.removeItem('inveon_customer_session');
+          clearCustomerSession();
           if (!cancelled) navigate('/bookings/lookup');
           return;
         }
@@ -68,7 +61,7 @@ export function MyBookingsPage() {
   }, []);
 
   function handleLogout() {
-    localStorage.removeItem('inveon_customer_session');
+    clearCustomerSession();
     navigate('/bookings/lookup');
   }
 
@@ -199,13 +192,23 @@ export function MyBookingsPage() {
                     <div className="text-xs text-ink-muted">
                       {b.ticketCount} ticket{b.ticketCount === 1 ? '' : 's'} · <span className="font-bold text-ink">{formatINR(b.totalAmountPaise)}</span>
                     </div>
-                    <Link
-                      to={`/bookings/${b.bookingReference}/manage`}
-                      state={{ bookingReference: b.bookingReference, email: getSession()?.email }}
-                      className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
-                    >
-                      View Details <Icon name="arrow_forward" className="text-[14px]" />
-                    </Link>
+                    <div className="flex items-center gap-3">
+                      {b.ticketPagePath && b.bookingStatus === 'confirmed' && (
+                        <Link
+                          to={b.ticketPagePath}
+                          className="flex items-center gap-1 text-xs font-semibold text-ink-muted hover:text-ink"
+                        >
+                          <Icon name="confirmation_number" className="text-[14px]" /> Ticket
+                        </Link>
+                      )}
+                      <Link
+                        to={`/bookings/${b.bookingReference}/manage`}
+                        state={{ bookingReference: b.bookingReference, email: getCustomerSession()?.email }}
+                        className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700"
+                      >
+                        View Details <Icon name="arrow_forward" className="text-[14px]" />
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </article>

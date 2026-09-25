@@ -79,7 +79,7 @@ export function FeedbackPage() {
             <input
               value={bookingReference}
               onChange={(e) => setBookingReference(e.target.value)}
-              placeholder="INV-BKG-2026-12345"
+              placeholder="INV-BKG-2026-AB12CD"
               className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-100"
             />
           </label>

@@ -4,6 +4,7 @@ import { sendEmail, isEmailConfigured } from './email';
 import { eventReminderEmail } from '../emails/templates';
 import { buildVenueMapUrl } from './mapsUrl';
 import { logger } from '../logger';
+import { enqueueWhatsApp } from './whatsapp/messages';
 
 const REMINDER_LEAD_TIME_MS = 3 * 60 * 60 * 1000; // 3 hours
 
@@ -60,9 +61,17 @@ export async function sendEventReminder(event: Event): Promise<ReminderSendResul
   );
   if (claimed === 0) return result;
 
+  const bookings = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
+
+  // WhatsApp reminders are queued per booking (and retried on their own),
+  // independent of whether email is configured.
+  for (const booking of bookings) {
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueWhatsApp('eventReminder', booking.id);
+  }
+
   if (!isEmailConfigured()) return result;
 
-  const bookings = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' } });
   const mapUrl = buildVenueMapUrl(event.venueAddress, event.venueMapUrl, event.venueLatitude, event.venueLongitude);
   const eventTimeLabel = event.eventDate.toLocaleString('en-IN', {
     weekday: 'long', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata',

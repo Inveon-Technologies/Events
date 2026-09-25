@@ -20,6 +20,11 @@ function getTransporter(): Transporter {
     host: 'smtp.gmail.com',
     port: 465,
     secure: true,
+    // Reuse one authenticated TLS connection instead of a fresh
+    // handshake + login per message — noticeably faster for one-time
+    // codes, and Gmail throttles bursts of new SMTP logins.
+    pool: true,
+    maxConnections: 3,
     auth: { user: SMTP_USER, pass: SMTP_PASS },
   });
   return transporter;

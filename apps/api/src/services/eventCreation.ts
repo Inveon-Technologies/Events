@@ -1,6 +1,8 @@
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Organizer } from '../models';
-import type { EventLocationPoint, EventLocationPointType } from '../models/Event';
+import { parseIstDateTime } from './istTime';
+import type { EventLocationPoint, EventLocationPointType, EventPartner } from '../models/Event';
+import { isAcceptableImageUrl } from './designAssets';
 
 function slugify(input: string): string {
   return input
@@ -73,6 +75,8 @@ export interface CreateEventParams {
   packingChecklist?: CreateEventPackingItem[];
   faqItems?: CreateEventFaqItem[];
   locationPoints?: CreateEventLocationPoint[];
+  ticketBackgroundUrl?: string | null;
+  partners?: CreateEventPartner[] | null;
   status: 'draft' | 'published';
   genderRestriction?: 'male' | 'female' | null;
 }
@@ -147,6 +151,47 @@ export function sanitizeLocationPoints(points?: CreateEventLocationPoint[]): Eve
   return cleaned.length > 0 ? cleaned : null;
 }
 
+export const MAX_EVENT_PARTNERS = 10;
+
+export interface CreateEventPartner {
+  name?: string;
+  role?: string | null;
+  logoUrl?: string | null;
+}
+
+// "Partners & Supporters" shown on the ticket, email and PDF. Rows with
+// neither a name nor a logo are dropped (an empty row left in the form);
+// more than 10, or a logo that isn't an uploaded / https image, is an
+// error the organizer has to fix.
+export function sanitizePartners(partners?: CreateEventPartner[] | null): EventPartner[] | null {
+  if (!partners) return null;
+  if (!Array.isArray(partners)) throw new ValidationError('Partners must be a list');
+  const cleaned = partners
+    .map((p) => ({
+      name: String(p?.name ?? '').trim().slice(0, 80),
+      role: String(p?.role ?? '').trim().slice(0, 60) || null,
+      logoUrl: String(p?.logoUrl ?? '').trim() || null,
+    }))
+    .filter((p) => p.name || p.logoUrl);
+  if (cleaned.length > MAX_EVENT_PARTNERS) {
+    throw new ValidationError(`You can add up to ${MAX_EVENT_PARTNERS} partners`);
+  }
+  cleaned.forEach((p, i) => {
+    if (p.logoUrl && !isAcceptableImageUrl(p.logoUrl)) {
+      throw new ValidationError(`Partner ${i + 1}'s logo isn't a valid image — upload it again`);
+    }
+    if (!p.name) p.name = `Partner ${i + 1}`;
+  });
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+export function sanitizeTicketBackgroundUrl(url?: string | null): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed) return null;
+  if (!isAcceptableImageUrl(trimmed)) throw new ValidationError('The ticket background isn\'t a valid image — upload it again');
+  return trimmed;
+}
+
 export function sanitizeFaqItems(items?: CreateEventFaqItem[]): CreateEventFaqItem[] | null {
   if (!items) return null;
   const cleaned = items
@@ -193,7 +238,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
     }
   }
 
-  const eventDate = new Date(`${params.startDate}T${params.startTime}:00`);
+  const eventDate = parseIstDateTime(params.startDate, params.startTime);
   if (Number.isNaN(eventDate.getTime())) {
     throw new ValidationError('Invalid start date/time');
   }
@@ -236,6 +281,8 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         packingChecklist: sanitizePackingChecklist(params.packingChecklist),
         faqItems: sanitizeFaqItems(params.faqItems),
         locationPoints: sanitizeLocationPoints(params.locationPoints),
+        ticketBackgroundUrl: sanitizeTicketBackgroundUrl(params.ticketBackgroundUrl),
+        partners: sanitizePartners(params.partners),
         status: params.status,
         capacity: totalCapacity,
         genderRestriction: params.genderRestriction || null,
@@ -307,6 +354,8 @@ export async function duplicateEvent(eventId: string, organizerId: string): Prom
         packingChecklist: source.packingChecklist,
         faqItems: source.faqItems,
         locationPoints: source.locationPoints ?? null,
+        ticketBackgroundUrl: source.ticketBackgroundUrl ?? null,
+        partners: source.partners ?? null,
         status: 'draft',
         capacity: source.capacity,
         genderRestriction: source.genderRestriction,

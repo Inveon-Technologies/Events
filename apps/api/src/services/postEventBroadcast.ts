@@ -3,6 +3,7 @@ import { Event, Booking, Ticket, Organizer } from '../models';
 import { sendEmail, isEmailConfigured } from './email';
 import { postEventThankYouEmail } from '../emails/templates';
 import { logger } from '../logger';
+import { enqueueWhatsApp } from './whatsapp/messages';
 
 // Next-day broadcast (#57): the morning after an event, every confirmed
 // booking gets a thank-you email with the organizer's photo/video link
@@ -62,7 +63,16 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
   const result: PostEventBroadcastResult = { eventId: event.id, emailsSent: 0 };
 
   const [claimed] = await Event.update({ postEventEmailSentAt: new Date() }, { where: { id: event.id, postEventEmailSentAt: null } });
-  if (claimed === 0 || !isEmailConfigured()) return result;
+  if (claimed === 0) return result;
+
+  // WhatsApp goes out per booking, independent of email.
+  const confirmed = await Booking.findAll({ where: { eventId: event.id, status: 'confirmed' }, attributes: ['id'] });
+  for (const booking of confirmed) {
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueWhatsApp('postEventThanks', booking.id);
+  }
+
+  if (!isEmailConfigured()) return result;
 
   await event.reload();
   const organizer = await Organizer.findByPk(event.organizerId);

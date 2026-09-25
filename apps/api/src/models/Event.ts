@@ -27,6 +27,12 @@ export interface EventLocationPoint {
   note: string | null;
 }
 
+export interface EventPartner {
+  name: string;
+  role: string | null; // e.g. "Title Sponsor", "Media Partner"
+  logoUrl: string | null;
+}
+
 export interface EventFaqItem {
   question: string;
   answer: string;
@@ -49,6 +55,8 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare eventDate: Date;
   declare gateOpenTime: Date | null;
   declare bannerUrl: string | null;
+  declare ticketBackgroundUrl: CreationOptional<string | null>;
+  declare partners: CreationOptional<EventPartner[] | null>;
   declare termsAndConditions: string | null;
   declare cancellationPolicy: string | null;
   declare allowSelfServiceCancellation: CreationOptional<boolean>;
@@ -86,6 +94,8 @@ Event.init(
     eventDate: { type: DataTypes.DATE, allowNull: false },
     gateOpenTime: { type: DataTypes.DATE, allowNull: true },
     bannerUrl: { type: DataTypes.STRING, allowNull: true },
+    ticketBackgroundUrl: { type: DataTypes.STRING(2048), allowNull: true },
+    partners: { type: DataTypes.JSONB, allowNull: true },
     termsAndConditions: { type: DataTypes.TEXT, allowNull: true },
     cancellationPolicy: { type: DataTypes.TEXT, allowNull: true },
     allowSelfServiceCancellation: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

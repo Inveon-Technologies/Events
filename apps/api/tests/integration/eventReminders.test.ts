@@ -7,6 +7,14 @@ import { signAccessToken } from '../../src/auth/jwt';
 import { sendEmail, isEmailConfigured } from '../../src/services/email';
 import { checkAndSendEventReminders, findEventsNeedingReminder, sendEventReminder } from '../../src/services/eventReminders';
 
+// Every booking here also sends its confirmation email in the background,
+// which renders one 400px QR PNG per ticket. PNG encoding runs ~50x slower
+// inside Jest's sandbox (about 1s per ticket), which pushed the 3-ticket
+// test past the 5s timeout on CI. These tests are about reminders, not QR
+// images; the booking-confirmation tests (jobQueue) still render real ones.
+jest.mock('../../src/services/qrCode', () => ({
+  generateTicketQrPng: jest.fn().mockResolvedValue(Buffer.from('qr')),
+}));
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');
   return { ...actual, sendEmail: jest.fn().mockResolvedValue(undefined), isEmailConfigured: jest.fn().mockReturnValue(true) };

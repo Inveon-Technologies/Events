@@ -7,6 +7,7 @@ export default {
       fontFamily: {
         sans: ['Inter', '"Plus Jakarta Sans"', 'system-ui', '-apple-system', 'sans-serif'],
         script: ['"Caveat"', '"Brush Script MT"', 'cursive'],
+        festive: ['"Cinzel"', 'Georgia', 'serif'],
         'body-sm': ['Inter', 'sans-serif'],
         'headline-lg': ['"Plus Jakarta Sans"', 'sans-serif'],
         'display-hero-mobile': ['"Plus Jakarta Sans"', 'sans-serif'],
