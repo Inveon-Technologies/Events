@@ -4,6 +4,8 @@ import { deliverBookingCancellationEmail } from '../services/bookingCancellation
 import { checkAndSendEventReminders } from '../services/eventReminders';
 import { expireStalePendingOnlineBookings } from '../services/pendingBookingExpiry';
 import { checkAndSendPostEventBroadcasts } from '../services/postEventBroadcast';
+import { deliverWhatsApp } from '../services/whatsapp/messages';
+import { WHATSAPP_MESSAGES, WhatsAppMessage } from '../services/whatsapp/client';
 import { logger } from '../logger';
 
 function requireString(data: Record<string, unknown>, key: string): string {
@@ -21,6 +23,12 @@ registerJobHandler('booking-confirmation', async (data) => {
 
 registerJobHandler('booking-cancelled', async (data) => {
   await deliverBookingCancellationEmail(requireString(data, 'bookingId'), data.isEventCancellation === true);
+});
+
+registerJobHandler('whatsapp', async (data) => {
+  const message = requireString(data, 'message');
+  if (!(message in WHATSAPP_MESSAGES)) throw new Error(`Unknown WhatsApp message "${message}"`);
+  await deliverWhatsApp(message as WhatsAppMessage, requireString(data, 'bookingId'));
 });
 
 // ---- scheduled (one run per tick across all API processes) ----

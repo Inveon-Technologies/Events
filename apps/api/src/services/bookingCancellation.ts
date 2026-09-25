@@ -7,6 +7,7 @@ import { sendEmail, isEmailConfigured } from './email';
 import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '../emails/templates';
 import { logger } from '../logger';
 import { enqueueNotification } from '../queue';
+import { enqueueWhatsApp } from './whatsapp/messages';
 
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
@@ -115,6 +116,7 @@ async function performCancellation(params: {
     { bookingId: booking.id, isEventCancellation: params.isEventCancellation },
     { jobId: `booking-cancelled-${booking.id}` },
   );
+  await enqueueWhatsApp('bookingCancelled', booking.id);
 
   return { bookingId: booking.id, refundAmountPaise, refundStatus };
 }

@@ -18,6 +18,7 @@ import {
   ValidationError as ReviewValidationError,
 } from '../services/eventReviews';
 import { enqueueNotification } from '../queue';
+import { enqueueWhatsApp } from '../services/whatsapp/messages';
 import {
   customerCancelBooking,
   ValidationError as CancellationValidationError,
@@ -209,6 +210,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
       { bookingId: result.bookingId },
       { jobId: `booking-confirmation-${result.bookingId}` },
     );
+    void enqueueWhatsApp('bookingConfirmation', result.bookingId);
 
     res.status(201).json({ bookingId: result.bookingId, bookingReference: result.bookingReference });
   } catch (err) {
