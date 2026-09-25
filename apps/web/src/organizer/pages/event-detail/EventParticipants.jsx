@@ -109,6 +109,7 @@ function EventParticipantsContent({ event }) {
         <NavLink to={`/organizer/events/${event.id}/participants`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Attendee Roster ({tickets.length})</NavLink>
         <NavLink to={`/organizer/events/${event.id}/payments`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Financials</NavLink>
         <NavLink to={`/organizer/events/${event.id}/tickets`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Ticket Tiers</NavLink>
+        <NavLink to={`/organizer/events/${event.id}/certificate`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Certificate</NavLink>
       </div>
 
       {data && (

@@ -4,7 +4,21 @@
 // The server runs the same checks (apps/api/src/services/customerAuth.ts);
 // these only exist so the customer sees the problem before submitting.
 
+import { useEffect, useState } from 'react';
+
 const SESSION_KEY = 'inveon_customer_session';
+// Fired on this tab when the session is saved or cleared, so the header
+// switches between "Login" and "My Bookings" straight away (the browser's
+// own storage event only reaches other tabs).
+const SESSION_EVENT = 'inveon-customer-session';
+
+function announce(): void {
+  try {
+    window.dispatchEvent(new Event(SESSION_EVENT));
+  } catch {
+    // No window (tests/SSR) — nothing is listening.
+  }
+}
 
 export interface CustomerSession {
   token: string;
@@ -27,6 +41,7 @@ export function saveCustomerSession(session: CustomerSession): void {
   } catch {
     // Private mode / blocked storage — the login still works for this page.
   }
+  announce();
 }
 
 export function clearCustomerSession(): void {
@@ -35,6 +50,23 @@ export function clearCustomerSession(): void {
   } catch {
     // Nothing to clear.
   }
+  announce();
+}
+
+// The current customer session, kept up to date across logins/logouts
+// in this tab and others.
+export function useCustomerSession(): CustomerSession | null {
+  const [session, setSession] = useState<CustomerSession | null>(() => getCustomerSession());
+  useEffect(() => {
+    const update = () => setSession(getCustomerSession());
+    window.addEventListener(SESSION_EVENT, update);
+    window.addEventListener('storage', update);
+    return () => {
+      window.removeEventListener(SESSION_EVENT, update);
+      window.removeEventListener('storage', update);
+    };
+  }, []);
+  return session;
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;

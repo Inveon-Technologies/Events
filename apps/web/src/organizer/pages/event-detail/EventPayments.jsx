@@ -63,6 +63,7 @@ export default function EventPayments() {
         <NavLink to={`/organizer/events/${id}/participants`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Attendee Roster</NavLink>
         <NavLink to={`/organizer/events/${id}/payments`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Financials</NavLink>
         <NavLink to={`/organizer/events/${id}/tickets`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Ticket Tiers</NavLink>
+        <NavLink to={`/organizer/events/${id}/certificate`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Certificate</NavLink>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

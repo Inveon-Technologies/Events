@@ -5,6 +5,8 @@ import { useEvents } from '../../context/EventsContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
 import EventLookupState from '../../components/common/EventLookupState';
+import EventGalleryCard from '../../components/EventGalleryCard';
+import CertificateStatusCard from '../../components/CertificateStatusCard';
 
 function EventBookingsContent({ event }) {
   const { bookings, cancelBooking } = useEvents();
@@ -59,6 +61,13 @@ function EventBookingsContent({ event }) {
         <NavLink to={`/organizer/events/${event.id}/participants`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Attendee Roster</NavLink>
         <NavLink to={`/organizer/events/${event.id}/payments`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Financials</NavLink>
         <NavLink to={`/organizer/events/${event.id}/tickets`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Ticket Tiers</NavLink>
+        <NavLink to={`/organizer/events/${event.id}/certificate`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Certificate</NavLink>
+      </div>
+
+      {/* After the event: share the photos link; certificate status */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <EventGalleryCard eventId={event.id} eventDate={`${event.startDate}T${event.startTime || '00:00'}:00+05:30`} />
+        <CertificateStatusCard eventId={event.id} />
       </div>
 
       {/* Table Container */}

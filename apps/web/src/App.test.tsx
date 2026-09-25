@@ -1068,6 +1068,75 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('ManageBookingPage shows the photos link and certificate downloads after the event', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          bookingReference: 'INV-BKG-2026-88888',
+          bookingStatus: 'confirmed',
+          bookedAt: '2026-01-01T10:00:00.000Z',
+          eventName: 'Finished Event',
+          eventTagline: null,
+          eventDate: '2026-01-10T09:00:00.000Z',
+          gateOpenTime: null,
+          venueAddress: null,
+          venueMapUrl: null,
+          bannerUrl: null,
+          organizerName: 'Photo Org',
+          organizerContactEmail: null,
+          organizerContactPhone: null,
+          packingChecklist: null,
+          cancellationPolicyText: null,
+          primaryContactName: 'Asha',
+          primaryContactEmail: 'asha@example.com',
+          primaryContactWhatsapp: '+919000000001',
+          totalAmountPaise: 0,
+          paymentMethod: null,
+          paymentStatus: null,
+          paymentReference: null,
+          tierBreakdown: [],
+          refundAmountPaise: null,
+          refundStatus: null,
+          allowSelfServiceCancellation: false,
+          refundCutoffDays: null,
+          refundPercentage: null,
+          refundCutoffPassed: true,
+          galleryUrl: 'https://drive.google.com/drive/folders/abc',
+          galleryNote: null,
+          certificatesEnabled: true,
+          certificatesUrl: '/api/certificates/tok',
+          tickets: [
+            {
+              id: 't1',
+              ticketReference: 'INV-BKG-2026-88888-1',
+              attendeeName: 'Asha',
+              tierName: 'General',
+              status: 'checked_in',
+              checkedInAt: '2026-01-10T09:30:00.000Z',
+              certificateAvailable: true,
+              certificateUrl: '/api/t/tok/tickets/t1/certificate.pdf',
+            },
+          ],
+        }),
+      }),
+    );
+
+    renderApp('/bookings/some-id/manage');
+    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-88888');
+    await user.type(screen.getByPlaceholderText(/you@example.com/), 'asha@example.com');
+    await user.click(screen.getByRole('button', { name: /view my booking/i }));
+
+    await waitFor(() => expect(screen.getByText('Finished Event')).toBeInTheDocument());
+    expect(screen.getByRole('link', { name: /view photos & videos/i })).toHaveAttribute('href', 'https://drive.google.com/drive/folders/abc');
+    const downloads = screen.getAllByRole('link', { name: /download certificate/i }).map((a) => a.getAttribute('href'));
+    expect(downloads).toEqual(['/api/certificates/tok', '/api/t/tok/tickets/t1/certificate.pdf']);
+    vi.unstubAllGlobals();
+  });
+
   it('ManageBookingPage shows a real cancel option when the event allows self-service cancellation and is within cutoff, and submits a real cancellation', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockImplementation((url, opts) => {

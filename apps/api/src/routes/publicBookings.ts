@@ -546,11 +546,15 @@ publicBookingsRouter.get('/bookings/my', asyncHandler(async (req, res) => {
     return;
   }
 
+  // Only a bad or expired token is a 401 — a failure loading the
+  // bookings must not look like "logged out" to the customer.
+  let email: string;
   try {
-    const { email } = verifyCustomerSessionToken(authHeader.slice('Bearer '.length));
-    const bookings = await getCustomerBookings(email);
-    res.status(200).json({ bookings });
+    ({ email } = verifyCustomerSessionToken(authHeader.slice('Bearer '.length)));
   } catch {
     res.status(401).json({ error: 'Your session has expired — please log in again' });
+    return;
   }
+  const bookings = await getCustomerBookings(email);
+  res.status(200).json({ bookings });
 }));

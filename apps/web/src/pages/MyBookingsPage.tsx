@@ -43,9 +43,15 @@ export function MyBookingsPage() {
     let cancelled = false;
     fetch('/api/bookings/my', { headers: { Authorization: `Bearer ${session.token}` } })
       .then(async (res) => {
-        if (!res.ok) {
+        if (res.status === 401) {
+          // Session expired — log in again.
           clearCustomerSession();
           if (!cancelled) navigate('/bookings/lookup');
+          return;
+        }
+        if (!res.ok) {
+          // A server hiccup is not a logout: keep the session, offer a retry.
+          if (!cancelled) setError('Could not load your bookings. Please try again.');
           return;
         }
         const data = await res.json();
@@ -70,6 +76,13 @@ export function MyBookingsPage() {
       <Layout>
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-12 text-center">
           <p className="text-sm text-danger-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 px-4 py-2 text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg"
+          >
+            Try again
+          </button>
         </div>
       </Layout>
     );

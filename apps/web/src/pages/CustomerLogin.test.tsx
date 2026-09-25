@@ -1,10 +1,17 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { VerificationLookupPage } from './VerificationLookupPage';
 import { ManageBookingPage } from './ManageBookingPage';
-import { validateBookingReference, validateEmailOrPhone } from '../lib/customerSession';
+import {
+  clearCustomerSession,
+  getCustomerSession,
+  saveCustomerSession,
+  validateBookingReference,
+  validateEmailOrPhone,
+} from '../lib/customerSession';
+import App from '../App';
 
 type Reply = { status: number; body: unknown };
 
@@ -187,5 +194,48 @@ describe('ManageBookingPage', () => {
     await userEvent.type(screen.getByPlaceholderText(/you@example.com/), '9876543210');
     await userEvent.click(screen.getByRole('button', { name: /View My Booking/ }));
     expect(await screen.findByText(/No booking matches this Booking ID/)).toBeInTheDocument();
+  });
+});
+
+describe('signed-in customer navigation', () => {
+  function renderApp(path: string) {
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>,
+    );
+  }
+
+  it('shows My Bookings instead of Login in the header once logged in, and back to Login after logout', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ bookings: [], events: [] }) }));
+    const { unmount } = renderApp('/events');
+    const header = () => within(screen.getByRole('banner'));
+    expect(header().getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/bookings/lookup');
+    act(() => saveCustomerSession({ token: 'tok', email: 'asha@example.com' }));
+    expect(await header().findByRole('link', { name: /My Bookings/ })).toHaveAttribute('href', '/bookings/my');
+    expect(header().queryByRole('link', { name: 'Login' })).not.toBeInTheDocument();
+    act(() => clearCustomerSession());
+    expect(await header().findByRole('link', { name: 'Login' })).toBeInTheDocument();
+    unmount();
+  });
+
+  it('/bookings goes to My Bookings when logged in and to the login page otherwise', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ bookings: [] }) }));
+    const first = renderApp('/bookings');
+    expect(await screen.findByRole('button', { name: /Send Login Code/ })).toBeInTheDocument();
+    first.unmount();
+
+    saveCustomerSession({ token: 'tok', email: 'asha@example.com' });
+    renderApp('/bookings');
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Send Login Code/ })).not.toBeInTheDocument());
+    expect((vi.mocked(fetch).mock.calls as unknown[][]).some(([u]) => String(u) === '/api/bookings/my')).toBe(true);
+  });
+
+  it('keeps the customer logged in when loading bookings fails for a reason other than an expired session', async () => {
+    saveCustomerSession({ token: 'tok', email: 'asha@example.com' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({ error: 'boom' }) }));
+    renderApp('/bookings/my');
+    expect(await screen.findByText(/Could not load your bookings/)).toBeInTheDocument();
+    expect(getCustomerSession()).not.toBeNull();
   });
 });

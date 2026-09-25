@@ -16,6 +16,7 @@ import { OrganizerProfilePage } from './pages/OrganizerProfilePage';
 import { FeedbackPage } from './pages/FeedbackPage';
 import { TicketPage } from './pages/TicketPage';
 import { OrganizerApp } from './organizer/OrganizerApp';
+import { getCustomerSession } from './lib/customerSession';
 
 // A bare /bookings/<reference> link goes to the real booking management
 // page (which verifies reference + email before showing anything). It
@@ -23,6 +24,11 @@ import { OrganizerApp } from './organizer/OrganizerApp';
 function BookingReferenceRedirect() {
   const { bookingId } = useParams();
   return <Navigate to={`/bookings/${bookingId}/manage`} replace />;
+}
+
+// /bookings on its own: a signed-in customer's bookings, else the login.
+function BookingsIndexRedirect() {
+  return <Navigate to={getCustomerSession() ? '/bookings/my' : '/bookings/lookup'} replace />;
 }
 
 export default function App() {
@@ -39,6 +45,7 @@ export default function App() {
       <Route path="/checkout/pending" element={<PaymentVerificationPendingPage />} />
       <Route path="/checkout/failed" element={<PaymentFailedPage />} />
 
+      <Route path="/bookings" element={<BookingsIndexRedirect />} />
       <Route path="/bookings/lookup" element={<VerificationLookupPage />} />
       <Route path="/bookings/my" element={<MyBookingsPage />} />
       <Route path="/bookings/not-found" element={<BookingNotFoundPage />} />

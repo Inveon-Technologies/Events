@@ -97,6 +97,7 @@ function EventTicketsContent({ event }) {
         <NavLink to={`/organizer/events/${event.id}/participants`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Attendee Roster</NavLink>
         <NavLink to={`/organizer/events/${event.id}/payments`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Financials</NavLink>
         <NavLink to={`/organizer/events/${event.id}/tickets`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-brand-600 text-white">Ticket Tiers</NavLink>
+        <NavLink to={`/organizer/events/${event.id}/certificate`} className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Certificate</NavLink>
       </div>
 
       {/* Ticket Tier Cards Grid */}

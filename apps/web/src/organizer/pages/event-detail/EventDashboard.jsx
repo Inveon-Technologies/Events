@@ -204,6 +204,9 @@ function EventDashboardContent({ event }) {
         </NavLink>
       </div>
 
+      {/* Post-event photos & videos link — near the top so it's easy to find once the event is over */}
+      <EventGalleryCard eventId={event.id} eventDate={`${event.startDate}T${event.startTime || '00:00'}:00+05:30`} />
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
@@ -239,9 +242,6 @@ function EventDashboardContent({ event }) {
           onClick={() => navigate(`/organizer/events/${event.id}/bookings`)}
         />
       </div>
-
-      {/* Post-event photos & videos link */}
-      <EventGalleryCard eventId={event.id} eventDate={`${event.startDate}T${event.startTime || '00:00'}:00Z`} />
 
       {/* Two Column Workspace Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
