@@ -1,11 +1,14 @@
-import { sendEmail, isEmailConfigured } from './email';
+import { sendEmail, isEmailConfigured, type EmailAttachment } from './email';
 import { generateTicketQrPng } from './qrCode';
-import { generateInvoicePdf } from './invoice';
-import { bookingConfirmationEmail } from '../emails/templates';
+import { generateInvoicePdf, invoiceNumber } from './invoice';
+import { ticketConfirmationEmail } from '../emails/ticketConfirmation';
+import { SUPPORT_EMAIL } from '../emails/templates';
+import { loadBookingDocumentData, istDateLabel, istTimeLabel, istWeekday, venueParts, type BookingDocumentData } from './bookingDocuments';
+import { emailSafePng, renderEventHeaderPng } from './eventHeaderImage';
+import { loadStoredImage } from './designAssets';
 import type { CreateBookingResult } from './bookingCreation';
 import { Booking, Event, Organizer, Ticket, TicketCategory } from '../models';
 import { logger } from '../logger';
-import { ticketPageUrl } from './ticketLinks';
 
 // Re-derives the same shape createBooking() returns directly, for the
 // one case that doesn't have it in hand already: the Cashfree webhook
@@ -53,69 +56,118 @@ export async function buildBookingEmailPayload(bookingId: string): Promise<Creat
   };
 }
 
-// Builds and sends the confirmation (invoice PDF + one QR per ticket).
-// Throws on a failed send so the job queue can retry it with backoff;
-// request code never calls this directly — it enqueues the
+// Builds and sends the confirmation: the designed email (organizer's
+// banner, event details, one entry ticket + QR per attendee, partners)
+// with the invoice PDF attached. Everything is read back from the stored
+// booking. Throws on a failed send so the job queue can retry it with
+// backoff; request code never calls this directly — it enqueues the
 // "booking-confirmation" job (see queue/jobs.ts), which falls back to
 // running inline, errors logged, when the queue is off.
 export async function deliverBookingConfirmationEmail(result: CreateBookingResult): Promise<void> {
-  const { email } = result;
-
   if (!isEmailConfigured()) {
     logger.warn({ bookingReference: result.bookingReference }, 'Email not configured — booking confirmation skipped');
     return;
   }
+  const d = await loadBookingDocumentData(result.bookingId);
+  if (!d) throw new Error(`Booking ${result.bookingReference} not found for its confirmation email`);
 
-  const qrBuffers = await Promise.all(email.ticketQrTokens.map((token) => generateTicketQrPng(token)));
-
-  const invoicePdf = await generateInvoicePdf({
-    bookingReference: result.bookingReference,
-    eventName: email.eventName,
-    eventDate: email.eventDate,
-    venueAddress: email.venueAddress,
-    organizerName: email.organizerName,
-    customerName: email.customerName,
-    customerEmail: email.customerEmail,
-    lineItems: [{ description: email.tierName, quantity: email.quantity, unitPricePaise: email.unitPricePaise }],
-    totalPaise: email.totalAmountPaise,
-    createdAt: new Date(),
-  });
-
-  const html = bookingConfirmationEmail({
-    customerName: email.customerName,
-    eventName: email.eventName,
-    // Emails are read in India — not in the container's UTC.
-    eventDateLabel: email.eventDate.toLocaleDateString('en-IN', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZone: 'Asia/Kolkata',
-    }),
-    venueAddress: email.venueAddress,
-    organizerName: email.organizerName,
-    bookingReference: result.bookingReference,
-    lineItems: [{ tierName: email.tierName, quantity: email.quantity, unitPricePaise: email.unitPricePaise }],
-    totalPaise: email.totalAmountPaise,
-    ticketCount: email.quantity,
-    ticketPageUrl: process.env.WEB_PUBLIC_URL || process.env.API_PUBLIC_URL ? ticketPageUrl(result.bookingReference) : null,
-  });
+  const { html, attachments } = await buildConfirmationEmail(d);
+  const invoicePdf = await generateInvoicePdf(d);
 
   await sendEmail({
-    to: email.customerEmail,
-    subject: `Booking confirmed: ${email.eventName} (${result.bookingReference})`,
+    to: d.customer.email,
+    subject: `Booking confirmed: ${d.event.name} (${d.bookingReference})`,
     html,
     attachments: [
-      { filename: `Invoice-${result.bookingReference}.pdf`, content: invoicePdf, contentType: 'application/pdf' },
-      ...qrBuffers.map((buf, i) => ({
-        filename: `Ticket-${i + 1}-QR.png`,
-        content: buf,
-        contentType: 'image/png',
-      })),
+      { filename: `Invoice-${invoiceNumber(d.bookingReference)}.pdf`, content: invoicePdf, contentType: 'application/pdf' },
+      ...attachments,
     ],
   });
+}
+
+function formatInr(paise: number): string {
+  return `\u20b9${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// The email HTML plus the inline images it references by cid.
+export async function buildConfirmationEmail(d: BookingDocumentData): Promise<{ html: string; attachments: EmailAttachment[] }> {
+  const attachments: EmailAttachment[] = [];
+  const inline = (cid: string, filename: string, content: Buffer, contentType = 'image/png') => {
+    attachments.push({ filename, content, contentType, cid });
+    return cid;
+  };
+
+  let headerCid: string | null = null;
+  try {
+    const png = await renderEventHeaderPng({
+      backgroundUrl: d.design.backgroundUrl,
+      organizerName: d.organizer.name,
+      organizerLogoUrl: d.organizer.logoUrl,
+      eventName: d.event.name,
+      eventDate: d.event.eventDate,
+      tagline: d.event.tagline,
+    });
+    headerCid = inline('event-header', 'event-banner.png', png);
+  } catch (err) {
+    logger.warn({ err, bookingReference: d.bookingReference }, 'Could not render the email banner — sending without it');
+  }
+
+  const active = d.tickets.filter((t) => t.status !== 'cancelled');
+  const tickets = [];
+  for (const [i, t] of active.entries()) {
+    // eslint-disable-next-line no-await-in-loop
+    const qr = await generateTicketQrPng(t.qrToken);
+    tickets.push({
+      attendeeName: t.attendeeName,
+      tierName: t.tierName,
+      ticketId: t.displayReference,
+      statusText: d.bookingStatus === 'confirmed' ? 'CONFIRMED' : d.bookingStatus.toUpperCase(),
+      qrCid: inline(`ticket-qr-${i + 1}`, `Ticket-${i + 1}-QR.png`, qr),
+    });
+  }
+
+  const partners = [];
+  for (const [i, p] of d.design.partners.entries()) {
+    // eslint-disable-next-line no-await-in-loop
+    const logo = await emailSafePng(await loadStoredImage(p.logoUrl, 4 * 1024 * 1024));
+    partners.push({ name: p.name, role: p.role, logoCid: logo ? inline(`partner-${i + 1}`, `partner-${i + 1}.png`, logo) : null });
+  }
+  const orgLogo = await emailSafePng(await loadStoredImage(d.organizer.logoUrl, 4 * 1024 * 1024), 160, 160);
+
+  const { venue, city } = venueParts(d.event.venueAddress);
+  const free = d.totalPaise === 0;
+  const cashDue = !free && d.payment.method === 'cash' && d.payment.status !== 'paid';
+  const generated = active.length > 1 ? 'your entry tickets have been generated' : 'your entry ticket has been generated';
+  const statusLine = free
+    ? `your free registration is confirmed and ${generated}`
+    : cashDue
+      ? `your booking is confirmed and ${generated} — please pay at the venue`
+      : `your payment has been successfully verified and ${generated}`;
+
+  const html = ticketConfirmationEmail({
+    headerCid,
+    eventName: d.event.name,
+    customerName: d.customer.name,
+    bookingReference: d.bookingReference,
+    statusLine,
+    dateLabel: istDateLabel(d.event.eventDate),
+    weekday: istWeekday(d.event.eventDate),
+    reportingTime: d.event.gateOpenTime ? istTimeLabel(d.event.gateOpenTime) : null,
+    eventTime: istTimeLabel(d.event.eventDate),
+    venue,
+    city,
+    organizerName: d.organizer.name,
+    organizerPhone: d.organizer.contactPhone,
+    organizerLogoCid: orgLogo ? inline('organizer-logo', 'organizer-logo.png', orgLogo) : null,
+    inviteNote: `We look forward to welcoming you${city ? ` in ${city}` : ''}. Please carry your ticket QR on your phone.`,
+    tickets,
+    ticketPageUrl: d.links.ticketPage,
+    ticketPdfUrl: d.links.ticketPdf,
+    partners,
+    amountLine: free ? null : cashDue ? `Amount due at the venue: ${formatInr(d.totalPaise)}` : `Amount paid: ${formatInr(d.totalPaise)} · Invoice attached`,
+    supportEmail: SUPPORT_EMAIL,
+  });
+  return { html, attachments };
 }
 
 // Best-effort variant, never throws — for callers that just want the

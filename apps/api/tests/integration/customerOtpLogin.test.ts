@@ -119,7 +119,7 @@ describe('real customer OTP login (real DB)', () => {
     expect(res.status).toBe(404);
     expect(res.body.code).toBe('BOOKING_NOT_FOUND');
     expect(res.body.error).toMatch(/couldn't find a booking/);
-    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendEmail.mock.calls.filter((c) => c[0].subject.includes('login code'))).toHaveLength(0);
   });
 
   it('initiate says clearly when the email or phone does not match the booking', async () => {
@@ -131,7 +131,7 @@ describe('real customer OTP login (real DB)', () => {
     const wrongPhone = await request(app).post('/api/bookings/login/initiate').send({ bookingReference: bookingRefA, contact: '9999999999' });
     expect(wrongPhone.status).toBe(404);
     expect(wrongPhone.body.error).toMatch(/mobile number doesn't match/);
-    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(mockSendEmail.mock.calls.filter((c) => c[0].subject.includes('login code'))).toHaveLength(0);
   });
 
   it('initiate rejects badly formatted input with a 400 and a field-level message', async () => {

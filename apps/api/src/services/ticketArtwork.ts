@@ -15,11 +15,12 @@ import { ticketDisplayReference } from './ticketLinks';
 
 const FONT_DIR = path.join(__dirname, '../../assets/fonts');
 let fontsRegistered = false;
-function registerFonts(): void {
+export function registerFonts(): void {
   if (fontsRegistered) return;
   GlobalFonts.registerFromPath(path.join(FONT_DIR, 'Inter_400Regular.ttf'), 'Inter');
   GlobalFonts.registerFromPath(path.join(FONT_DIR, 'Inter_600SemiBold.ttf'), 'Inter SemiBold');
   GlobalFonts.registerFromPath(path.join(FONT_DIR, 'Inter_700Bold.ttf'), 'Inter Bold');
+  GlobalFonts.registerFromPath(path.join(FONT_DIR, 'Cinzel_900Black.woff2'), 'Cinzel Black');
   fontsRegistered = true;
 }
 
@@ -119,7 +120,7 @@ function roundRect(ctx: SKRSContext2D, x: number, y: number, w: number, h: numbe
 
 // Shrinks the font until the text fits `maxWidth` in at most `maxLines`
 // lines; returns the lines and the size used.
-function fitText(
+export function fitText(
   ctx: SKRSContext2D,
   text: string,
   font: string,
@@ -149,7 +150,7 @@ function fitText(
   return { lines: [`${clipped}…`], size: min };
 }
 
-function coverImage(ctx: SKRSContext2D, img: Image, x: number, y: number, w: number, h: number): void {
+export function coverImage(ctx: SKRSContext2D, img: Image, x: number, y: number, w: number, h: number): void {
   const scale = Math.max(w / img.width, h / img.height);
   const sw = w / scale;
   const sh = h / scale;

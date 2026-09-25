@@ -7,7 +7,7 @@
 // Real support inbox — same account the app actually sends transactional
 // email from (see SMTP_USER in email.ts), so "reply to this email" and
 // this address are never different destinations.
-const SUPPORT_EMAIL = 'office.inveontech@gmail.com';
+export const SUPPORT_EMAIL = 'office.inveontech@gmail.com';
 
 export function emailShell(bodyHtml: string, preheader = ''): string {
   return `<!DOCTYPE html>
@@ -85,86 +85,6 @@ export function registrationSuccessEmail(params: { recipientName: string; orgNam
     </p>
   `;
   return emailShell(body, `${params.orgName} is ready to go on Inveon Events`);
-}
-
-export interface BookingConfirmationLineItem {
-  tierName: string;
-  quantity: number;
-  unitPricePaise: number;
-}
-
-export function bookingConfirmationEmail(params: {
-  customerName: string;
-  eventName: string;
-  eventDateLabel: string;
-  venueAddress: string | null;
-  organizerName: string;
-  bookingReference: string;
-  lineItems: BookingConfirmationLineItem[];
-  totalPaise: number;
-  ticketCount: number;
-  // Link to the booking's ticket page (QR codes, PDF), when the site URL is known.
-  ticketPageUrl?: string | null;
-}): string {
-  const formatINR = (paise: number) => `\u20b9${(paise / 100).toLocaleString('en-IN')}`;
-  const ticketButton = params.ticketPageUrl
-    ? `<p style="margin:0 0 24px;"><a href="${params.ticketPageUrl}" style="display:inline-block;padding:12px 22px;background-color:#2563eb;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px;">View your ${params.ticketCount > 1 ? 'tickets' : 'ticket'}</a></p>`
-    : '';
-
-  const rows = params.lineItems
-    .map(
-      (li) => `
-      <tr>
-        <td style="padding:10px 0;font-size:13px;color:#334155;border-bottom:1px solid #f1f5f9;">${li.tierName} &times; ${li.quantity}</td>
-        <td style="padding:10px 0;font-size:13px;color:#0f172a;text-align:right;border-bottom:1px solid #f1f5f9;">${formatINR(li.unitPricePaise * li.quantity)}</td>
-      </tr>`,
-    )
-    .join('');
-
-  const body = `
-    <h1 style="margin:0 0 8px;font-size:20px;color:#0f172a;font-weight:700;">You're going! Booking confirmed &#9989;</h1>
-    <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
-      Hi ${params.customerName}, your booking for <strong>${params.eventName}</strong> is confirmed. Your ${params.ticketCount > 1 ? 'tickets are' : 'ticket is'} attached below — bring the QR code${params.ticketCount > 1 ? 's' : ''} for entry.
-    </p>
-    ${ticketButton}
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;margin:0 0 24px;">
-      <tr>
-        <td style="padding:20px 24px;">
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Booking Reference</p>
-          <p style="margin:0 0 16px;font-size:16px;font-weight:700;color:#2563eb;font-family:monospace;">${params.bookingReference}</p>
-
-          <p style="margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">When &amp; Where</p>
-          <p style="margin:0 0 2px;font-size:14px;color:#0f172a;">${params.eventDateLabel}</p>
-          <p style="margin:0 0 16px;font-size:14px;color:#0f172a;">${params.venueAddress ?? 'Venue details to follow'}</p>
-
-          <p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.05em;color:#94a3b8;text-transform:uppercase;">Organized by</p>
-          <p style="margin:0;font-size:14px;color:#0f172a;">${params.organizerName}</p>
-        </td>
-      </tr>
-    </table>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 8px;">
-      ${rows}
-      <tr>
-        <td style="padding:14px 0 0;font-size:14px;font-weight:700;color:#0f172a;">Total Paid</td>
-        <td style="padding:14px 0 0;font-size:16px;font-weight:700;color:#2563eb;text-align:right;">${formatINR(params.totalPaise)}</td>
-      </tr>
-    </table>
-
-    <p style="margin:24px 0 0;font-size:13px;color:#94a3b8;line-height:1.6;">
-      A detailed invoice and your ticket QR code${params.ticketCount > 1 ? 's are' : ' is'} attached to this email. See you there!
-    </p>
-
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#eff6ff;border-radius:12px;margin:20px 0 0;">
-      <tr>
-        <td style="padding:14px 18px;font-size:12px;color:#1e3a8a;line-height:1.6;">
-          Need help or want to change something about your booking? Email <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563eb;font-weight:600;text-decoration:none;">${SUPPORT_EMAIL}</a>.
-        </td>
-      </tr>
-    </table>
-  `;
-  return emailShell(body, `Your booking for ${params.eventName} is confirmed`);
 }
 
 export function bookingCancellationEmail(params: {
@@ -342,7 +262,7 @@ export function eventReminderEmail(params: {
 
 // Dynamic values are HTML-escaped here: event names, notes and URLs are
 // organizer-entered text.
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

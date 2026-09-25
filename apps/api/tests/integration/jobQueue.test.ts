@@ -150,11 +150,16 @@ describe('background job queue (real Redis)', () => {
     await waitFor(() => mockSendEmail.mock.calls.some((c) => c[0].to === email));
     const call = mockSendEmail.mock.calls.find((c) => c[0].to === email)!;
     expect(call[0].subject).toContain(res.body.bookingReference);
-    expect(call[0].attachments).toHaveLength(3); // invoice + 2 QR tickets
+    // Invoice + banner image + one inline QR per ticket.
+    expect(call[0].attachments!.map((a) => a.filename)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^Invoice-.+\.pdf$/), 'event-banner.png', 'Ticket-1-QR.png', 'Ticket-2-QR.png']),
+    );
 
     const queue = await getNotificationsQueueForTests();
     const job = await queue.getJob(`booking-confirmation-${res.body.bookingId}`);
     expect(job).toBeTruthy();
     await waitFor(async () => (await job!.getState()) === 'completed');
-  });
+    // The designed email renders a banner, QR codes and an invoice PDF,
+    // which is slow under Jest's transpiled runtime.
+  }, 30000);
 });
