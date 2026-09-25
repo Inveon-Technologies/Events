@@ -1,4 +1,5 @@
 import { sequelize } from '../db/connection';
+import { platformFeePercent, cashfreeMode } from './platformSettings';
 import { Organizer, Booking, Payment, Event } from '../models';
 import { cashfreeCreateOrder, cashfreeCreateRefund } from './cashfreeClient';
 import { releaseBookingTickets, reserveBookingTickets } from './bookingTickets';
@@ -6,7 +7,6 @@ import { enqueueNotification } from '../queue';
 import { enqueueWhatsApp } from './whatsapp/messages';
 import { logger } from '../logger';
 
-const PLATFORM_FEE_PERCENT = Number(process.env.PLATFORM_FEE_PERCENT) || 5;
 
 // How long a customer has to finish paying once checkout starts. The
 // Cashfree session is set to expire at this point, and the pending-
@@ -29,6 +29,9 @@ export interface CreateOrderForBookingParams {
 
 export interface CreateOrderForBookingResult {
   paymentSessionId: string;
+  // Which Cashfree checkout the browser must open — the session only
+  // works in the environment that created it.
+  mode: 'production' | 'sandbox';
 }
 
 // createBooking() (bookingCreation.ts) already refuses an online booking
@@ -47,7 +50,7 @@ export async function createCashfreeOrderForBooking(params: CreateOrderForBookin
   // order_splits amounts must add up sanely against the whole order
   // amount, and floating-point rupee math left unrounded here could
   // produce a split that's a fraction of a paisa off.
-  const vendorShareRupees = Math.round(totalRupees * (1 - PLATFORM_FEE_PERCENT / 100) * 100) / 100;
+  const vendorShareRupees = Math.round(totalRupees * (1 - platformFeePercent() / 100) * 100) / 100;
 
   const apiPublicUrl = process.env.API_PUBLIC_URL;
   if (!apiPublicUrl) {
@@ -69,7 +72,7 @@ export async function createCashfreeOrderForBooking(params: CreateOrderForBookin
 
   await Payment.update({ gatewayReference: orderResponse.order_id }, { where: { bookingId: params.bookingId } });
 
-  return { paymentSessionId: orderResponse.payment_session_id };
+  return { paymentSessionId: orderResponse.payment_session_id, mode: cashfreeMode() };
 }
 
 export type CashfreeWebhookType = 'PAYMENT_SUCCESS_WEBHOOK' | 'PAYMENT_FAILED_WEBHOOK' | 'PAYMENT_USER_DROPPED_WEBHOOK';

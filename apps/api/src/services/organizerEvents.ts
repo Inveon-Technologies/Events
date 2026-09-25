@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import { platformFeePercent as currentPlatformFeePercent } from './platformSettings';
 import { Organizer, Event, Ticket, Booking, Payment } from '../models';
 import { getEventCoverUrls } from './eventMedia';
 
@@ -87,7 +88,7 @@ export async function getEventFinancials(eventId: string, organizerId: string): 
   // Same source of truth as the real Cashfree split calculation
   // (cashfreeOrders.ts) — this page must never show a fee percentage
   // that differs from what actually gets deducted.
-  const platformFeePercent = Number(process.env.PLATFORM_FEE_PERCENT) || 0;
+  const platformFeePercent = currentPlatformFeePercent();
   const platformFeePaise = Math.round(grossRevenuePaise * (platformFeePercent / 100));
 
   return {

@@ -43,6 +43,37 @@ export function saveSaSession(session: SaSession): void {
 export function clearSaSession(): void {
   try {
     sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem('inveon_sa_step_up');
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+// Step-up: a 10-minute token from re-entering the password + an emailed
+// code, needed for the SQL console, container commands and data reset.
+const STEP_UP_KEY = 'inveon_sa_step_up';
+
+export function getStepUp(): { token: string; expiresAt: number } | null {
+  try {
+    const raw = sessionStorage.getItem(STEP_UP_KEY);
+    const s = raw ? (JSON.parse(raw) as { token: string; expiresAt: number }) : null;
+    return s && s.token && s.expiresAt > Date.now() ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveStepUp(token: string, minutes: number): void {
+  try {
+    sessionStorage.setItem(STEP_UP_KEY, JSON.stringify({ token, expiresAt: Date.now() + minutes * 60_000 - 5_000 }));
+  } catch {
+    // Storage blocked — the admin will be asked again.
+  }
+}
+
+export function clearStepUp(): void {
+  try {
+    sessionStorage.removeItem(STEP_UP_KEY);
   } catch {
     // Nothing to clear.
   }
@@ -65,6 +96,8 @@ export async function saRequest<T>(
   const headers: Record<string, string> = {};
   const session = getSaSession();
   if (options.auth !== false && session) headers.Authorization = `Bearer ${session.token}`;
+  const stepUp = options.auth !== false ? getStepUp() : null;
+  if (stepUp) headers['X-Admin-Step-Up'] = stepUp.token;
   let body: BodyInit | undefined;
   if (options.form) body = options.form;
   else if (options.body !== undefined) {

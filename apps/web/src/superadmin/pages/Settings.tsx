@@ -298,6 +298,7 @@ const GROUP_TITLES: Record<string, string> = {
 const FIELD_HINTS: Record<string, string> = {
   SMTP_PASS: 'A Gmail app password (16 letters), not the account password.',
   CASHFREE_ENV: 'production or sandbox',
+  PLATFORM_FEE_PERCENT: "Inveon's cut of each online payment, 0–50 (e.g. 5)",
   WHATSAPP_PROVIDER: 'aisensy or meta',
   SMTP_FROM_NAME: 'Sender name shown in the inbox',
 };

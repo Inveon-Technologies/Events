@@ -27,7 +27,12 @@ import { integrationValue, loadPlatformSettings, resetSettingsCacheForTests } fr
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');
-  return { ...actual, sendEmail: jest.fn().mockResolvedValue(undefined), isEmailConfigured: jest.fn().mockReturnValue(true) };
+  return {
+    ...actual,
+    sendEmail: jest.fn().mockResolvedValue(undefined),
+    isEmailConfigured: jest.fn().mockReturnValue(true),
+    verifyEmailLogin: jest.fn().mockResolvedValue(null),
+  };
 });
 jest.mock('../../src/services/bookingEmails', () => {
   const actual = jest.requireActual('../../src/services/bookingEmails');
@@ -318,6 +323,83 @@ describe('super admin portal (real DB)', () => {
     expect(requestFile).toMatchObject({ action: 'truncate_container_logs', target: 'events_api', requestedBy: adminEmail });
   });
 
+  it('asks for the password and an emailed code again before the SQL console', async () => {
+    const auth = { Authorization: `Bearer ${token}` };
+    const blocked = await request(app).post(`${base}/db/query`).set(auth).send({ sql: 'SELECT 1' });
+    expect(blocked.status).toBe(403);
+
+    expect((await request(app).post(`${base}/auth/step-up/start`).set(auth).send({ password: 'wrong' })).status).toBe(400);
+    mockSendEmail.mockClear();
+    expect((await request(app).post(`${base}/auth/step-up/start`).set(auth).send({ password: PASSWORD })).status).toBe(200);
+    const code = mockSendEmail.mock.calls[0][0].html.match(/>(\d{6})</)![1];
+    const verified = await request(app).post(`${base}/auth/step-up/verify`).set(auth).send({ code });
+    expect(verified.status).toBe(200);
+    const stepUp = { ...auth, 'X-Admin-Step-Up': verified.body.stepUpToken };
+    // A step-up token is not a session token.
+    expect((await request(app).get(`${base}/auth/me`).set('Authorization', `Bearer ${verified.body.stepUpToken}`)).status).toBe(401);
+
+    const read = await request(app).post(`${base}/db/query`).set(stepUp).send({ sql: 'SELECT email FROM platform_admins ORDER BY email' });
+    expect(read.status).toBe(200);
+    expect(read.body.fields).toEqual(['email']);
+    expect(read.body.rows).toEqual(expect.arrayContaining([{ email: adminEmail }]));
+
+    // Read mode can't change anything, and one statement can't smuggle a COMMIT.
+    const write = await request(app).post(`${base}/db/query`).set(stepUp).send({ sql: `UPDATE platform_admins SET name = 'X'` });
+    expect(write.status).toBe(400);
+    expect(write.body.error).toMatch(/read-only/);
+    const smuggle = await request(app)
+      .post(`${base}/db/query`)
+      .set(stepUp)
+      .send({ sql: `SELECT 1; COMMIT; UPDATE platform_admins SET name = 'X'` });
+    expect(smuggle.status).toBe(400);
+    expect((await PlatformAdmin.findOne({ where: { email: adminEmail } }))!.name).toBe('Ops Lead');
+
+    const committed = await request(app)
+      .post(`${base}/db/query`)
+      .set(stepUp)
+      .send({ sql: `UPDATE platform_admins SET name = 'Ops Lead 2' WHERE email = '${adminEmail}'`, mode: 'write' });
+    expect(committed.status).toBe(200);
+    expect(committed.body.rowCount).toBe(1);
+    expect((await PlatformAdmin.findOne({ where: { email: adminEmail } }))!.name).toBe('Ops Lead 2');
+
+    const tables = await request(app).get(`${base}/db/tables`).set(auth);
+    expect(tables.body.tables.map((t: { name: string }) => t.name)).toContain('bookings');
+
+    // Danger zone: wrong phrase is refused before anything is deleted.
+    const reset = await request(app).post(`${base}/danger/reset-data`).set(stepUp).send({ confirm: 'yes' });
+    expect(reset.status).toBe(400);
+    expect(await Organizer.count({ where: { id: organizerId } })).toBe(1);
+
+    // Container commands go to the server helper as a request.
+    const exec = await request(app).post(`${base}/server/exec`).set(stepUp).send({ container: 'events_api', command: 'ls /app' });
+    expect(exec.status).toBe(202);
+    const req = JSON.parse(fs.readFileSync(path.join(opsDir, 'requests', `${exec.body.id}.json`), 'utf8'));
+    expect(req).toMatchObject({ action: 'exec', target: 'events_api', command: 'ls /app' });
+    expect((await request(app).post(`${base}/server/exec`).set(auth).send({ container: 'events_api', command: 'ls' })).status).toBe(403);
+  });
+
+  it('serves chart samples from the server helper', async () => {
+    const now = Date.now();
+    const lines = [
+      { t: new Date(now - 30 * 3600_000).toISOString(), cpu: 1, load1: 0.1, memUsedBytes: 1, memTotalBytes: 2, diskPercent: 10, c: {} },
+      { t: new Date(now - 60_000).toISOString(), cpu: 12.5, load1: 0.4, memUsedBytes: 5, memTotalBytes: 8, diskPercent: 40, c: { events_api: [3.1, 1000] } },
+    ];
+    fs.writeFileSync(path.join(opsDir, 'metrics.jsonl'), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n{broken`);
+    const res = await request(app).get(`${base}/server/metrics?hours=6`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.samples).toHaveLength(1);
+    expect(res.body.samples[0].c.events_api).toEqual([3.1, 1000]);
+  });
+
+  it('runs a live configuration check', async () => {
+    const res = await request(app).get(`${base}/config-check`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    const ids = res.body.items.map((i: { id: string }) => i.id);
+    expect(ids).toEqual(expect.arrayContaining(['db', 'redis']));
+    expect(res.body.items.find((i: { id: string }) => i.id === 'db').status).toBe('ok');
+    expect(res.body.summary.ok + res.body.summary.warn + res.body.summary.fail).toBe(res.body.items.length);
+  }, 30_000);
+
   it('records every admin action in the audit log', async () => {
     const res = await request(app).get(`${base}/audit`).set('Authorization', `Bearer ${token}`);
     const actions = res.body.logs.map((l: { action: string }) => l.action);
@@ -328,6 +410,10 @@ describe('super admin portal (real DB)', () => {
         'customer.blocked',
         'backup.created',
         'server.truncate_container_logs',
+        'step_up.granted',
+        'db.read',
+        'db.write',
+        'server.exec',
       ]),
     );
   });

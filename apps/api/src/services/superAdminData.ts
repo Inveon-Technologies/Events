@@ -2,6 +2,7 @@ import { QueryTypes, Op, WhereOptions } from 'sequelize';
 import { sequelize } from '../db/connection';
 import { Organizer, User, Event, BlockedCustomer, NotificationLog, AdminAuditLog } from '../models';
 import { clearBlockCache } from './accountBlocks';
+import { platformFeePercent } from './platformSettings';
 
 // Read side of the super admin portal: platform-wide numbers and lists
 // across every organizer. Aggregates are plain SQL so a dashboard load is
@@ -31,7 +32,6 @@ async function many<T extends object>(sql: string, replacements: Record<string, 
   return sequelize.query<T>(sql, { type: QueryTypes.SELECT, replacements });
 }
 
-const platformFeePercent = () => Number(process.env.PLATFORM_FEE_PERCENT) || 0;
 
 // ---------- dashboard ----------
 

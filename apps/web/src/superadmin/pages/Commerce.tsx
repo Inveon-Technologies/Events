@@ -1,4 +1,5 @@
-import { PageHeader, Table, Badge, Pager, SearchBar, Select, Loading, Notice, Stat, ConfirmAction } from '../ui';
+import { useState } from 'react';
+import { PageHeader, Table, Badge, Pager, SearchBar, Select, Loading, Notice, Stat, ConfirmAction, Card, Button } from '../ui';
 import { useSa, useSaAction, useListQuery, rupees, num, when } from '../lib';
 
 interface EventRow {
@@ -200,8 +201,57 @@ interface PaymentRow {
   organizer_name: string;
 }
 
+interface CashfreeLookup {
+  reference: string;
+  mode: string;
+  order: { order_status: string; order_expiry_time: string; cf_order_id: string; order_amount?: number };
+  payments: { cf_payment_id: string | number; payment_status: string; payment_group?: string; payment_message?: string; payment_time?: string }[];
+}
+
+// What Cashfree itself says about one booking's order — for "I paid but
+// got no ticket" support cases.
+function CashfreeLookupCard({ lookup, onClose }: { lookup: CashfreeLookup; onClose: () => void }) {
+  return (
+    <Card
+      title={`Cashfree: ${lookup.reference} (${lookup.mode})`}
+      className="mb-4"
+      actions={
+        <Button small tone="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <div className="text-sm space-y-2">
+        <p>
+          Order status: <Badge value={lookup.order.order_status} /> · expires {when(lookup.order.order_expiry_time)}
+          {lookup.order.order_amount !== undefined && <> · ₹{lookup.order.order_amount}</>}
+        </p>
+        {lookup.payments.length ? (
+          <ul className="space-y-1">
+            {lookup.payments.map((p) => (
+              <li key={String(p.cf_payment_id)} className="text-xs">
+                <Badge value={p.payment_status} /> <span className="font-mono">{String(p.cf_payment_id)}</span> {p.payment_group ?? ''}{' '}
+                {p.payment_time ? when(p.payment_time) : ''} <span className="text-slate-500">{p.payment_message ?? ''}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-slate-500">No payment attempts on this order — the customer never reached the payment step.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function PaymentsPage() {
   const list = useListQuery({ status: '', method: '' });
+  const cf = useSaAction();
+  const [lookup, setLookup] = useState<CashfreeLookup | null>(null);
+  async function askCashfree(reference: string) {
+    setLookup(null);
+    const r = await cf.run<Omit<CashfreeLookup, 'reference'>>(`/payments/${encodeURIComponent(reference)}/cashfree`, { method: 'GET' });
+    if (r) setLookup({ ...r, reference });
+  }
   const { data, error, loading } = useSa<{
     payments: PaymentRow[];
     summary: Record<string, number>;
@@ -245,6 +295,8 @@ export function PaymentsPage() {
         />
       </SearchBar>
       <Loading error={error} loading={loading && !data} />
+      <Notice message={cf.message} />
+      {lookup && <CashfreeLookupCard lookup={lookup} onClose={() => setLookup(null)} />}
       {data && (
         <>
           <Table
@@ -267,7 +319,18 @@ export function PaymentsPage() {
                   {p.refund_amount_paise ? <p className="text-[11px] text-violet-600">Refund {rupees(p.refund_amount_paise)}</p> : null}
                 </td>
                 <td className="px-3 py-2 text-xs">{p.method}</td>
-                <td className="px-3 py-2 font-mono text-[11px]">{p.gateway_reference ?? '—'}</td>
+                <td className="px-3 py-2 font-mono text-[11px]">
+                  {p.gateway_reference ?? '—'}
+                  {p.method === 'online' && (
+                    <button
+                      className="block mt-1 font-sans text-brand-600 font-semibold hover:underline disabled:opacity-50"
+                      disabled={cf.busy}
+                      onClick={() => askCashfree(p.gateway_reference || p.booking_reference)}
+                    >
+                      Check with Cashfree
+                    </button>
+                  )}
+                </td>
                 <td className="px-3 py-2">
                   <Badge value={p.status} />
                 </td>

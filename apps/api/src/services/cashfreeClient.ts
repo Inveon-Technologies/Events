@@ -1,4 +1,4 @@
-import { integrationValue } from './platformSettings';
+import { integrationValue, cashfreeMode } from './platformSettings';
 // Cashfree's actual documented API contract (verified live against
 // cashfree.com/docs before writing this, given this handles real money
 // and training data can be stale): base URLs, auth headers, and the
@@ -11,7 +11,7 @@ function baseUrl(): string {
   // Sandbox is the default specifically so a missing/misconfigured env
   // var fails toward "nothing happens in a real account" rather than
   // toward "silently starts hitting production."
-  return integrationValue('CASHFREE_ENV') === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
+  return cashfreeMode() === 'production' ? 'https://api.cashfree.com/pg' : 'https://sandbox.cashfree.com/pg';
 }
 
 function authHeaders(): Record<string, string> {

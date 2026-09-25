@@ -67,28 +67,56 @@ export interface UploadedEventMedia {
   url: string;
 }
 
+export interface UploadProgress {
+  loaded: number;
+  total: number;
+}
+
+// fetch() can't report upload progress, so file uploads that show a
+// progress bar go through XMLHttpRequest instead.
+export function uploadWithProgress<T>(
+  path: string,
+  formData: FormData,
+  token: string | null,
+  onProgress?: (p: UploadProgress) => void,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}/api${path}`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress?.({ loaded: e.loaded, total: e.total });
+    };
+    xhr.onload = () => {
+      let data: unknown = {};
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        data = {};
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data as T);
+        return;
+      }
+      notifyIfSessionExpired(xhr.status, token);
+      const fallback = xhr.status === 413 ? 'This file is too large for the server' : 'Upload failed';
+      reject(new ApiError(xhr.status, (data as { error?: string }).error ?? fallback, data));
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'Network error — check your connection and try again'));
+    xhr.ontimeout = () => reject(new ApiError(0, 'The upload timed out — try again'));
+    xhr.send(formData);
+  });
+}
+
 export async function uploadEventMediaFile(
   eventId: string,
   file: File,
   token: string | null,
+  onProgress?: (p: UploadProgress) => void,
 ): Promise<UploadedEventMedia> {
   const formData = new FormData();
   formData.append('file', file);
-
-  const res = await fetch(`${API_BASE_URL}/api/organizer/events/${eventId}/media`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-    body: formData,
-  });
-
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    notifyIfSessionExpired(res.status, token);
-    throw new ApiError(res.status, (data as { error?: string }).error ?? 'Upload failed', data);
-  }
-
-  return data as UploadedEventMedia;
+  return uploadWithProgress<UploadedEventMedia>(`/organizer/events/${eventId}/media`, formData, token, onProgress);
 }
 
 // Ticket-design image (title background or partner logo). Uploaded

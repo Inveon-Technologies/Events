@@ -211,7 +211,7 @@ export function CheckoutPage() {
     setBookingError(null);
 
     try {
-      const result = await apiRequest<{ bookingId: string; bookingReference: string; paymentSessionId?: string }>(
+      const result = await apiRequest<{ bookingId: string; bookingReference: string; paymentSessionId?: string; cashfreeMode?: 'sandbox' | 'production' }>(
         `/events/${event!.id}/bookings`,
         {
           method: 'POST',
@@ -238,7 +238,10 @@ export function CheckoutPage() {
         // rather than assuming success. Nothing past this point in this
         // function runs in the normal case.
         const cashfree = await loadCashfree({
-          mode: (import.meta.env.VITE_CASHFREE_MODE as 'sandbox' | 'production') || 'sandbox',
+          // The server says which Cashfree environment created the session
+          // (Settings → Integrations in the super admin portal); a session
+          // opened in the other one fails with Cashfree's "Something went wrong".
+          mode: result.cashfreeMode || (import.meta.env.VITE_CASHFREE_MODE as 'sandbox' | 'production') || 'sandbox',
         });
         const checkoutResult = await cashfree?.checkout({
           paymentSessionId: result.paymentSessionId,

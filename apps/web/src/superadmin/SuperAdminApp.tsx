@@ -20,6 +20,10 @@ import {
   ScrollText,
   LogOut,
   Menu,
+  ClipboardCheck,
+  LineChart,
+  TerminalSquare,
+  TriangleAlert,
 } from 'lucide-react';
 import { saRequest, SaError, getSaSession, saveSaSession, clearSaSession, setUnauthorizedHandler, type SaSession } from './api';
 import { Button, Notice } from './ui';
@@ -31,6 +35,7 @@ import { MessagesPage, QueuePage } from './pages/Messages';
 import { SystemPage, ServerPage, BackupsPage } from './pages/Technical';
 import { BrandingPage, InvoicePage, CertificateFooterPage, IntegrationsPage } from './pages/Settings';
 import { AdminsPage, AuditPage } from './pages/Security';
+import { ConfigCheckPage, MonitoringPage, ConsolePage, DangerPage } from './pages/Ops';
 
 // Inveon's super admin portal. Reached only at /x/<SUPERADMIN_PATH>; any
 // other value gets the site's ordinary "page not found", because the
@@ -176,9 +181,13 @@ const NAV: { section: string; items: [string, string, typeof LayoutDashboard][] 
   {
     section: 'Technical',
     items: [
+      ['config-check', 'Config check', ClipboardCheck],
       ['system', 'System health', Activity],
+      ['monitoring', 'Monitoring charts', LineChart],
       ['server', 'Server, Docker & logs', Server],
+      ['console', 'Console (DB & containers)', TerminalSquare],
       ['backups', 'Backups', DatabaseBackup],
+      ['danger', 'Danger zone', TriangleAlert],
     ],
   },
   {
@@ -263,6 +272,10 @@ function Shell({ session, onSignOut }: { session: SaSession; onSignOut: () => vo
             <Route path="system" element={<SystemPage />} />
             <Route path="server" element={<ServerPage />} />
             <Route path="backups" element={<BackupsPage />} />
+            <Route path="config-check" element={<ConfigCheckPage />} />
+            <Route path="monitoring" element={<MonitoringPage />} />
+            <Route path="console" element={<ConsolePage />} />
+            <Route path="danger" element={<DangerPage />} />
             <Route path="branding" element={<BrandingPage />} />
             <Route path="invoice" element={<InvoicePage />} />
             <Route path="certificate" element={<CertificateFooterPage />} />

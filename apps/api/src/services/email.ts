@@ -98,3 +98,14 @@ export async function sendEmail(params: SendEmailParams): Promise<void> {
 export function isEmailConfigured(): boolean {
   return Boolean(smtpUser() && smtpPass());
 }
+
+// For the super admin config check: null when the SMTP login works,
+// otherwise the error message.
+export async function verifyEmailLogin(): Promise<string | null> {
+  try {
+    await getTransporter().verify();
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}

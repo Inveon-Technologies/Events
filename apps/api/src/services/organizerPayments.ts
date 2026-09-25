@@ -1,4 +1,5 @@
 import { Organizer, Event, Booking, Payment } from '../models';
+import { platformFeePercent as currentPlatformFeePercent } from './platformSettings';
 
 export interface OrganizerTransactionRow {
   id: string;
@@ -52,7 +53,7 @@ export async function getOrganizerPayments(organizerId: string): Promise<Organiz
     ? await Payment.findAll({ where: { bookingId: bookingIds }, order: [['createdAt', 'DESC']] })
     : [];
 
-  const platformFeePercent = Number(process.env.PLATFORM_FEE_PERCENT) || 0;
+  const platformFeePercent = currentPlatformFeePercent();
 
   let totalRevenuePaise = 0;
   let refundedAmountPaise = 0;

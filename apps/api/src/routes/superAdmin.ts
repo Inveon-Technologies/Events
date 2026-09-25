@@ -18,6 +18,9 @@ import {
   adminPasswordProblems,
   generateStrongPassword,
   ADMIN_SESSION_HOURS,
+  startStepUp,
+  finishStepUp,
+  verifyStepUp,
 } from '../services/adminAuth';
 import {
   AdminNotFoundError,
@@ -50,7 +53,19 @@ import {
   requestHostAction,
   systemBackupPath,
   OpsError,
+  hostMetrics,
+  hostActionResult,
+  requestContainerExec,
 } from '../services/adminSystem';
+import {
+  runSql,
+  listTables,
+  clearAppLogs,
+  resetAllData,
+  ConsoleError,
+  RESET_CONFIRM_PHRASE,
+  RESET_KEEP_TABLES,
+} from '../services/adminConsole';
 import {
   getBranding,
   getInvoiceSettings,
@@ -66,6 +81,9 @@ import { storePlatformImage, PlatformImageError } from '../services/platformAsse
 import { queueOverview, retryFailedJob, retryAllFailed, cleanQueue, QUEUE_NAMES } from '../queue';
 import { sendEmail } from '../services/email';
 import { emailShell } from '../emails/templates';
+import { runConfigCheck } from '../services/configCheck';
+import { cashfreeGetOrder, cashfreeGetOrderPayments, CashfreeApiError, CashfreeNotConfiguredError } from '../services/cashfreeClient';
+import { cashfreeMode } from '../services/platformSettings';
 
 // The super admin portal's API, for Inveon staff only. Mounted at
 // /api/sa/:pathKey — the secret path segment (SUPERADMIN_PATH) must
@@ -132,7 +150,13 @@ function handleError(res: Response, err: unknown): boolean {
     res.status(404).json({ error: err.message });
     return true;
   }
-  if (err instanceof AdminValidationError || err instanceof BackupError || err instanceof OpsError || err instanceof PlatformImageError) {
+  if (
+    err instanceof AdminValidationError ||
+    err instanceof BackupError ||
+    err instanceof OpsError ||
+    err instanceof PlatformImageError ||
+    err instanceof ConsoleError
+  ) {
     res.status(400).json({ error: err.message });
     return true;
   }
@@ -236,6 +260,29 @@ superAdminRouter.post('/auth/password-check', (req, res) => {
   const { password } = req.body as { password?: unknown };
   res.json({ problems: adminPasswordProblems(typeof password === 'string' ? password : ''), suggestion: generateStrongPassword() });
 });
+
+// ---- step-up: password + emailed code again, for dangerous tools ----
+superAdminRouter.post(
+  '/auth/step-up/start',
+  loginLimit,
+  handle(async (req, res) => {
+    const { password } = req.body as { password?: unknown };
+    if (typeof password !== 'string' || !password) throw new AdminValidationError('Enter your password');
+    res.json(await startStepUp(admin(req), password, req.ip));
+  }),
+);
+
+superAdminRouter.post(
+  '/auth/step-up/verify',
+  loginLimit,
+  handle(async (req, res) => {
+    const { code } = req.body as { code?: unknown };
+    if (typeof code !== 'string' || !/^\d{6}$/.test(code.trim())) throw new AdminValidationError('Enter the 6-digit code from your email');
+    res.json(await finishStepUp(admin(req), code, req.ip));
+  }),
+);
+
+const requireStepUp = (req: Request) => verifyStepUp(admin(req), req.get('x-admin-step-up'));
 
 // ---- admins ----
 superAdminRouter.get(
@@ -400,6 +447,25 @@ superAdminRouter.get(
   }),
 );
 
+// What Cashfree itself says about a booking's order (the order id is the
+// booking reference) — for "the customer says they paid" support cases.
+superAdminRouter.get(
+  '/payments/:reference/cashfree',
+  handle(async (req, res) => {
+    const reference = req.params.reference;
+    if (!/^[A-Za-z0-9_-]{1,50}$/.test(reference)) throw new AdminValidationError('Invalid booking reference');
+    try {
+      const [order, payments] = await Promise.all([cashfreeGetOrder(reference), cashfreeGetOrderPayments(reference)]);
+      res.json({ mode: cashfreeMode(), order, payments });
+    } catch (err) {
+      if (err instanceof CashfreeNotConfiguredError) throw new AdminValidationError('Cashfree keys are not set');
+      if (err instanceof CashfreeApiError && err.status === 404) throw new AdminNotFoundError('Cashfree has no order with this reference');
+      if (err instanceof CashfreeApiError) throw new AdminValidationError(`Cashfree answered ${err.status}: ${err.message}`);
+      throw err;
+    }
+  }),
+);
+
 superAdminRouter.get(
   '/notifications',
   handle(async (req, res) => {
@@ -476,6 +542,13 @@ superAdminRouter.get(
 );
 
 superAdminRouter.get(
+  '/config-check',
+  handle(async (_req, res) => {
+    res.json(await runConfigCheck());
+  }),
+);
+
+superAdminRouter.get(
   '/server',
   handle(async (_req, res) => {
     res.json(await hostStatus());
@@ -508,6 +581,93 @@ superAdminRouter.get(
     if (!fs.existsSync(file)) throw new AdminNotFoundError('Backup not found');
     await log(req, 'server.backup_downloaded', req.params.name);
     res.download(file, req.params.name);
+  }),
+);
+
+superAdminRouter.get(
+  '/server/metrics',
+  handle(async (req, res) => {
+    res.json(await hostMetrics(Number(req.query.hours) || 6));
+  }),
+);
+
+superAdminRouter.get(
+  '/server/actions/:id',
+  handle(async (req, res) => {
+    res.json({ result: await hostActionResult(req.params.id) });
+  }),
+);
+
+superAdminRouter.post(
+  '/server/exec',
+  handle(async (req, res) => {
+    requireStepUp(req);
+    const { container, command } = req.body as { container?: unknown; command?: unknown };
+    if (typeof container !== 'string' || typeof command !== 'string') throw new AdminValidationError('Choose a container and enter a command');
+    const result = await requestContainerExec(container, command, admin(req).email);
+    await log(req, 'server.exec', container, { command: command.slice(0, 2000), requestId: result.id });
+    res.status(202).json(result);
+  }),
+);
+
+// ---- database console & danger zone (step-up required) ----
+superAdminRouter.get(
+  '/db/tables',
+  handle(async (_req, res) => {
+    res.json({ tables: await listTables() });
+  }),
+);
+
+superAdminRouter.post(
+  '/db/query',
+  handle(async (req, res) => {
+    requireStepUp(req);
+    const { sql, mode } = req.body as { sql?: unknown; mode?: unknown };
+    if (typeof sql !== 'string') throw new AdminValidationError('Enter a SQL statement');
+    const m = mode === 'write' ? 'write' : 'read';
+    try {
+      const result = await runSql(sql, m);
+      await log(req, m === 'write' ? 'db.write' : 'db.read', null, { sql: sql.slice(0, 4000), rowCount: result.rowCount });
+      res.json(result);
+    } catch (err) {
+      await log(req, m === 'write' ? 'db.write_failed' : 'db.read_failed', null, { sql: sql.slice(0, 4000) });
+      throw err;
+    }
+  }),
+);
+
+superAdminRouter.post(
+  '/danger/clear-logs',
+  handle(async (req, res) => {
+    requireStepUp(req);
+    const result = await clearAppLogs();
+    // Container logs too, via the server helper when it is installed.
+    const container = await requestHostAction('truncate_container_logs', 'all', admin(req).email).catch(() => null);
+    await log(req, 'danger.logs_cleared', null, { ...result, containerLogsRequest: container?.id ?? null });
+    res.json({ ...result, containerLogs: container ? 'requested' : 'server helper not installed' });
+  }),
+);
+
+superAdminRouter.get('/danger/reset-info', (_req, res) => {
+  res.json({ confirmPhrase: RESET_CONFIRM_PHRASE, keepTables: RESET_KEEP_TABLES });
+});
+
+let resetRunning = false;
+superAdminRouter.post(
+  '/danger/reset-data',
+  handle(async (req, res) => {
+    requireStepUp(req);
+    const { confirm } = req.body as { confirm?: unknown };
+    if (confirm !== RESET_CONFIRM_PHRASE) throw new AdminValidationError(`Type ${RESET_CONFIRM_PHRASE} to confirm`);
+    if (resetRunning || backupRunning) throw new AdminValidationError('A backup or reset is already running');
+    resetRunning = true;
+    try {
+      const result = await resetAllData(admin(req).email);
+      await log(req, 'danger.data_reset', null, result);
+      res.json(result);
+    } finally {
+      resetRunning = false;
+    }
   }),
 );
 
@@ -614,6 +774,13 @@ superAdminRouter.put(
   '/settings/integrations',
   handle(async (req, res) => {
     const values = (req.body ?? {}) as Record<string, unknown>;
+    // Catch typos that would otherwise silently fall back to a default.
+    const env = values.CASHFREE_ENV === undefined ? '' : String(values.CASHFREE_ENV).trim();
+    if (env && env !== 'production' && env !== 'sandbox') throw new AdminValidationError('CASHFREE_ENV must be production or sandbox');
+    const fee = values.PLATFORM_FEE_PERCENT === undefined ? '' : String(values.PLATFORM_FEE_PERCENT).trim();
+    if (fee && !(/^\d+(\.\d{1,2})?$/.test(fee) && Number(fee) <= 50)) {
+      throw new AdminValidationError('PLATFORM_FEE_PERCENT must be a number from 0 to 50');
+    }
     const changed = await saveIntegrations(
       Object.fromEntries(Object.entries(values).map(([k, v]) => [k, String(v ?? '')])),
       admin(req).email,

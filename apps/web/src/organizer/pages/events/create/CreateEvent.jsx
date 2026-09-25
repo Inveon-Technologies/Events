@@ -27,6 +27,7 @@ import TicketDesignEditor from '../../../components/TicketDesignEditor';
 import TicketPreview from '../../../components/TicketPreview';
 import { istParts } from '../../../lib/istTime';
 import { ApiError, apiRequest, uploadEventMediaFile, deleteEventMediaFile } from '../../../lib/api';
+import UploadProgressOverlay from '../../../components/UploadProgressOverlay';
 
 const MAX_IMAGES = 5;
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -208,6 +209,9 @@ export default function CreateEvent() {
   const [mediaVideo, setMediaVideo] = useState(null);
   const [mediaError, setMediaError] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  // Drives the full-screen progress overlay while saving + uploading.
+  const [progress, setProgress] = useState(null);
+  const hasStagedMedia = () => mediaImages.some((m) => m.file) || Boolean(mediaVideo?.file);
 
   async function handleImageFilesSelected(e) {
     const files = Array.from(e.target.files || []);
@@ -290,18 +294,35 @@ export default function CreateEvent() {
     if (allFiles.length === 0) return;
 
     setUploadingMedia(true);
+    const files = allFiles.map((f) => ({ name: f.name, size: f.size }));
+    const startedAt = Date.now();
+    setProgress({ phase: 'uploading', files, index: 0, loaded: 0, startedAt });
     let failures = 0;
-    for (const file of allFiles) {
+    let lastError = '';
+    for (const [index, file] of allFiles.entries()) {
+      setProgress({ phase: 'uploading', files, index, loaded: 0, startedAt });
       try {
         // eslint-disable-next-line no-await-in-loop
-        await uploadEventMediaFile(eventId, file, user?.token);
-      } catch {
+        await uploadEventMediaFile(eventId, file, user?.token, ({ loaded }) =>
+          setProgress({ phase: 'uploading', files, index, loaded: Math.min(loaded, file.size), startedAt }),
+        );
+      } catch (err) {
         failures += 1;
+        lastError = err instanceof ApiError ? err.message : '';
       }
     }
+    setProgress({ phase: 'done', files, index: files.length, loaded: 0, startedAt });
+    await new Promise((resolve) => setTimeout(resolve, 700));
     setUploadingMedia(false);
+    // Uploaded files are now real media on the event, so a second save
+    // must not upload them again.
+    setMediaImages((prev) => prev.filter((m) => !m.file));
+    setMediaVideo((prev) => (prev?.file ? null : prev));
     if (failures > 0) {
-      showToast(`Event saved, but ${failures} of ${allFiles.length} media file(s) failed to upload.`, 'error');
+      showToast(
+        `Event saved, but ${failures} of ${allFiles.length} media file(s) failed to upload${lastError ? ` (${lastError})` : ''}.`,
+        'error',
+      );
     }
   }
 
@@ -338,17 +359,25 @@ export default function CreateEvent() {
     if (currentStep < 5) {
       navigate(steps[currentStep].path);
     } else if (isEditMode) {
+      if (hasStagedMedia()) setProgress({ phase: 'saving' });
       const result = await updateEventFull(eventId, { ...formData, status: 'published' });
       if (result) {
+        await uploadStagedMedia(eventId);
+        setProgress(null);
         showToast('Event updated successfully!', 'success');
         navigate(`/organizer/events/${eventId}/dashboard`);
+      } else {
+        setProgress(null);
       }
     } else {
       try {
+        if (hasStagedMedia()) setProgress({ phase: 'saving' });
         const created = await addEvent({ ...formData, status: 'published' });
         await uploadStagedMedia(created.id);
+        setProgress(null);
         navigate(`/organizer/events/${created.id}/dashboard`);
       } catch (err) {
+        setProgress(null);
         showToast(err instanceof ApiError ? err.message : 'Failed to publish event. Please try again.', 'error');
       }
     }
@@ -356,19 +385,27 @@ export default function CreateEvent() {
 
   const handleSaveDraft = async () => {
     if (isEditMode) {
+      if (hasStagedMedia()) setProgress({ phase: 'saving' });
       const result = await updateEventFull(eventId, formData);
       if (result) {
+        await uploadStagedMedia(eventId);
+        setProgress(null);
         showToast('Changes saved', 'info');
         navigate(`/organizer/events/${eventId}/dashboard`);
+      } else {
+        setProgress(null);
       }
       return;
     }
     try {
+      if (hasStagedMedia()) setProgress({ phase: 'saving' });
       const created = await addEvent({ ...formData, status: 'draft' });
       await uploadStagedMedia(created.id);
+      setProgress(null);
       showToast('Saved as draft in My Events', 'info');
       navigate('/organizer/events?tab=draft');
     } catch (err) {
+      setProgress(null);
       showToast(err instanceof ApiError ? err.message : 'Failed to save draft. Please try again.', 'error');
     }
   };
@@ -464,6 +501,7 @@ export default function CreateEvent() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-12">
+      <UploadProgressOverlay progress={progress} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

@@ -90,19 +90,43 @@ describe('CreateEvent: event media picker', () => {
     expect(screen.queryByAltText('')).not.toBeInTheDocument();
   });
 
-  it('uploads every staged image to the real endpoint after the event is created', async () => {
+  it('uploads every staged image to the real endpoint after the event is created, with progress', async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn().mockImplementation((url, opts) => {
       const urlStr = String(url);
       if (urlStr.includes('/organizer/events') && opts?.method === 'POST' && !urlStr.includes('/media')) {
         return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 'evt-new-1', slug: 'new-test-event-2026' }) });
       }
-      if (urlStr.includes('/media')) {
-        return Promise.resolve({ ok: true, status: 201, json: async () => ({ id: 'media-1', mediaType: 'photo', url: '/api/uploads/events/evt-new-1/x.jpg' }) });
-      }
       return Promise.resolve({ ok: true, status: 200, json: async () => ({ organizerName: 'Eco Pandhari Club', counts: {}, events: [] }) });
     });
     vi.stubGlobal('fetch', fetchMock);
+
+    // Uploads use XMLHttpRequest (fetch can't report upload progress).
+    const uploads = [];
+    class FakeXhr {
+      constructor() {
+        this.headers = {};
+        this.upload = {};
+      }
+      open(method, url) {
+        this.method = method;
+        this.url = url;
+      }
+      setRequestHeader(k, v) {
+        this.headers[k] = v;
+      }
+      send(body) {
+        this.body = body;
+        uploads.push(this);
+        setTimeout(() => {
+          this.upload.onprogress?.({ lengthComputable: true, loaded: 500, total: 1000 });
+          this.status = 201;
+          this.responseText = JSON.stringify({ id: 'media-1', mediaType: 'photo', url: '/api/uploads/events/evt-new-1/x.jpg' });
+          this.onload?.();
+        }, 10);
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
 
     renderAt('/organizer/create-event/basic');
 
@@ -113,14 +137,16 @@ describe('CreateEvent: event media picker', () => {
     await user.type(screen.getByPlaceholderText(/Rajgad Sunrise Trek/i), 'New Test Event');
     await user.click(screen.getByText('Save as Draft'));
 
+    // The progress overlay appears while the files upload.
+    await waitFor(() => expect(screen.getByText(/Uploading photos & video|All done!/)).toBeInTheDocument());
+
     // Both staged files should each trigger a real multipart upload call
     // against the newly created event's real id.
     await waitFor(() => {
-      const mediaCalls = fetchMock.mock.calls.filter(([u]) => String(u).includes('/organizer/events/evt-new-1/media'));
-      expect(mediaCalls).toHaveLength(2);
+      expect(uploads.filter((x) => x.url.includes('/organizer/events/evt-new-1/media'))).toHaveLength(2);
     });
-    const [, firstCallOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/media'));
-    expect(firstCallOpts.body).toBeInstanceOf(FormData);
-    expect(firstCallOpts.headers.Authorization).toBe('Bearer fake-token');
+    expect(uploads[0].method).toBe('POST');
+    expect(uploads[0].body).toBeInstanceOf(FormData);
+    expect(uploads[0].headers.Authorization).toBe('Bearer fake-token');
   });
 });

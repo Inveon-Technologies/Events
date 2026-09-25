@@ -1,6 +1,6 @@
 {
   "name": "@inveon-events/api",
-  "version": "0.1.0",
+  "version": "2.0.1",
   "private": true,
   "description": "Inveon Events backend API (Express + TypeScript)",
   "main": "dist/index.js",
