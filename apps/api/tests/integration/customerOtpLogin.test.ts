@@ -12,6 +12,13 @@ jest.mock('../../src/services/email', () => {
   return { ...actual, sendEmail: jest.fn().mockResolvedValue(undefined), isEmailConfigured: jest.fn().mockReturnValue(true) };
 });
 
+// Setup bookings trigger the designed confirmation email (banner, QR
+// codes, invoice PDF) in the background; not what this suite checks.
+jest.mock('../../src/services/bookingEmails', () => {
+  const actual = jest.requireActual('../../src/services/bookingEmails');
+  return { ...actual, deliverBookingConfirmationEmail: jest.fn().mockResolvedValue(undefined) };
+});
+
 const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
 const mockIsEmailConfigured = isEmailConfigured as jest.MockedFunction<typeof isEmailConfigured>;
 

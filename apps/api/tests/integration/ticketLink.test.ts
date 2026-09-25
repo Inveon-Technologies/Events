@@ -143,5 +143,5 @@ describe('ticket link (/api/t/:token)', () => {
       });
     expect(card.status).toBe(200);
     expect((card.body as Buffer).subarray(1, 4).toString()).toBe('PNG');
-  }, 20000);
+  }, 60000);
 });

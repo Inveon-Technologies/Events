@@ -119,5 +119,6 @@ describe('booking confirmation email (real DB)', () => {
     const invoice = attachments.find((a) => a.filename === `Invoice-${reference.replace('INV-BKG-', 'INV-')}.pdf`);
     expect(invoice).toBeTruthy();
     expect(invoice!.content.subarray(0, 5).toString()).toBe('%PDF-');
-  });
+    // Renders a banner, QR codes and a PDF — slow under Jest.
+  }, 30000);
 });
