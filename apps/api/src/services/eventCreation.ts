@@ -77,6 +77,7 @@ export interface CreateEventParams {
   locationPoints?: CreateEventLocationPoint[];
   ticketBackgroundUrl?: string | null;
   partners?: CreateEventPartner[] | null;
+  certificateEnabled?: boolean;
   status: 'draft' | 'published';
   genderRestriction?: 'male' | 'female' | null;
 }
@@ -283,6 +284,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         locationPoints: sanitizeLocationPoints(params.locationPoints),
         ticketBackgroundUrl: sanitizeTicketBackgroundUrl(params.ticketBackgroundUrl),
         partners: sanitizePartners(params.partners),
+        certificateEnabled: params.certificateEnabled ?? false,
         status: params.status,
         capacity: totalCapacity,
         genderRestriction: params.genderRestriction || null,
@@ -356,6 +358,8 @@ export async function duplicateEvent(eventId: string, organizerId: string): Prom
         locationPoints: source.locationPoints ?? null,
         ticketBackgroundUrl: source.ticketBackgroundUrl ?? null,
         partners: source.partners ?? null,
+        certificateEnabled: source.certificateEnabled,
+        certificateDesign: source.certificateDesign ?? null,
         status: 'draft',
         capacity: source.capacity,
         genderRestriction: source.genderRestriction,

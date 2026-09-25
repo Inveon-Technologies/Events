@@ -48,6 +48,7 @@ export interface OrganizerEventDetail {
   locationPoints: EventLocationPoint[] | null;
   ticketBackgroundUrl: string | null;
   partners: EventPartner[];
+  certificateEnabled: boolean;
   cancellationPolicy: string | null;
   allowSelfServiceCancellation: boolean;
   refundCutoffDays: number | null;
@@ -94,6 +95,7 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     locationPoints: event.locationPoints ?? null,
     ticketBackgroundUrl: event.ticketBackgroundUrl ?? null,
     partners: event.partners ?? [],
+    certificateEnabled: event.certificateEnabled,
     cancellationPolicy: event.cancellationPolicy,
     allowSelfServiceCancellation: event.allowSelfServiceCancellation,
     refundCutoffDays: event.refundCutoffDays,
@@ -139,6 +141,7 @@ export interface UpdateEventParams {
   locationPoints?: CreateEventLocationPoint[];
   ticketBackgroundUrl?: string | null;
   partners?: CreateEventPartner[] | null;
+  certificateEnabled?: boolean;
   cancellationPolicy?: string;
   allowSelfServiceCancellation?: boolean;
   refundCutoffDays?: number;
@@ -314,6 +317,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         ticketBackgroundUrl:
           params.ticketBackgroundUrl !== undefined ? sanitizeTicketBackgroundUrl(params.ticketBackgroundUrl) : event.ticketBackgroundUrl,
         partners: params.partners !== undefined ? sanitizePartners(params.partners) : event.partners,
+        certificateEnabled: params.certificateEnabled ?? event.certificateEnabled,
         cancellationPolicy: params.cancellationPolicy !== undefined ? params.cancellationPolicy.trim() || null : event.cancellationPolicy,
         allowSelfServiceCancellation: nextAllowSelfService,
         refundCutoffDays: nextAllowSelfService ? nextRefundCutoffDays : null,

@@ -14,6 +14,9 @@ export interface CustomerTicketRow {
   // As printed on the ticket: INV-TKT-2026-XXXXXX-01.
   displayReference: string;
   attendeeName: string;
+  // A participation certificate can be downloaded for this ticket
+  // (event issues them and the attendee checked in).
+  certificateAvailable: boolean;
   tierName: string;
   status: 'valid' | 'checked_in' | 'cancelled';
   checkedInAt: string | null;
@@ -180,6 +183,7 @@ export async function buildBookingDetail(booking: Booking): Promise<CustomerBook
       id: ticket.id,
       ticketReference: `${booking.bookingReference}-${i + 1}`,
       displayReference: ticketDisplayReference(booking.bookingReference, i),
+      certificateAvailable: event.certificateEnabled && booking.status === 'confirmed' && ticket.status === 'checked_in',
       attendeeName: ticket.attendeeName,
       tierName: tierById.get(ticket.ticketCategoryId)?.name ?? 'General',
       status: ticket.status,

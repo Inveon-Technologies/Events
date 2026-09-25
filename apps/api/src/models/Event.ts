@@ -1,5 +1,6 @@
 import { CreationOptional, DataTypes, InferAttributes, InferCreationAttributes, Model } from 'sequelize';
 import { sequelize } from '../db/connection';
+import type { CertificateDesign } from '../services/certificateDesign';
 
 export type EventStatus = 'draft' | 'published' | 'closed' | 'cancelled';
 export type EventGenderRestriction = 'male' | 'female';
@@ -57,6 +58,8 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare bannerUrl: string | null;
   declare ticketBackgroundUrl: CreationOptional<string | null>;
   declare partners: CreationOptional<EventPartner[] | null>;
+  declare certificateEnabled: CreationOptional<boolean>;
+  declare certificateDesign: CreationOptional<CertificateDesign | null>;
   declare termsAndConditions: string | null;
   declare cancellationPolicy: string | null;
   declare allowSelfServiceCancellation: CreationOptional<boolean>;
@@ -96,6 +99,8 @@ Event.init(
     bannerUrl: { type: DataTypes.STRING, allowNull: true },
     ticketBackgroundUrl: { type: DataTypes.STRING(2048), allowNull: true },
     partners: { type: DataTypes.JSONB, allowNull: true },
+    certificateEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    certificateDesign: { type: DataTypes.JSONB, allowNull: true },
     termsAndConditions: { type: DataTypes.TEXT, allowNull: true },
     cancellationPolicy: { type: DataTypes.TEXT, allowNull: true },
     allowSelfServiceCancellation: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

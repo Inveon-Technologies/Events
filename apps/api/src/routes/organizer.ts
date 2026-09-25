@@ -1,9 +1,21 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
+import { Event } from '../models';
 import multer from 'multer';
 import os from 'os';
 import { authenticate } from '../middleware/authenticate';
 import { requireRole } from '../middleware/requireRole';
 import { storeDesignImage, DesignAssetValidationError } from '../services/designAssets';
+import {
+  CERTIFICATE_FONTS,
+  CERTIFICATE_TOKENS,
+  CertificateDesignError,
+  defaultCertificateDesign,
+  FOOTER_TOP_PERCENT,
+  MAX_CERTIFICATE_FIELDS,
+  sanitizeCertificateDesign,
+  type CertificateDesign,
+} from '../services/certificateDesign';
+import { eventCertificateDesign, renderCertificatePreviewPng } from '../services/certificates';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { getOrganizerDashboard } from '../services/organizerDashboard';
 import { getOrganizerBookings, DisplayBookingStatus } from '../services/organizerBookings';
@@ -341,6 +353,7 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       locationPoints,
       ticketBackgroundUrl: typeof body.ticketBackgroundUrl === 'string' ? body.ticketBackgroundUrl : undefined,
       partners: parsePartners(body.partners),
+      certificateEnabled: typeof body.certificateEnabled === 'boolean' ? body.certificateEnabled : undefined,
       status,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -415,6 +428,7 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       ticketBackgroundUrl:
         typeof body.ticketBackgroundUrl === 'string' || body.ticketBackgroundUrl === null ? (body.ticketBackgroundUrl as string | null) : undefined,
       partners: body.partners !== undefined ? parsePartners(body.partners) : undefined,
+      certificateEnabled: typeof body.certificateEnabled === 'boolean' ? body.certificateEnabled : undefined,
       status: body.status === 'draft' || body.status === 'published' || body.status === 'closed' ? body.status : undefined,
       genderRestriction: parseGenderRestriction(body),
     });
@@ -1104,6 +1118,80 @@ organizerRouter.put('/events/:eventId/gallery', asyncHandler(async (req, res) =>
     }
     if (err instanceof GalleryForbiddenError) {
       res.status(403).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+// Participation certificates (per event): on/off and the organizer's
+// drag-and-drop layout. The editor loads this, saves with PUT, and asks
+// for a server-rendered preview (same renderer the attendees' PDFs use).
+async function ownedEvent(req: Request, res: Response): Promise<Event | null> {
+  const organizerId = req.user?.organizerId;
+  if (!organizerId) {
+    res.status(400).json({ error: 'This account has no associated organizer' });
+    return null;
+  }
+  const event = await Event.findByPk(req.params.eventId);
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' });
+    return null;
+  }
+  if (event.organizerId !== organizerId) {
+    res.status(403).json({ error: 'This event does not belong to your organization' });
+    return null;
+  }
+  return event;
+}
+
+organizerRouter.get('/events/:eventId/certificate', asyncHandler(async (req, res) => {
+  const event = await ownedEvent(req, res);
+  if (!event) return;
+  res.status(200).json({
+    enabled: event.certificateEnabled,
+    design: eventCertificateDesign(event),
+    isDefault: !event.certificateDesign,
+    defaultDesign: defaultCertificateDesign(),
+    fonts: CERTIFICATE_FONTS,
+    tokens: CERTIFICATE_TOKENS,
+    footerTopPercent: FOOTER_TOP_PERCENT,
+    maxFields: MAX_CERTIFICATE_FIELDS,
+  });
+}));
+
+organizerRouter.put('/events/:eventId/certificate', asyncHandler(async (req, res) => {
+  const event = await ownedEvent(req, res);
+  if (!event) return;
+  const body = req.body as Record<string, unknown>;
+  try {
+    const update: { certificateEnabled?: boolean; certificateDesign?: CertificateDesign | null } = {};
+    if (typeof body.enabled === 'boolean') update.certificateEnabled = body.enabled;
+    if (body.design === null) update.certificateDesign = null;
+    else if (body.design !== undefined) update.certificateDesign = sanitizeCertificateDesign(body.design);
+    await event.update(update);
+    res.status(200).json({ enabled: event.certificateEnabled, design: eventCertificateDesign(event), isDefault: !event.certificateDesign });
+  } catch (err) {
+    if (err instanceof CertificateDesignError) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+}));
+
+organizerRouter.post('/events/:eventId/certificate/preview', asyncHandler(async (req, res) => {
+  const event = await ownedEvent(req, res);
+  if (!event) return;
+  const body = req.body as Record<string, unknown>;
+  try {
+    const design = body.design ? sanitizeCertificateDesign(body.design) : eventCertificateDesign(event);
+    const participant = typeof body.participant === 'string' && body.participant.trim() ? body.participant.trim().slice(0, 80) : undefined;
+    const png = await renderCertificatePreviewPng(event, design, participant);
+    res.status(200).type('image/png').set('Cache-Control', 'no-store').send(png);
+  } catch (err) {
+    if (err instanceof CertificateDesignError) {
+      res.status(400).json({ error: err.message });
       return;
     }
     throw err;
