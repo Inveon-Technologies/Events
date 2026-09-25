@@ -1,3 +1,4 @@
+/* eslint-disable no-console -- this is a CLI script; printing status is the point */
 import { sequelize } from '../db/connection';
 import { Booking, Event } from '../models';
 import { buildWhatsAppMessage } from '../services/whatsapp/messages';
