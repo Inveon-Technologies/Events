@@ -2,6 +2,7 @@ import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Organizer, Booking, EventMedia } from '../models';
 import type { CreateEventTicketTier, CreateEventScheduleItem, CreateEventPackingItem, CreateEventFaqItem, CreateEventLocationPoint } from './eventCreation';
 import type { EventLocationPoint } from '../models/Event';
+import { istParts, parseIstDateTime } from './istTime';
 import { ValidationError, sanitizeScheduleItems, sanitizePackingChecklist, sanitizeFaqItems, sanitizeLocationPoints } from './eventCreation';
 
 export class NotFoundError extends Error {}
@@ -136,9 +137,8 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
 
     let eventDate = event.eventDate;
     if (params.startDate !== undefined || params.startTime !== undefined) {
-      const datePart = params.startDate ?? event.eventDate.toISOString().slice(0, 10);
-      const timePart = params.startTime ?? event.eventDate.toISOString().slice(11, 16);
-      const parsed = new Date(`${datePart}T${timePart}:00`);
+      const current = istParts(event.eventDate);
+      const parsed = parseIstDateTime(params.startDate ?? current.date, params.startTime ?? current.time);
       if (Number.isNaN(parsed.getTime())) throw new ValidationError('Invalid start date/time');
       eventDate = parsed;
     }

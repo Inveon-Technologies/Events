@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useNotifications } from './NotificationContext';
 import { useAuth } from './AuthContext';
+import { istParts } from '../lib/istTime';
 import { apiRequest, ApiError } from '../lib/api';
 
 const EventsContext = createContext();
@@ -25,8 +26,8 @@ function apiEventToMockShape(e) {
     status: e.displayStatus,
     shortDescription: '',
     description: '',
-    startDate: d.toISOString().slice(0, 10),
-    startTime: d.toISOString().slice(11, 16),
+    startDate: istParts(d).date,
+    startTime: istParts(d).time,
     endDate: '',
     endTime: '',
     timezone: 'IST (UTC+5:30)',
@@ -57,7 +58,7 @@ function apiBookingToMockShape(b) {
     // human-readable reference) — real mutation endpoints (cancel,
     // etc.) need the actual primary key, not the reference string.
     bookingId: b.id,
-    bookingDate: `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}`,
+    bookingDate: `${istParts(d).date} ${istParts(d).time}`,
     eventId: b.eventId,
     eventName: b.eventName,
     customerName: b.customerName,

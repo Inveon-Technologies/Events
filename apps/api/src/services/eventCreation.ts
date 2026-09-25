@@ -1,5 +1,6 @@
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Organizer } from '../models';
+import { parseIstDateTime } from './istTime';
 import type { EventLocationPoint, EventLocationPointType } from '../models/Event';
 
 function slugify(input: string): string {
@@ -193,7 +194,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
     }
   }
 
-  const eventDate = new Date(`${params.startDate}T${params.startTime}:00`);
+  const eventDate = parseIstDateTime(params.startDate, params.startTime);
   if (Number.isNaN(eventDate.getTime())) {
     throw new ValidationError('Invalid start date/time');
   }

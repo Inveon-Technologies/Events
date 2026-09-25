@@ -23,6 +23,7 @@ import { useEvents } from '../../../context/EventsContext';
 import { useNotifications } from '../../../context/NotificationContext';
 import { useAuth } from '../../../context/AuthContext';
 import LocationPicker from '../../../components/LocationPicker';
+import { istParts } from '../../../lib/istTime';
 import { ApiError, apiRequest, uploadEventMediaFile, deleteEventMediaFile } from '../../../lib/api';
 
 const MAX_IMAGES = 5;
@@ -133,8 +134,8 @@ export default function CreateEvent() {
           title: data.title,
           shortDescription: data.shortDescription || '',
           description: data.description || '',
-          startDate: data.eventDate.slice(0, 10),
-          startTime: data.eventDate.slice(11, 16),
+          startDate: istParts(data.eventDate).date,
+          startTime: istParts(data.eventDate).time,
           venueName: data.venueAddress || '',
           bannerImage: data.bannerImage || '',
           genderRestriction: data.genderRestriction || '',
