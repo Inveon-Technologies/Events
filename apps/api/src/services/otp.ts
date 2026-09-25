@@ -1,5 +1,6 @@
 import { randomInt } from 'crypto';
 import { redis } from '../db/redis';
+import { logNotification } from './notificationLog';
 
 // 10 minutes: Gmail can take a minute or two to deliver, and a code
 // that has already expired by the time it lands is the most common
@@ -15,7 +16,7 @@ export const OTP_RESEND_COOLDOWN_SECONDS = 30;
 export const MAX_OTP_ATTEMPTS = 5;
 export const OTP_EXPIRY_MINUTES = OTP_TTL_SECONDS / 60;
 
-export type OtpPurpose = 'signup' | 'reset' | 'customer_login';
+export type OtpPurpose = 'signup' | 'reset' | 'customer_login' | 'admin_login';
 
 function generateCode(): string {
   return String(randomInt(0, 1_000_000)).padStart(6, '0');
@@ -45,6 +46,8 @@ export async function issueOtp(purpose: OtpPurpose, email: string): Promise<stri
   // A fresh code gets a fresh attempt budget.
   await redis.del(attemptsKeyFor(purpose, email));
   await redis.set(cooldownKeyFor(purpose, email), '1', { EX: OTP_RESEND_COOLDOWN_SECONDS });
+  // Status only — the code itself is never recorded.
+  logNotification({ channel: 'otp', kind: purpose, recipient: email, status: 'issued' });
   return code;
 }
 
@@ -68,19 +71,25 @@ export async function checkOtp(purpose: OtpPurpose, email: string, code: string)
   const key = keyFor(purpose, email);
   const attemptsKey = attemptsKeyFor(purpose, email);
   const stored = await redis.get(key);
-  if (!stored) return { ok: false, reason: 'expired' };
+  if (!stored) {
+    logNotification({ channel: 'otp', kind: purpose, recipient: email, status: 'expired' });
+    return { ok: false, reason: 'expired' };
+  }
 
   if (stored !== code) {
     const attempts = await redis.incr(attemptsKey);
     if (attempts === 1) await redis.expire(attemptsKey, OTP_TTL_SECONDS);
     if (attempts >= MAX_OTP_ATTEMPTS) {
       await redis.del([key, attemptsKey]);
+      logNotification({ channel: 'otp', kind: purpose, recipient: email, status: 'locked' });
       return { ok: false, reason: 'locked' };
     }
+    logNotification({ channel: 'otp', kind: purpose, recipient: email, status: 'wrong' });
     return { ok: false, reason: 'wrong', attemptsLeft: MAX_OTP_ATTEMPTS - attempts };
   }
 
   await redis.del([key, attemptsKey]);
+  logNotification({ channel: 'otp', kind: purpose, recipient: email, status: 'verified' });
   return { ok: true };
 }
 

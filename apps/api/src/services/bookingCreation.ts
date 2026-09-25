@@ -2,6 +2,7 @@ import { QueryTypes } from 'sequelize';
 import { sequelize } from '../db/connection';
 import { Event, TicketCategory, Booking, Ticket, Payment, Organizer } from '../models';
 import { randomUUID, randomInt } from 'crypto';
+import { isCustomerBlocked } from './accountBlocks';
 
 export interface CreateBookingParams {
   eventId: string;
@@ -131,6 +132,13 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     // hold here too, not just in the UI.
     if (event.status !== 'published') {
       throw new BookingValidationError('This event is not open for booking');
+    }
+    // Suspended by Inveon (super admin portal): the organizer's events
+    // and the customer's email can't take new bookings.
+    const eventOrganizer = await Organizer.findByPk(event.organizerId, { attributes: ['blockedAt'], transaction: t });
+    if (eventOrganizer?.blockedAt) throw new BookingValidationError('This event is not open for booking');
+    if (await isCustomerBlocked(params.primaryContactEmail)) {
+      throw new BookingValidationError('Bookings from this email address are not allowed. Please contact support.');
     }
     if (event.eventDate.getTime() <= Date.now()) {
       throw new BookingValidationError('This event has already started — booking is closed');

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getCertificateFooter } from './platformSettings';
 import { createCanvas, GlobalFonts, loadImage, Path2D, type Image, type SKRSContext2D } from '@napi-rs/canvas';
 import PDFDocument from 'pdfkit';
 import { FONT_DIR } from './canvasKit';
@@ -49,6 +50,9 @@ export interface CertificateAssets {
   organizerLogo: Image | null;
   images: Map<string, Image>; // field id → uploaded image
   partners: { name: string; role: string | null; logo: Image | null }[];
+  // Replaces the drawn Inveon mark in the footer (Settings → Certificate
+  // footer in the super admin portal).
+  footerLogo?: Image | null;
 }
 
 async function image(url: string | null | undefined): Promise<Image | null> {
@@ -81,6 +85,7 @@ export async function loadCertificateAssets(
     organizerLogo: await image(organizerLogoUrl),
     images,
     partners: await Promise.all(partners.map(async (p) => ({ name: p.name, role: p.role, logo: await image(p.logoUrl) }))),
+    footerLogo: await image(getCertificateFooter().logoUrl),
   };
 }
 
@@ -211,7 +216,11 @@ function drawImageField(ctx: SKRSContext2D, f: CertificateField, assets: Certifi
 const INVEON_MARK_BLUE = new Path2D('M4 4L16 28L28 4H20L16 16L12 4H4Z');
 const INVEON_MARK_ORANGE = new Path2D('M20 4L16 16L12 4H7L16 22L25 4H20Z');
 
-function inveonLogo(ctx: SKRSContext2D, x: number, y: number, size: number, word: string): number {
+function inveonLogo(ctx: SKRSContext2D, x: number, y: number, size: number, name: string, word: string, logo: Image | null | undefined): number {
+  if (logo) {
+    contain(ctx, logo, x, y - size * 0.1, size * 4.2, size * 1.2);
+    return size * 4.2;
+  }
   ctx.save();
   ctx.translate(x, y);
   ctx.scale(size / 32, size / 32);
@@ -226,7 +235,7 @@ function inveonLogo(ctx: SKRSContext2D, x: number, y: number, size: number, word
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   (ctx as unknown as { letterSpacing: string }).letterSpacing = `${size * 0.04}px`;
-  ctx.fillText('INVEON', x + size * 1.1, y + size * 0.62);
+  ctx.fillText(name, x + size * 1.1, y + size * 0.62);
   ctx.fillStyle = '#0050cb';
   ctx.font = `bold ${size * 0.22}px "Montserrat"`;
   (ctx as unknown as { letterSpacing: string }).letterSpacing = `${size * 0.09}px`;
@@ -240,6 +249,7 @@ function inveonLogo(ctx: SKRSContext2D, x: number, y: number, size: number, word
 // or placeholder tiles in the organizer's preview when there are none)
 // and the Inveon technology / booking partners.
 function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: number, H: number, preview: boolean): void {
+  const footer = getCertificateFooter();
   const top = (FOOTER_TOP_PERCENT / 100) * H + H * 0.004;
   const left = W * 0.075;
   const width = W - left * 2;
@@ -273,7 +283,7 @@ function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: numbe
 
   let techTop = top + H * 0.035;
   if (partners.length > 0) {
-    label('SUPPORTED BY', W / 2, top + H * 0.022, W * 0.0082);
+    label(footer.supportedByLabel, W / 2, top + H * 0.022, W * 0.0082);
     const rowTop = top + H * 0.029;
     const rowH = H * 0.062;
     const cellW = Math.min(width / partners.length, W * 0.16);
@@ -308,12 +318,12 @@ function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: numbe
   const colW = W * 0.22;
   const labelsY = techTop + H * 0.014;
   const logoY = labelsY + H * 0.006;
-  label('TECHNOLOGY PARTNER', W / 2 - colW / 2, labelsY, W * 0.0068, '#334155');
-  label('EVENT BOOKING PARTNER', W / 2 + colW / 2, labelsY, W * 0.0068, '#334155');
+  label(footer.technologyPartnerLabel, W / 2 - colW / 2, labelsY, W * 0.0068, '#334155');
+  label(footer.bookingPartnerLabel, W / 2 + colW / 2, labelsY, W * 0.0068, '#334155');
   ctx.fillStyle = '#cbd5e1';
   ctx.fillRect(W / 2, labelsY - H * 0.01, 1.5, H * 0.05);
-  inveonLogo(ctx, W / 2 - colW / 2 - size * 1.9, logoY, size, 'TECHNOLOGIES');
-  inveonLogo(ctx, W / 2 + colW / 2 - size * 1.9, logoY, size, 'EVENTS');
+  inveonLogo(ctx, W / 2 - colW / 2 - size * 1.9, logoY, size, footer.technologyPartnerName, footer.technologyPartnerTagline, assets.footerLogo);
+  inveonLogo(ctx, W / 2 + colW / 2 - size * 1.9, logoY, size, footer.bookingPartnerName, footer.bookingPartnerTagline, assets.footerLogo);
 }
 
 export function renderCertificateCanvas(

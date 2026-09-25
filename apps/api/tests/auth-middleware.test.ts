@@ -2,6 +2,11 @@ import { Request, Response } from 'express';
 import { authenticate } from '../src/middleware/authenticate';
 import { requireRole } from '../src/middleware/requireRole';
 import { signAccessToken } from '../src/auth/jwt';
+import { organizerAccountBlock } from '../src/services/accountBlocks';
+
+jest.mock('../src/services/accountBlocks', () => ({ organizerAccountBlock: jest.fn().mockResolvedValue(null) }));
+const mockBlock = organizerAccountBlock as jest.MockedFunction<typeof organizerAccountBlock>;
+const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 function mockRes() {
   const res = {} as Response;
@@ -26,16 +31,31 @@ describe('authenticate middleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('attaches req.user and calls next() for a valid token', () => {
+  it('attaches req.user and calls next() for a valid token', async () => {
     const token = signAccessToken({ sub: 'user-1', role: 'organizer_owner', organizerId: 'org-1' });
     const req = { headers: { authorization: `Bearer ${token}` } } as Request;
     const res = mockRes();
     const next = jest.fn();
 
     authenticate(req, res, next);
+    await flush();
 
     expect(next).toHaveBeenCalled();
     expect(req.user?.sub).toBe('user-1');
+  });
+
+  it('turns away an account suspended in the super admin portal', async () => {
+    mockBlock.mockResolvedValueOnce('organizer');
+    const token = signAccessToken({ sub: 'user-2', role: 'organizer_owner', organizerId: 'org-2' });
+    const req = { headers: { authorization: `Bearer ${token}` } } as Request;
+    const res = mockRes();
+    const next = jest.fn();
+
+    authenticate(req, res, next);
+    await flush();
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
   });
 });
 

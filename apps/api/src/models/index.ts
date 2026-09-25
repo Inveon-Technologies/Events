@@ -9,6 +9,11 @@ import { Payment } from './Payment';
 import { Cancellation } from './Cancellation';
 import { EventReview } from './EventReview';
 import { ApiCredential } from './ApiCredential';
+import { PlatformAdmin } from './PlatformAdmin';
+import { AdminAuditLog } from './AdminAuditLog';
+import { PlatformSetting } from './PlatformSetting';
+import { NotificationLog } from './NotificationLog';
+import { BlockedCustomer } from './BlockedCustomer';
 
 // event_custom_questions, ticket_custom_answers, event_media, and
 // certificates exist as tables (see the migration) but deliberately have
@@ -63,5 +68,22 @@ EventReview.belongsTo(Organizer, { foreignKey: 'organizerId' });
 Organizer.hasMany(ApiCredential, { foreignKey: 'organizerId' });
 ApiCredential.belongsTo(Organizer, { foreignKey: 'organizerId' });
 
-export { Organizer, User, Event, TicketCategory, Booking, Ticket, Payment, Cancellation, EventMedia, EventReview, ApiCredential };
+export {
+  Organizer,
+  User,
+  Event,
+  TicketCategory,
+  Booking,
+  Ticket,
+  Payment,
+  Cancellation,
+  EventMedia,
+  EventReview,
+  ApiCredential,
+  PlatformAdmin,
+  AdminAuditLog,
+  PlatformSetting,
+  NotificationLog,
+  BlockedCustomer,
+};
 export type { EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint };

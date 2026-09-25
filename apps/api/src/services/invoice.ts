@@ -2,7 +2,8 @@ import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import type { BookingDocumentData, BookingDocumentTicket } from './bookingDocuments';
 import { istDateLabel, istTimeLabel, venueParts } from './bookingDocuments';
-import { SUPPORT_EMAIL } from '../emails/templates';
+import { getBranding, getInvoiceSettings } from './platformSettings';
+import { loadStoredImage } from './designAssets';
 
 // The invoice attached to the confirmation email, laid out after the
 // approved template: header with badge, Billed To / Issued By, event
@@ -153,9 +154,17 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
   const cgst = lines.reduce((s, l) => s + l.cgstPaise, 0);
   const sgst = lines.reduce((s, l) => s + l.sgstPaise, 0);
   const paidPaise = pay.paid ? d.totalPaise : 0;
+  // Company details, accent colour and logo come from the super admin
+  // portal (Settings → Invoice / Branding).
+  const cfg = getInvoiceSettings();
+  const brand = getBranding();
+  const accent = cfg.accentColor;
+  const logo = await loadStoredImage(brand.logoUrl);
+  // pdfkit draws PNG and JPEG only.
+  const logoOk = logo && (logo.subarray(0, 4).toString('hex') === '89504e47' || logo.subarray(0, 2).toString('hex') === 'ffd8');
 
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `${taxed ? 'Tax Invoice' : 'Payment Receipt'} ${number}`, Author: 'Inveon Events' } });
+    const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `${taxed ? 'Tax Invoice' : 'Payment Receipt'} ${number}`, Author: brand.platformName } });
     const chunks: Buffer[] = [];
     doc.on('data', (c) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -174,14 +183,18 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
     const label = (str: string, x: number, y: number, w = 110) => text('S', 7.5, C.muted, str, x, y, { width: w });
 
     // ---- Header
-    inveonMark(doc, L, 36, 30);
-    text('B', 17, C.ink, 'INVEON', L + 36, 38);
-    text('B', 7, C.blue, 'E V E N T S', L + 37, 58);
+    if (logoOk) {
+      doc.image(logo, L, 34, { fit: [150, 34] });
+    } else {
+      inveonMark(doc, L, 36, 30);
+      text('B', 17, C.ink, 'INVEON', L + 36, 38);
+      text('B', 7, accent, 'E V E N T S', L + 37, 58);
+    }
     const badge = taxed ? 'TAX INVOICE / RECEIPT' : 'PAYMENT RECEIPT';
     doc.font('B').fontSize(9);
     const bw = doc.widthOfString(badge) + 20;
     doc.roundedRect(R - bw, 36, bw, 20, 10).fill(C.blueSoft);
-    text('B', 9, C.blue, badge, R - bw + 10, 41.5);
+    text('B', 9, accent, badge, R - bw + 10, 41.5);
     const meta: [string, string][] = [
       ['Invoice No.', number],
       ['Invoice Date', istDateLabel(issuedAt)],
@@ -191,7 +204,7 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
       text('R', 8, C.muted, k, R - 220, 64 + i * 12, { width: 80 });
       text('B', 8, C.ink, v, R - 140, 64 + i * 12, { width: 140, align: 'right' });
     });
-    doc.rect(L, 104, Wd, 2).fill(C.blue);
+    doc.rect(L, 104, Wd, 2).fill(accent);
 
     // ---- Parties
     let y = 116;
@@ -200,7 +213,7 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
     doc.roundedRect(L, y, Wd, boxH + 16, 6).fill(C.panel);
     const party = (x: number, title: string, rows: [string, string][], heading: string, tag: string | null) => {
       doc.roundedRect(x + 8, y + 8, colW - 8, boxH, 4).fillAndStroke('#ffffff', C.line);
-      text('B', 7.5, C.blue, title, x + 18, y + 16);
+      text('B', 7.5, accent, title, x + 18, y + 16);
       if (tag) {
         doc.font('B').fontSize(6.5);
         const tw = doc.widthOfString(tag) + 10;
@@ -226,7 +239,7 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
       ...(d.organizer.contactEmail ? ([['Email:', d.organizer.contactEmail]] as [string, string][]) : []),
       ...(d.organizer.gstNumber ? ([['GSTIN:', d.organizer.gstNumber]] as [string, string][]) : []),
       ...(d.organizer.panNumber ? ([['PAN:', d.organizer.panNumber]] as [string, string][]) : []),
-      ['Platform:', 'Inveon Events (booking partner)'],
+      ['Platform:', cfg.platformLine],
     ];
     party(L + colW + 4, 'ISSUED BY / ORGANIZER', issuedBy.slice(0, 4), d.organizer.name, 'VERIFIED ORGANIZER');
     y += boxH + 28;
@@ -354,7 +367,7 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
     }
     doc.moveTo(bx + 12, by + 1).lineTo(bx + halfW - 12, by + 1).lineWidth(0.5).stroke(C.line);
     text('B', 9.5, C.ink, 'Total Invoice Amount:', bx + 12, by + 6, { width: 150 });
-    text('B', 11, C.blue, inr(d.totalPaise), bx + 12, by + 5, { width: halfW - 24, align: 'right' });
+    text('B', 11, accent, inr(d.totalPaise), bx + 12, by + 5, { width: halfW - 24, align: 'right' });
     text('R', 6.8, C.muted, amountInWords(d.totalPaise), bx + 12, by + 21, { width: halfW - 24, height: 9, ellipsis: true });
     y = topY + 124;
     doc.roundedRect(L, y, Wd, 24, 4).fill(pay.paid ? '#f0fdf4' : '#fffbeb');
@@ -372,8 +385,9 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
       taxed
         ? 'This is a computer-generated tax invoice and receipt issued under Section 31 of the CGST Act, 2017, and does not require a physical signature. Prices are inclusive of GST.'
         : 'This is a computer-generated payment receipt and does not require a physical signature. The organizer is not GST-registered, so no tax is charged or shown.',
-      `Issued for event registration and digital ticketing services provided by ${d.organizer.name} through the Inveon Events ticketing platform.`,
+      `Issued for event registration and digital ticketing services provided by ${d.organizer.name} through the ${brand.platformName} ticketing platform.`,
       `Cancellation and refund eligibility are governed by the organizer's policy. For refunds or queries, quote Booking ID ${d.bookingReference}.`,
+      ...(cfg.footerNote ? [cfg.footerNote] : []),
     ];
     let ty = y + 13;
     for (const t of terms) {
@@ -385,15 +399,17 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
     doc.roundedRect(sx0, y, sW, 70, 5).dash(3, { space: 2 }).stroke(C.blueLine).undash();
     text('B', 7.5, C.muted, 'AUTHORIZED SIGNATORY', sx0, y + 10, { width: sW, align: 'center' });
     text('B', 9.5, C.ink, d.organizer.name, sx0 + 6, y + 28, { width: sW - 12, align: 'center', height: 13, ellipsis: true });
-    text('S', 7, C.green, '✓ Digitally verified by Inveon Events', sx0, y + 48, { width: sW, align: 'center' });
+    text('S', 7, C.green, `✓ Digitally verified by ${brand.platformName}`, sx0, y + 48, { width: sW, align: 'center' });
 
     // ---- Footer
     const fy = doc.page.height - 36 - 30;
     doc.moveTo(L, fy).lineTo(R, fy).lineWidth(0.7).stroke(C.line);
-    text('R', 7.2, C.muted, `Thank you for booking with Inveon Events. For billing queries, contact ${SUPPORT_EMAIL}`, L, fy + 10, { width: Wd * 0.5 });
+    text('R', 7.2, C.muted, `Thank you for booking with ${brand.platformName}. For billing queries, contact ${brand.supportEmail}`, L, fy + 10, { width: Wd * 0.5 });
     inveonMark(doc, L + Wd * 0.56, fy + 8, 16);
-    text('B', 9, C.ink, 'INVEON EVENTS', L + Wd * 0.56 + 20, fy + 8);
-    text('R', 6.5, C.muted, 'Inveon Technologies', L + Wd * 0.56 + 20, fy + 19);
+    text('B', 9, C.ink, brand.platformName.toUpperCase(), L + Wd * 0.56 + 20, fy + 8, { width: 150, height: 11, ellipsis: true });
+    const company = [cfg.companyName, cfg.companyGstin ? `GSTIN ${cfg.companyGstin}` : null].filter(Boolean).join(' · ');
+    text('R', 6.5, C.muted, company, L + Wd * 0.56 + 20, fy + 19, { width: 170, height: 8, ellipsis: true });
+    if (cfg.companyAddress) text('R', 6, C.muted, cfg.companyAddress, L + Wd * 0.56 + 20, fy + 27, { width: 170, height: 8, ellipsis: true });
     text('B', 7.5, C.ink, `INVOICE: ${number}`, R - 150, fy + 12, { width: 150, align: 'right' });
 
     doc.end();

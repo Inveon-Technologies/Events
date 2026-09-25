@@ -1,4 +1,6 @@
 import { logger } from '../../logger';
+import { integrationValue } from '../platformSettings';
+import { logNotification } from '../notificationLog';
 
 // WhatsApp notifications. Two interchangeable providers behind one
 // function, chosen by WHATSAPP_PROVIDER:
@@ -34,9 +36,9 @@ export class WhatsAppApiError extends Error {
 }
 
 export function whatsAppProvider(): WhatsAppProvider | null {
-  const provider = process.env.WHATSAPP_PROVIDER?.trim().toLowerCase();
-  if (provider === 'aisensy' && process.env.AISENSY_API_KEY) return 'aisensy';
-  if (provider === 'meta' && process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN) return 'meta';
+  const provider = integrationValue('WHATSAPP_PROVIDER')?.trim().toLowerCase();
+  if (provider === 'aisensy' && integrationValue('AISENSY_API_KEY')) return 'aisensy';
+  if (provider === 'meta' && integrationValue('WHATSAPP_PHONE_NUMBER_ID') && integrationValue('WHATSAPP_ACCESS_TOKEN')) return 'meta';
   return null;
 }
 
@@ -129,10 +131,36 @@ export async function sendWhatsAppTemplate({
   const destination = normalizeWhatsAppNumber(to);
   const name = templateName(message);
   const values = params.map(cleanParam);
+  try {
+    await deliver(provider, destination, name, values, recipientName, headerImage, urlButtons);
+  } catch (err) {
+    logNotification({
+      channel: 'whatsapp',
+      kind: message,
+      recipient: destination,
+      subject: name,
+      status: 'failed',
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+  logNotification({ channel: 'whatsapp', kind: message, recipient: destination, subject: name, status: 'sent' });
+  logger.info({ provider, template: name, to: `…${destination.slice(-4)}` }, 'WhatsApp message sent');
+}
+
+async function deliver(
+  provider: WhatsAppProvider,
+  destination: string,
+  name: string,
+  values: string[],
+  recipientName: string,
+  headerImage: SendTemplateParams['headerImage'],
+  urlButtons: string[],
+): Promise<void> {
 
   if (provider === 'aisensy') {
-    await postJson(process.env.AISENSY_API_URL || 'https://backend.aisensy.com/campaign/t1/api/v2', {
-      apiKey: process.env.AISENSY_API_KEY,
+    await postJson(integrationValue('AISENSY_API_URL') || 'https://backend.aisensy.com/campaign/t1/api/v2', {
+      apiKey: integrationValue('AISENSY_API_KEY'),
       campaignName: name,
       destination,
       userName: cleanParam(recipientName),
@@ -153,14 +181,14 @@ export async function sendWhatsAppTemplate({
   } else {
     const version = process.env.WHATSAPP_GRAPH_API_VERSION || 'v23.0';
     await postJson(
-      `https://graph.facebook.com/${version}/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      `https://graph.facebook.com/${version}/${integrationValue('WHATSAPP_PHONE_NUMBER_ID')}/messages`,
       {
         messaging_product: 'whatsapp',
         to: destination,
         type: 'template',
         template: {
           name,
-          language: { code: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en' },
+          language: { code: integrationValue('WHATSAPP_TEMPLATE_LANGUAGE') || 'en' },
           components: [
             ...(headerImage ? [{ type: 'header', parameters: [{ type: 'image', image: { link: headerImage.url } }] }] : []),
             ...(values.length ? [{ type: 'body', parameters: values.map((text) => ({ type: 'text', text })) }] : []),
@@ -168,9 +196,7 @@ export async function sendWhatsAppTemplate({
           ],
         },
       },
-      { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+      { Authorization: `Bearer ${integrationValue('WHATSAPP_ACCESS_TOKEN')}` },
     );
   }
-
-  logger.info({ provider, template: name, to: `…${destination.slice(-4)}` }, 'WhatsApp message sent');
 }

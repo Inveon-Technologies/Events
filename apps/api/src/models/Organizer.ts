@@ -23,6 +23,8 @@ export class Organizer extends Model<InferAttributes<Organizer>, InferCreationAt
   declare cashfreeVendorId: string | null;
   declare cashfreeVendorStatus: CreationOptional<CashfreeVendorStatus>;
   declare kycSubmittedAt: Date | null;
+  declare blockedAt: CreationOptional<Date | null>;
+  declare blockedReason: CreationOptional<string | null>;
   declare readonly createdAt: CreationOptional<Date>;
   declare readonly updatedAt: CreationOptional<Date>;
 }
@@ -47,6 +49,8 @@ Organizer.init(
     cashfreeVendorId: { type: DataTypes.STRING, allowNull: true, unique: true },
     cashfreeVendorStatus: { type: DataTypes.STRING, allowNull: false, defaultValue: 'not_started' },
     kycSubmittedAt: { type: DataTypes.DATE, allowNull: true },
+    blockedAt: { type: DataTypes.DATE, allowNull: true },
+    blockedReason: { type: DataTypes.STRING(500), allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

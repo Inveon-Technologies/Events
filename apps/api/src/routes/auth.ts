@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { User } from '../models';
 import { comparePassword } from '../auth/password';
 import { signAccessToken } from '../auth/jwt';
+import { organizerAccountBlock } from '../services/accountBlocks';
+import { getBranding } from '../services/platformSettings';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { rateLimit } from '../middleware/rateLimit';
 import {
@@ -46,6 +48,11 @@ authRouter.post('/login', loginLimit, asyncHandler(async (req, res) => {
   // wrong — don't let this endpoint be used to enumerate registered emails.
   if (!user || !(await comparePassword(password, user.passwordHash))) {
     res.status(401).json({ error: 'Invalid email or password' });
+    return;
+  }
+
+  if (await organizerAccountBlock(user.id, user.organizerId)) {
+    res.status(403).json({ error: `This account has been suspended. Contact ${getBranding().supportEmail}.`, suspended: true });
     return;
   }
 

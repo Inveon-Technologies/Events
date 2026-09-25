@@ -1,3 +1,5 @@
+import { DEFAULT_BRANDING, getBranding } from '../services/platformSettings';
+
 // Table-based layout throughout these templates, not flexbox/grid — a
 // well-established constraint for HTML email, since many mail clients
 // (Outlook desktop in particular) have poor or no support for modern CSS
@@ -7,15 +9,28 @@
 // Real support inbox — same account the app actually sends transactional
 // email from (see SMTP_USER in email.ts), so "reply to this email" and
 // this address are never different destinations.
-export const SUPPORT_EMAIL = 'office.inveontech@gmail.com';
+// The super admin portal (Settings → Branding) can change it, the name
+// and the logo shown in every email's header.
+export const SUPPORT_EMAIL = DEFAULT_BRANDING.supportEmail;
+
+function emailHeaderContent(): string {
+  const b = getBranding();
+  const base = (process.env.WEB_PUBLIC_URL || process.env.API_PUBLIC_URL || '').replace(/\/$/, '');
+  const logo = b.logoUrl ? (b.logoUrl.startsWith('https://') ? b.logoUrl : base ? `${base}${b.logoUrl}` : null) : null;
+  return logo
+    ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(b.platformName)}" height="36" style="display:block;height:36px;max-width:220px;border:0;" />`
+    : `<span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">${escapeHtml(b.platformName)}</span>`;
+}
 
 export function emailShell(bodyHtml: string, preheader = ''): string {
+  const b = getBranding();
+  const support = escapeHtml(b.supportEmail);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Inveon Events</title>
+<title>${escapeHtml(b.platformName)}</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${preheader}</div>
@@ -26,7 +41,7 @@ export function emailShell(bodyHtml: string, preheader = ''): string {
           <!-- Header -->
           <tr>
             <td style="background:linear-gradient(135deg,#2563eb,#1d4ed8);padding:28px 32px;">
-              <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.02em;">Inveon Events</span>
+              ${emailHeaderContent()}
             </td>
           </tr>
           <!-- Body -->
@@ -39,7 +54,7 @@ export function emailShell(bodyHtml: string, preheader = ''): string {
           <tr>
             <td style="padding:20px 32px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
               <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.6;">
-                Inveon Events &middot; Need help? Email us at <a href="mailto:${SUPPORT_EMAIL}" style="color:#2563eb;text-decoration:none;">${SUPPORT_EMAIL}</a> or reach out to your event organizer.
+                ${escapeHtml(b.platformName)} &middot; Need help? Email us at <a href="mailto:${support}" style="color:#2563eb;text-decoration:none;">${support}</a> or reach out to your event organizer.
               </p>
             </td>
           </tr>

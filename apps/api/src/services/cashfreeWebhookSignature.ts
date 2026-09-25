@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { integrationValue } from './platformSettings';
 
 // Matches Cashfree's own documented algorithm exactly (verified against
 // their live docs, not recalled from memory): concatenate the
@@ -8,7 +9,7 @@ import crypto from 'crypto';
 // HMAC-SHA256 with the client secret, base64-encode, compare to
 // x-webhook-signature.
 export function verifyCashfreeWebhookSignature(rawBody: string, timestamp: string, signature: string): boolean {
-  const secretKey = process.env.CASHFREE_SECRET_KEY;
+  const secretKey = integrationValue('CASHFREE_SECRET_KEY');
   if (!secretKey) {
     throw new Error('CASHFREE_SECRET_KEY is not set (see .env.example)');
   }
