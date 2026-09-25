@@ -69,7 +69,7 @@ export interface PublicEventDetail {
 export async function listPublicEvents(): Promise<PublicEventSummary[]> {
   const events = await Event.findAll({
     where: { status: 'published', eventDate: { [Op.gte]: new Date() } },
-    include: [{ model: Organizer, attributes: ['name', 'slug'] }],
+    include: [{ model: Organizer, attributes: ['name', 'slug'], where: { blockedAt: null }, required: true }],
     order: [['eventDate', 'ASC']],
   });
 
@@ -125,7 +125,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
 
   const event = await Event.findOne({
     where,
-    include: [{ model: Organizer, attributes: ['name', 'slug'] }],
+    include: [{ model: Organizer, attributes: ['name', 'slug'], where: { blockedAt: null }, required: true }],
   });
   if (!event) return null;
 

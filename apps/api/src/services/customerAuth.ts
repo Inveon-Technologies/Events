@@ -13,6 +13,7 @@ import { otpEmail } from '../emails/templates';
 import { signCustomerSessionToken } from '../auth/jwt';
 import { logger, logOtpForDevelopment } from '../logger';
 import { ticketLinkToken } from './ticketLinks';
+import { isCustomerBlocked } from './accountBlocks';
 
 export class NotFoundError extends Error {}
 // The booking exists, but the email / phone given isn't the one it was
@@ -125,6 +126,9 @@ export async function initiateCustomerLogin(bookingReference: string, contactRaw
   }
 
   const email = booking.primaryContactEmail.trim().toLowerCase();
+  if (await isCustomerBlocked(email)) {
+    throw new ContactMismatchError('This account has been suspended. Please contact support.');
+  }
   const wait = await otpResendWaitSeconds('customer_login', email);
   if (wait > 0) throw new OtpCooldownError(wait);
 

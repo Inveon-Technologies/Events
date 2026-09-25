@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Lock } from 'lucide-react';
+import { useBranding, DEFAULT_CERTIFICATE_FOOTER } from '../../../lib/branding';
 
 // The certificate as the organizer edits it — the same layout rules as
 // the server renderer (apps/api/src/services/certificateRenderer.ts):
@@ -50,6 +51,8 @@ function InveonMark({ size }) {
 }
 
 function FixedFooter({ w, footerTop, partners, showPlaceholders }) {
+  // Labels and logo set by Inveon in the super admin portal.
+  const footer = useBranding()?.certificateFooter ?? DEFAULT_CERTIFICATE_FOOTER;
   const list =
     partners.length > 0
       ? partners
@@ -61,19 +64,22 @@ function FixedFooter({ w, footerTop, partners, showPlaceholders }) {
           }))
         : [];
   const px = (n) => (n * w) / 1000;
-  const logo = (word) => (
-    <span className="inline-flex items-center" style={{ gap: px(4) }}>
-      <InveonMark size={px(18)} />
-      <span className="leading-none text-left">
-        <span className="block font-bold text-slate-900" style={{ fontFamily: 'Montserrat', fontSize: px(11), letterSpacing: px(0.6) }}>
-          INVEON
-        </span>
-        <span className="block font-bold text-[#0050cb]" style={{ fontFamily: 'Montserrat', fontSize: px(4), letterSpacing: px(1.6) }}>
-          {word}
+  const logo = (name, word) =>
+    footer.logoUrl ? (
+      <img src={footer.logoUrl} alt={name} style={{ height: px(22), maxWidth: px(90), objectFit: 'contain' }} />
+    ) : (
+      <span className="inline-flex items-center" style={{ gap: px(4) }}>
+        <InveonMark size={px(18)} />
+        <span className="leading-none text-left">
+          <span className="block font-bold text-slate-900" style={{ fontFamily: 'Montserrat', fontSize: px(11), letterSpacing: px(0.6) }}>
+            {name}
+          </span>
+          <span className="block font-bold text-[#0050cb]" style={{ fontFamily: 'Montserrat', fontSize: px(4), letterSpacing: px(1.6) }}>
+            {word}
+          </span>
         </span>
       </span>
-    </span>
-  );
+    );
   return (
     <div
       className="absolute flex flex-col items-center justify-center rounded-lg bg-white/85 pointer-events-none"
@@ -83,7 +89,7 @@ function FixedFooter({ w, footerTop, partners, showPlaceholders }) {
       {list.length > 0 && (
         <>
           <span className="font-bold text-[#0b1c3f]" style={{ fontFamily: 'Montserrat', fontSize: px(8), letterSpacing: px(2) }}>
-            SUPPORTED BY
+            {footer.supportedByLabel}
           </span>
           <div className="flex items-stretch justify-center w-full" style={{ gap: px(2) }}>
             {list.map((p, i) => (
@@ -108,14 +114,14 @@ function FixedFooter({ w, footerTop, partners, showPlaceholders }) {
       )}
       <div className="flex items-center justify-center" style={{ gap: px(40) }}>
         {[
-          ['TECHNOLOGY PARTNER', 'TECHNOLOGIES'],
-          ['EVENT BOOKING PARTNER', 'EVENTS'],
-        ].map(([label, word]) => (
+          [footer.technologyPartnerLabel, footer.technologyPartnerName, footer.technologyPartnerTagline],
+          [footer.bookingPartnerLabel, footer.bookingPartnerName, footer.bookingPartnerTagline],
+        ].map(([label, name, word]) => (
           <div key={label} className="flex flex-col items-center" style={{ gap: px(2) }}>
             <span className="font-bold text-slate-700" style={{ fontFamily: 'Montserrat', fontSize: px(6.6), letterSpacing: px(1.6) }}>
               {label}
             </span>
-            {logo(word)}
+            {logo(name, word)}
           </div>
         ))}
       </div>

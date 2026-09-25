@@ -15,6 +15,7 @@
     "test:integration": "jest --runInBand --testPathIgnorePatterns=/node_modules/ --testPathPattern=integration",
     "migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts up",
     "whatsapp:test": "tsx --env-file-if-exists=.env src/scripts/whatsappTest.ts",
+    "superadmin": "tsx --env-file-if-exists=.env src/scripts/superAdmin.ts",
     "migrate:down": "tsx --env-file-if-exists=.env src/db/migrate.ts down",
     "seed": "tsx --env-file-if-exists=.env src/db/seed.ts",
     "loadtest:seed": "tsx --env-file-if-exists=.env src/db/loadtestSeed.ts",
@@ -27,6 +28,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1136.0",
     "@napi-rs/canvas": "^1.0.9",
+    "archiver": "^7.0.1",
     "bcryptjs": "^2.4.3",
     "bullmq": "~5.76.11",
     "express": "^4.21.2",
@@ -43,6 +45,7 @@
     "umzug": "^3.8.2"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.4",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^4.17.21",
     "@types/jest": "^29.5.14",

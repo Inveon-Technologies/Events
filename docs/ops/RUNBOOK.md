@@ -255,3 +255,11 @@ docker compose exec <redis> redis-cli ZCARD bull:notifications:failed
 
 If Redis is down, jobs run inline in the request process, so nothing is
 dropped, only slower.
+
+## Super admin portal
+
+Inveon's control center (dashboard, users, payments, message and code
+logs, queue, system health, Docker and logs, backups, branding, invoice,
+certificate footer, integration keys) is at `/x/<SUPERADMIN_PATH>` on the
+events domain. Setup, the server helper and security notes:
+[SUPER_ADMIN.md](SUPER_ADMIN.md).

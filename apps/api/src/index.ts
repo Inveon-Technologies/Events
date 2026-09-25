@@ -5,6 +5,7 @@ import { expireStalePendingOnlineBookings } from './services/pendingBookingExpir
 import { checkAndSendPostEventBroadcasts } from './services/postEventBroadcast';
 import { logger } from './logger';
 import { isQueueEnabled, startQueueWorkers, closeQueues } from './queue';
+import { loadPlatformSettings, startSettingsRefresh } from './services/platformSettings';
 
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const REMINDER_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes — frequent enough that no event's real 3-hour mark is ever missed by more than this, without hammering the database
@@ -22,6 +23,12 @@ const app = createApp();
 // app) must keep working even if this fails or REDIS_URL isn't set;
 // only the OTP signup flow actually depends on it, and that fails on
 // its own, clearly, at the point of use if Redis isn't reachable.
+// Portal-managed settings (branding, integrations…): load now, then keep
+// in step with changes made from another API process.
+loadPlatformSettings()
+  .catch((err) => logger.warn({ err }, 'Could not load platform settings — using defaults and env'))
+  .finally(() => startSettingsRefresh());
+
 connectRedis().catch((err) => {
   logger.error({ err }, 'Redis connection failed at startup — sign-in codes and rate limits need it');
 });

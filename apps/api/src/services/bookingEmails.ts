@@ -2,7 +2,7 @@ import { sendEmail, isEmailConfigured, type EmailAttachment } from './email';
 import { generateTicketQrPng } from './qrCode';
 import { generateInvoicePdf, invoiceNumber } from './invoice';
 import { ticketConfirmationEmail } from '../emails/ticketConfirmation';
-import { SUPPORT_EMAIL } from '../emails/templates';
+import { getBranding } from './platformSettings';
 import { loadBookingDocumentData, istDateLabel, istTimeLabel, istWeekday, venueParts, type BookingDocumentData } from './bookingDocuments';
 import { emailSafePng, renderEventHeaderPng } from './eventHeaderImage';
 import { loadStoredImage } from './designAssets';
@@ -165,7 +165,7 @@ export async function buildConfirmationEmail(d: BookingDocumentData): Promise<{ 
     ticketPdfUrl: d.links.ticketPdf,
     partners,
     amountLine: free ? null : cashDue ? `Amount due at the venue: ${formatInr(d.totalPaise)}` : `Amount paid: ${formatInr(d.totalPaise)} · Invoice attached`,
-    supportEmail: SUPPORT_EMAIL,
+    supportEmail: getBranding().supportEmail,
   });
   return { html, attachments };
 }

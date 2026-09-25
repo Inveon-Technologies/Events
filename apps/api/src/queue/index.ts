@@ -168,3 +168,87 @@ export async function closeQueues(): Promise<void> {
 export async function getNotificationsQueueForTests(): Promise<Queue> {
   return getNotificationsQueue();
 }
+
+// --- super admin portal: inspect and manage the queues ---
+
+export const QUEUE_NAMES = [NOTIFICATIONS_QUEUE, SCHEDULED_QUEUE] as const;
+
+function queueByName(name: string): Queue {
+  if (name === NOTIFICATIONS_QUEUE) return getNotificationsQueue();
+  if (name === SCHEDULED_QUEUE) return getScheduledQueue();
+  throw new Error(`Unknown queue "${name}"`);
+}
+
+export interface QueueJobView {
+  id: string | undefined;
+  name: string;
+  attemptsMade: number;
+  failedReason: string | null;
+  timestamp: number;
+  finishedOn: number | null;
+  processedOn: number | null;
+  // Only what identifies the job — never full payloads (they can hold
+  // attendee details).
+  summary: string;
+}
+
+function summarize(job: Job): QueueJobView {
+  const data = (job.data ?? {}) as Record<string, unknown>;
+  const summary = ['bookingId', 'bookingReference', 'eventId', 'to', 'message']
+    .filter((k) => data[k] !== undefined)
+    .map((k) => `${k}=${String(data[k]).slice(0, 60)}`)
+    .join(' ');
+  return {
+    id: job.id,
+    name: job.name,
+    attemptsMade: job.attemptsMade,
+    failedReason: job.failedReason ?? null,
+    timestamp: job.timestamp,
+    finishedOn: job.finishedOn ?? null,
+    processedOn: job.processedOn ?? null,
+    summary,
+  };
+}
+
+export async function queueOverview(): Promise<{
+  enabled: boolean;
+  queues: { name: string; counts: Record<string, number>; failed: QueueJobView[]; active: QueueJobView[]; waiting: QueueJobView[] }[];
+  error?: string;
+}> {
+  if (!isQueueEnabled()) return { enabled: false, queues: [] };
+  try {
+    const queues = await Promise.all(
+      QUEUE_NAMES.map(async (name) => {
+        const q = queueByName(name);
+        const [counts, failed, active, waiting] = await Promise.all([
+          q.getJobCounts('waiting', 'active', 'delayed', 'failed', 'completed', 'paused'),
+          q.getFailed(0, 24),
+          q.getActive(0, 24),
+          q.getWaiting(0, 24),
+        ]);
+        return { name, counts, failed: failed.map(summarize), active: active.map(summarize), waiting: waiting.map(summarize) };
+      }),
+    );
+    return { enabled: true, queues };
+  } catch (err) {
+    return { enabled: true, queues: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function retryFailedJob(queueName: string, jobId: string): Promise<void> {
+  const job = await queueByName(queueName).getJob(jobId);
+  if (!job) throw new Error('Job not found');
+  await job.retry();
+}
+
+export async function retryAllFailed(queueName: string): Promise<number> {
+  const q = queueByName(queueName);
+  const failed = await q.getFailed(0, 999);
+  await Promise.all(failed.map((j) => j.retry().catch(() => undefined)));
+  return failed.length;
+}
+
+export async function cleanQueue(queueName: string, type: 'failed' | 'completed'): Promise<number> {
+  const removed = await queueByName(queueName).clean(0, 10_000, type);
+  return removed.length;
+}

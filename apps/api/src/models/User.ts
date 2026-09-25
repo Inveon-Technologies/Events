@@ -11,6 +11,8 @@ export class User extends Model<InferAttributes<User>, InferCreationAttributes<U
   declare role: UserRole;
   declare emailVerified: CreationOptional<boolean>;
   declare name: string | null;
+  declare blockedAt: CreationOptional<Date | null>;
+  declare blockedReason: CreationOptional<string | null>;
   declare readonly createdAt: CreationOptional<Date>;
   declare readonly updatedAt: CreationOptional<Date>;
 }
@@ -24,6 +26,8 @@ User.init(
     role: { type: DataTypes.ENUM('platform_admin', 'organizer_owner', 'organizer_staff', 'gate_volunteer'), allowNull: false },
     emailVerified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     name: { type: DataTypes.STRING, allowNull: true },
+    blockedAt: { type: DataTypes.DATE, allowNull: true },
+    blockedReason: { type: DataTypes.STRING(500), allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

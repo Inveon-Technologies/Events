@@ -17,7 +17,9 @@ ENV NODE_ENV=production
 # real duration server-side, rather than trusting whatever the browser
 # claims — without it, every video upload would fail outright in
 # production, since the command simply wouldn't exist.
-RUN apk add --no-cache curl ffmpeg
+# postgresql-client (pg_dump) is for the super admin portal's database
+# backups (services/adminSystem.ts).
+RUN apk add --no-cache curl ffmpeg postgresql-client
 
 COPY package.json package-lock.json ./
 # Then remove the package managers: the running API only needs `node`
@@ -37,7 +39,7 @@ RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
 # The default local upload directory (UPLOAD_DIR unset, no S3) must be
 # writable by the non-root user — /app itself is root-owned, so creating
 # it at runtime failed with EACCES and every logo/photo upload 500'd.
-RUN mkdir -p /app/uploads && chown nodejs:nodejs /app/uploads
+RUN mkdir -p /app/uploads /app/backups && chown nodejs:nodejs /app/uploads /app/backups
 USER nodejs
 
 EXPOSE 3000

@@ -4,6 +4,8 @@ import { organizerRouter } from './routes/organizer';
 import { publicBookingsRouter } from './routes/publicBookings';
 import { webhooksRouter } from './routes/webhooks';
 import { integrationApiRouter } from './routes/integrationApi';
+import { superAdminRouter } from './routes/superAdmin';
+import { getBranding, getCertificateFooter, getInvoiceSettings } from './services/platformSettings';
 import { UPLOAD_DIR } from './services/eventMedia';
 import { getS3Object, isS3Configured, MEDIA_URL_PREFIX, s3KeyFromUrl } from './services/s3Storage';
 import { logger } from './logger';
@@ -78,6 +80,26 @@ export function createApp(): Express {
       next(err);
     }
   });
+
+  // Logo, name and certificate footer set in the super admin portal —
+  // used by the website header/footer and the certificate designer.
+  app.get('/api/platform/branding', (_req: Request, res: Response) => {
+    const b = getBranding();
+    const invoice = getInvoiceSettings();
+    res.set('Cache-Control', 'public, max-age=60');
+    res.json({
+      platformName: b.platformName,
+      logoUrl: b.logoUrl,
+      supportEmail: b.supportEmail,
+      supportPhone: b.supportPhone,
+      primaryColor: b.primaryColor,
+      companyName: invoice.companyName,
+      certificateFooter: getCertificateFooter(),
+    });
+  });
+
+  // Super admin portal (Inveon staff) — behind a secret path segment.
+  app.use('/api/sa/:pathKey', superAdminRouter);
 
   app.use('/api/v1', integrationApiRouter);
   app.use('/api/auth', authRouter);
