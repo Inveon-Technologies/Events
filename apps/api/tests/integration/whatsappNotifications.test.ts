@@ -7,13 +7,38 @@ import { signAccessToken } from '../../src/auth/jwt';
 import { organizerCancelBooking } from '../../src/services/bookingCancellation';
 import { sendEventReminder } from '../../src/services/eventReminders';
 import { sendPostEventBroadcast } from '../../src/services/postEventBroadcast';
+import { ticketLinkToken } from '../../src/services/ticketLinks';
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');
   return { ...actual, sendEmail: jest.fn().mockResolvedValue(undefined), isEmailConfigured: jest.fn().mockReturnValue(false) };
 });
 
-type AiSensyBody = { campaignName: string; destination: string; userName: string; templateParams: string[] };
+type AiSensyBody = {
+  campaignName: string;
+  destination: string;
+  userName: string;
+  templateParams: string[];
+  media?: { url: string; filename: string };
+  buttons?: unknown[];
+};
+
+async function statusOf(
+  bookingId: string,
+  field: 'confirmationWhatsappStatus' | 'confirmationEmailStatus',
+  want: string,
+): Promise<string | null> {
+  const deadline = Date.now() + 5000;
+  let value: string | null = null;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line no-await-in-loop
+    value = (await Booking.findByPk(bookingId))?.[field] ?? null;
+    if (value === want) break;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  return value;
+}
 
 async function waitFor(check: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -32,6 +57,7 @@ describe('WhatsApp notifications', () => {
   let token: string;
   let fetchMock: jest.SpyInstance;
   const sent: AiSensyBody[] = [];
+  let fail = false;
   const sentTo = (campaign: string, destination: string) =>
     sent.filter((b) => b.campaignName === campaign && b.destination === destination);
 
@@ -42,6 +68,7 @@ describe('WhatsApp notifications', () => {
     const realFetch = global.fetch;
     fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
       if (String(input).includes('aisensy.com')) {
+        if (fail) return new Response('{"message":"Template paused"}', { status: 400 });
         sent.push(JSON.parse(String(init?.body)));
         return new Response('{"success":"true"}', { status: 200 });
       }
@@ -113,16 +140,48 @@ describe('WhatsApp notifications', () => {
     return { eventId, bookingId: res.body.bookingId as string, reference: res.body.bookingReference as string };
   }
 
-  it('sends the booking confirmation with the booking details, to a normalized number', async () => {
-    const { reference } = await book('098765 43210');
-    await waitFor(() => sentTo('booking_confirmation', '919876543210').some((b) => b.templateParams[3] === reference));
-    const msg = sentTo('booking_confirmation', '919876543210').find((b) => b.templateParams[3] === reference)!;
+  it('sends the booking confirmation like the ticket mockup: card image, details, View Ticket + PDF buttons', async () => {
+    const { reference, bookingId } = await book('098765 43210');
+    await waitFor(() => sentTo('booking_confirmation', '919876543210').some((b) => b.templateParams[7] === reference));
+    const msg = sentTo('booking_confirmation', '919876543210').find((b) => b.templateParams[7] === reference)!;
+    const token = ticketLinkToken(reference);
     expect(msg.userName).toBe('Asha Patil');
-    expect(msg.templateParams[0]).toBe('Asha Patil');
-    expect(msg.templateParams[1]).toMatch(/^WhatsApp Trek/);
-    expect(msg.templateParams[2]).toBe('Fri, 25 Dec, 2026, 6:30 am'); // entered as 6:30 AM India time
-    expect(msg.templateParams[4]).toBe('2'); // tickets
-    expect(msg.templateParams[5]).toBe('https://events.test.example/bookings/my');
+    expect(msg.templateParams).toEqual([
+      'Asha Patil',
+      expect.stringMatching(/^WhatsApp Trek/),
+      'Your ticket is ready.', // free event
+      'Friday, 25 December 2026', // India time
+      'Starts at: 6:30 AM',
+      'Rajgad Base',
+      `${reference.replace('-BKG-', '-TKT-')}-01 to -02 (2 tickets)`,
+      reference,
+      `WhatsApp Org ${suffix} via your ticket page`,
+    ]);
+    expect(msg.media).toEqual({ url: `https://events.test.example/api/t/${token}/card.png`, filename: `Ticket-${reference}.png` });
+    expect(msg.buttons).toEqual([
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: token }] },
+      { type: 'button', sub_type: 'url', index: '1', parameters: [{ type: 'text', text: token }] },
+    ]);
+
+    // Recorded for the ticket page's "Ticket delivered to" (saved just
+    // after the send, so poll for it).
+    expect(await statusOf(bookingId, 'confirmationWhatsappStatus', 'sent')).toBe('sent');
+    expect(await statusOf(bookingId, 'confirmationEmailStatus', 'skipped')).toBe('skipped'); // email isn't configured here
+
+    // The "Download Ticket PDF" button's URL (token at the end) leads to the PDF.
+    const pdf = await request(app).get(`/api/ticket-pdf/${token}`);
+    expect(pdf.status).toBe(302);
+    expect(pdf.headers.location).toBe(`/api/t/${token}/tickets.pdf`);
+  });
+
+  it('records a failed WhatsApp confirmation so the ticket page can say so', async () => {
+    fail = true;
+    try {
+      const { bookingId } = await book('9876500009');
+      expect(await statusOf(bookingId, 'confirmationWhatsappStatus', 'failed')).toBe('failed');
+    } finally {
+      fail = false;
+    }
   });
 
   it('sends the cancellation with the refund line', async () => {

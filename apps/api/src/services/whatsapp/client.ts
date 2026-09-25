@@ -106,10 +106,22 @@ export interface SendTemplateParams {
   recipientName: string;
   // In the order of the template's {{1}}, {{2}}, …
   params: string[];
+  // Public URL of the header image, for templates with an image header.
+  headerImage?: { url: string; filename: string };
+  // The variable part of each URL button, in button order (a dynamic URL
+  // button's variable is always the end of its URL).
+  urlButtons?: string[];
 }
 
 // Throws on failure so the job queue retries it (see queue/jobs.ts).
-export async function sendWhatsAppTemplate({ message, to, recipientName, params }: SendTemplateParams): Promise<void> {
+export async function sendWhatsAppTemplate({
+  message,
+  to,
+  recipientName,
+  params,
+  headerImage,
+  urlButtons = [],
+}: SendTemplateParams): Promise<void> {
   const provider = whatsAppProvider();
   if (!provider) throw new WhatsAppNotConfiguredError('WhatsApp is not configured (WHATSAPP_PROVIDER)');
 
@@ -125,6 +137,17 @@ export async function sendWhatsAppTemplate({ message, to, recipientName, params 
       userName: cleanParam(recipientName),
       templateParams: values,
       source: 'inveon-events',
+      ...(headerImage ? { media: headerImage } : {}),
+      ...(urlButtons.length
+        ? {
+            buttons: urlButtons.map((text, i) => ({
+              type: 'button',
+              sub_type: 'url',
+              index: String(i),
+              parameters: [{ type: 'text', text }],
+            })),
+          }
+        : {}),
     });
   } else {
     const version = process.env.WHATSAPP_GRAPH_API_VERSION || 'v23.0';
@@ -137,7 +160,11 @@ export async function sendWhatsAppTemplate({ message, to, recipientName, params 
         template: {
           name,
           language: { code: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'en' },
-          components: values.length ? [{ type: 'body', parameters: values.map((text) => ({ type: 'text', text })) }] : [],
+          components: [
+            ...(headerImage ? [{ type: 'header', parameters: [{ type: 'image', image: { link: headerImage.url } }] }] : []),
+            ...(values.length ? [{ type: 'body', parameters: values.map((text) => ({ type: 'text', text })) }] : []),
+            ...urlButtons.map((text, i) => ({ type: 'button', sub_type: 'url', index: String(i), parameters: [{ type: 'text', text }] })),
+          ],
         },
       },
       { Authorization: `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },

@@ -103,8 +103,13 @@ export function bookingConfirmationEmail(params: {
   lineItems: BookingConfirmationLineItem[];
   totalPaise: number;
   ticketCount: number;
+  // Link to the booking's ticket page (QR codes, PDF), when the site URL is known.
+  ticketPageUrl?: string | null;
 }): string {
   const formatINR = (paise: number) => `\u20b9${(paise / 100).toLocaleString('en-IN')}`;
+  const ticketButton = params.ticketPageUrl
+    ? `<p style="margin:0 0 24px;"><a href="${params.ticketPageUrl}" style="display:inline-block;padding:12px 22px;background-color:#2563eb;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:8px;">View your ${params.ticketCount > 1 ? 'tickets' : 'ticket'}</a></p>`
+    : '';
 
   const rows = params.lineItems
     .map(
@@ -121,6 +126,7 @@ export function bookingConfirmationEmail(params: {
     <p style="margin:0 0 24px;font-size:14px;color:#475569;line-height:1.6;">
       Hi ${params.customerName}, your booking for <strong>${params.eventName}</strong> is confirmed. Your ${params.ticketCount > 1 ? 'tickets are' : 'ticket is'} attached below — bring the QR code${params.ticketCount > 1 ? 's' : ''} for entry.
     </p>
+    ${ticketButton}
 
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;border-radius:12px;margin:0 0 24px;">
       <tr>

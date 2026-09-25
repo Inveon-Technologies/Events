@@ -26,7 +26,9 @@ describe('WhatsApp client', () => {
       saved[k] = process.env[k];
       delete process.env[k];
     }
-    fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ success: 'true' }), { status: 200 }));
+    fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async () => new Response(JSON.stringify({ success: 'true' }), { status: 200 }));
   });
 
   afterEach(() => {
@@ -110,6 +112,28 @@ describe('WhatsApp client', () => {
       },
     });
     expect(templateName('eventReminder')).toBe('event_reminder');
+  });
+
+  it('sends a header image and URL button values (AiSensy media/buttons, Meta components)', async () => {
+    process.env.WHATSAPP_PROVIDER = 'aisensy';
+    process.env.AISENSY_API_KEY = 'k';
+    const extra = { headerImage: { url: 'https://x.example/card.png', filename: 'Ticket.png' }, urlButtons: ['tok', 'tok'] };
+    await sendWhatsAppTemplate({ message: 'bookingConfirmation', to: '9876543210', recipientName: 'A', params: ['A'], ...extra });
+    const aisensy = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(aisensy.media).toEqual({ url: 'https://x.example/card.png', filename: 'Ticket.png' });
+    expect(aisensy.buttons[1]).toEqual({ type: 'button', sub_type: 'url', index: '1', parameters: [{ type: 'text', text: 'tok' }] });
+
+    process.env.WHATSAPP_PROVIDER = 'meta';
+    process.env.WHATSAPP_PHONE_NUMBER_ID = '1';
+    process.env.WHATSAPP_ACCESS_TOKEN = 't';
+    await sendWhatsAppTemplate({ message: 'bookingConfirmation', to: '9876543210', recipientName: 'A', params: ['A'], ...extra });
+    const meta = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(meta.template.components).toEqual([
+      { type: 'header', parameters: [{ type: 'image', image: { link: 'https://x.example/card.png' } }] },
+      { type: 'body', parameters: [{ type: 'text', text: 'A' }] },
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: 'tok' }] },
+      { type: 'button', sub_type: 'url', index: '1', parameters: [{ type: 'text', text: 'tok' }] },
+    ]);
   });
 
   it('throws on a provider error so the queue retries', async () => {

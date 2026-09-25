@@ -4,7 +4,7 @@ The app sends four WhatsApp messages once this is set up:
 
 | Message | When | Template / API campaign name |
 |---|---|---|
-| Booking confirmation | Right after booking, or once online payment succeeds | `booking_confirmation` |
+| Booking confirmation, as a ticket with QR code and View Ticket / PDF buttons | Right after booking, or once online payment succeeds | `booking_confirmation` |
 | Event reminder | About 3 hours before the event starts | `event_reminder` |
 | Booking cancelled | When a customer or the organizer cancels | `booking_cancelled` |
 | Thank-you | 10:00 AM (India time) the day after the event, with photo and rating links | `post_event_thanks` |
@@ -79,17 +79,60 @@ Submit, then wait for **Approved**. That's usually minutes, at most a day.
 
 ### `booking_confirmation`
 
+This one looks like a ticket: the header is a picture of the ticket (event
+photo, details and the QR code), and it has **View Ticket** and **Download
+Ticket PDF** buttons. The app draws the picture for each booking.
+
+**Header:** choose **Image**. For the sample, upload
+[`whatsapp-sample-card.jpg`](whatsapp-sample-card.jpg) from this folder.
+
+**Body:**
 ```
-Hi {{1}}, your booking for {{2}} on {{3}} is confirmed.
+🎟️ *Booking Confirmed!*
 
-Booking ref: {{4}}
-Tickets: {{5}}
+Hi {{1}},
+Your booking for *{{2}}* is confirmed. {{3}}
 
-View your tickets and QR codes at {{6}} and show the QR code at the entry.
+📅 {{4}}
+⏰ {{5}}
+📍 {{6}}
+🎫 Ticket ID: {{7}}
+🧾 Booking ID: {{8}}
 
-See you there!
+Need help? Contact {{9}}.
 ```
-Samples: `Asha` · `Rajgad Sunrise Trek` · `Fri, 25 Dec, 2026, 6:30 am` · `INV-BKG-2026-8F3K2Q` · `2` · `https://events.inveontechnologies.in/bookings/my`
+Samples: `Rahul` · `Rajgad Sunrise Trek` · `Your payment has been verified and your ticket is ready.` · `Saturday, 18 October 2026` · `Reporting time: 5:30 AM` · `Pune → Rajgad` · `INV-TKT-2026-8F3K2Q-01` · `INV-BKG-2026-8F3K2Q` · `Eco Pandhari Club: 0788 750 3856`
+
+**Footer:**
+```
+Keep this ticket on your phone and show the QR code at check-in.
+```
+
+**Buttons:** choose **Call to action**, then add two buttons:
+
+| Type | Button text | URL type | URL |
+|---|---|---|---|
+| Visit website | `View Ticket` | Dynamic | `https://events.inveontechnologies.in/t/{{1}}` |
+| Visit website | `Download Ticket PDF` | Dynamic | `https://events.inveontechnologies.in/api/ticket-pdf/{{1}}` |
+
+For each button's sample value, use `INV-BKG-2026-8F3K2Q.sample`. Use your
+own site address if it's different: it must be the same as `WEB_PUBLIC_URL`
+on the server.
+
+What the app fills in, for reference:
+
+| | Value |
+|---|---|
+| `{{3}}` | "Your ticket is ready." (free) · "Your payment has been verified and your ticket is ready." (paid online) · "Please pay ₹… at the venue; your ticket is ready." (cash) |
+| `{{5}}` | "Reporting time: …" if the event has a gate-open time, else "Starts at: …" |
+| `{{6}}` | "Pickup → Venue" when the event has a pickup point, else the venue |
+| `{{7}}` | One ticket: its ID. Several: "…-01 to -03 (3 tickets)". Each person's QR code is on the ticket page and in the PDF. |
+| `{{9}}` | "Organizer: phone" if the organizer added a phone number, else "Organizer via your ticket page" |
+| Buttons | The booking's private ticket link (no login needed) |
+
+If the WhatsApp message fails, the booking still goes through, the ticket
+still arrives by email, and the ticket page shows WhatsApp as "Not
+delivered".
 
 ### `event_reminder`
 
@@ -147,6 +190,8 @@ The app sends each message by triggering an AiSensy **API campaign**. In
    AISENSY_API_KEY=<the key>
    WEB_PUBLIC_URL=https://events.inveontechnologies.in
    ```
+   `WEB_PUBLIC_URL` is required: WhatsApp downloads the ticket picture from
+   it, and the buttons open pages on it.
 3. Restart the API (`docker compose up -d events-api`), or redeploy.
 4. **Test:** book a free ticket on a test event with your own WhatsApp
    number. The confirmation should arrive within a few seconds. The API
@@ -165,6 +210,7 @@ To switch WhatsApp off again, remove `WHATSAPP_PROVIDER` and restart.
 | `… template … not approved` / `paused` | Check the template's status in AiSensy. Meta pauses templates that many people block or report. |
 | `Not a usable WhatsApp number` | The customer typed an invalid number. That message is skipped; the email still goes. |
 | Nothing in the logs | `WHATSAPP_PROVIDER` or `AISENSY_API_KEY` is missing, or the API wasn't restarted. |
+| `… media … download` / message without picture | WhatsApp couldn't fetch the ticket picture. Open `https://<your site>/api/t/<token>/card.png` from a phone: it must load over HTTPS. |
 | Sends stop after 250 a day | Business verification (step 3) isn't finished yet. |
 
 Customer replies land in the **AiSensy inbox**. Anyone on the team with

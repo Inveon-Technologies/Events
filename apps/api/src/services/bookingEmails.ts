@@ -5,6 +5,7 @@ import { bookingConfirmationEmail } from '../emails/templates';
 import type { CreateBookingResult } from './bookingCreation';
 import { Booking, Event, Organizer, Ticket, TicketCategory } from '../models';
 import { logger } from '../logger';
+import { ticketPageUrl } from './ticketLinks';
 
 // Re-derives the same shape createBooking() returns directly, for the
 // one case that doesn't have it in hand already: the Cashfree webhook
@@ -99,6 +100,7 @@ export async function deliverBookingConfirmationEmail(result: CreateBookingResul
     lineItems: [{ tierName: email.tierName, quantity: email.quantity, unitPricePaise: email.unitPricePaise }],
     totalPaise: email.totalAmountPaise,
     ticketCount: email.quantity,
+    ticketPageUrl: process.env.WEB_PUBLIC_URL || process.env.API_PUBLIC_URL ? ticketPageUrl(result.bookingReference) : null,
   });
 
   await sendEmail({
