@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Allow: /api/uploads/
+Allow: /api/seo/sitemap.xml
+Disallow: /organizer/
+Disallow: /x/
+Disallow: /bookings/
+Disallow: /checkout/
+Disallow: /t/
+Disallow: /feedback
+Disallow: /events/*/checkout
+
+Sitemap: https://events.inveontechnologies.in/api/seo/sitemap.xml

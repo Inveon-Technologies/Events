@@ -50,6 +50,9 @@ services:
       # (scripts/server/install-admin-agent.sh).
       - backups:/app/backups
       - /var/lib/inveon-ops:/app/ops
+      # The built web app's index.html, read (not written) by the SEO
+      # page renderer — see apps/api/src/services/seo.ts.
+      - web_static:/app/web-dist:ro
     # Wait for Postgres to actually accept connections, not just for its
     # container to exist — otherwise the API's first queries (and the
     # migration step) race the database's startup.

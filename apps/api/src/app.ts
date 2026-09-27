@@ -5,6 +5,7 @@ import { publicBookingsRouter } from './routes/publicBookings';
 import { webhooksRouter } from './routes/webhooks';
 import { integrationApiRouter } from './routes/integrationApi';
 import { superAdminRouter } from './routes/superAdmin';
+import { seoRouter } from './routes/seo';
 import { getBranding, getCertificateFooter, getInvoiceSettings } from './services/platformSettings';
 import { UPLOAD_DIR } from './services/eventMedia';
 import { getS3Object, isS3Configured, MEDIA_URL_PREFIX, s3KeyFromUrl } from './services/s3Storage';
@@ -104,6 +105,7 @@ export function createApp(): Express {
   // Super admin portal (Inveon staff) — behind a secret path segment.
   app.use('/api/sa/:pathKey', superAdminRouter);
 
+  app.use('/api/seo', seoRouter);
   app.use('/api/v1', integrationApiRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/organizer', organizerRouter);
