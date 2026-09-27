@@ -142,8 +142,8 @@ describe('WhatsApp notifications', () => {
 
   it('sends the booking confirmation like the ticket mockup: card image, details, View Ticket + PDF buttons', async () => {
     const { reference, bookingId } = await book('098765 43210');
-    await waitFor(() => sentTo('booking_confirmation', '919876543210').some((b) => b.templateParams[7] === reference));
-    const msg = sentTo('booking_confirmation', '919876543210').find((b) => b.templateParams[7] === reference)!;
+    await waitFor(() => sentTo('booking_confirmation_v2', '919876543210').some((b) => b.templateParams[7] === reference));
+    const msg = sentTo('booking_confirmation_v2', '919876543210').find((b) => b.templateParams[7] === reference)!;
     const token = ticketLinkToken(reference);
     expect(msg.userName).toBe('Asha Patil');
     expect(msg.templateParams).toEqual([
