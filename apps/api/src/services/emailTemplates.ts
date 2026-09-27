@@ -26,7 +26,7 @@ export interface EmailTemplateDef {
 }
 
 const COMMON_VARS = { platformName: 'Platform name', supportEmail: 'Support email' };
-const COMMON_SAMPLE = { platformName: 'Inveon Events', supportEmail: 'inveontech@gmail.com' };
+const COMMON_SAMPLE = { platformName: 'Inveon Events', supportEmail: 'office.inveontech@gmail.com' };
 
 export const EMAIL_TEMPLATE_DEFS: Record<EmailTemplateKey, EmailTemplateDef> = {
   bookingConfirmation: {

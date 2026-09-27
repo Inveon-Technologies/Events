@@ -102,8 +102,8 @@ export function Footer() {
                   <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"></path>
                   <rect x="2" y="4" width="20" height="16" rx="2"></rect>
                 </svg>
-                <a className="hover:text-white transition-colors truncate" href="mailto:inveontech@gmail.com">
-                  inveontech@gmail.com
+                <a className="hover:text-white transition-colors truncate" href="mailto:office.inveontech@gmail.com">
+                  office.inveontech@gmail.com
                 </a>
               </li>
               <li className="flex items-center gap-2">
