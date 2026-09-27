@@ -114,6 +114,10 @@ function parseTicketTiers(body: Record<string, unknown>) {
       description: typeof tier.description === 'string' ? tier.description : undefined,
       price: typeof tier.price === 'number' ? tier.price : Number(tier.price) || 0,
       quantity: typeof tier.quantity === 'number' ? tier.quantity : Number(tier.quantity) || 0,
+      maxPerBooking:
+        tier.maxPerBooking === undefined || tier.maxPerBooking === null || tier.maxPerBooking === ''
+          ? undefined
+          : Number(tier.maxPerBooking),
     };
   });
 }

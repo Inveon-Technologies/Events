@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { Logo } from './Logo';
 
 export function Footer() {
   return (
@@ -102,8 +101,8 @@ export function Footer() {
                   <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"></path>
                   <rect x="2" y="4" width="20" height="16" rx="2"></rect>
                 </svg>
-                <a className="hover:text-white transition-colors truncate" href="mailto:inveontechnologies@gmail.com">
-                  inveontechnologies@gmail.com
+                <a className="hover:text-white transition-colors truncate" href="mailto:office.inveontech@gmail.com">
+                  office.inveontech@gmail.com
                 </a>
               </li>
               <li className="flex items-center gap-2">
@@ -127,7 +126,7 @@ export function Footer() {
                   <path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path>
                   <circle cx="12" cy="10" r="3"></circle>
                 </svg>
-                <span>Inveon Events, Pune, India</span>
+                <span>Inveon Events, India</span>
               </li>
             </ul>
           </div>

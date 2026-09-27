@@ -13,6 +13,7 @@ import { istParts, parseIstDateTime } from './istTime';
 import { collectionModeFor } from './organizerSettlements';
 import {
   ValidationError,
+  validateMaxPerBooking,
   sanitizeScheduleItems,
   sanitizePackingChecklist,
   sanitizeFaqItems,
@@ -108,6 +109,7 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
       description: t.description,
       price: t.pricePaise / 100,
       quantity: t.quotaTotal,
+      maxPerBooking: t.maxPerBooking,
       sold: t.quotaTotal - t.quotaRemaining,
     })),
     media: media.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url })),
@@ -199,6 +201,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         if (!tier.name?.trim()) throw new ValidationError('Every ticket tier needs a name');
         if (!(tier.price >= 0)) throw new ValidationError(`Invalid price for tier "${tier.name}"`);
         if (!(tier.quantity > 0)) throw new ValidationError(`Invalid quantity for tier "${tier.name}"`);
+        validateMaxPerBooking(tier);
 
         if (tier.id) {
           const existing = existingById.get(tier.id);
@@ -228,6 +231,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
               name: tier.name.trim(),
               description: tier.description?.trim() || null,
               pricePaise: Math.round(tier.price * 100),
+              ...(tier.maxPerBooking !== undefined ? { maxPerBooking: tier.maxPerBooking } : {}),
               quotaTotal: newQuotaTotal,
               quotaRemaining: newQuotaTotal - sold,
             },
@@ -241,6 +245,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
               name: tier.name.trim(),
               description: tier.description?.trim() || null,
               pricePaise: Math.round(tier.price * 100),
+              ...(tier.maxPerBooking !== undefined ? { maxPerBooking: tier.maxPerBooking } : {}),
               quotaTotal,
               quotaRemaining: quotaTotal,
             },

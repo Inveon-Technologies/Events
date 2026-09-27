@@ -78,6 +78,34 @@ import {
   DEFAULT_CERTIFICATE_FOOTER,
 } from '../services/platformSettings';
 import { storePlatformImage, PlatformImageError } from '../services/platformAssets';
+import {
+  defaultFooterDesign,
+  FOOTER_DESIGN_SETTING,
+  getCertificateFooterDesign,
+  sanitizeFooterDesign,
+  MAX_FOOTER_FIELDS,
+} from '../services/certificateFooterDesign';
+import { CERTIFICATE_FONTS, CERTIFICATE_TOKENS, CertificateDesignError, FOOTER_TOP_PERCENT } from '../services/certificateDesign';
+import {
+  defaultInvoiceLayout,
+  getInvoiceLayout,
+  INVOICE_LAYOUT_SETTING,
+  INVOICE_TOKENS,
+  InvoiceLayoutError,
+  sanitizeInvoiceLayout,
+} from '../services/invoiceLayout';
+import {
+  defaultEmailTemplate,
+  EMAIL_TEMPLATE_DEFS,
+  EMAIL_TEMPLATE_KEYS,
+  EMAIL_TEMPLATES_SETTING,
+  EmailTemplateError,
+  getEmailTemplates,
+  sanitizeEmailTemplate,
+  type EmailTemplateKey,
+} from '../services/emailTemplates';
+import { certificateFooterPreviewPng, emailPreview, invoicePreviewPdf } from '../services/designerPreviews';
+import { getStoredSetting } from '../services/platformSettings';
 import { getPendingSettlements, markOrganizerSettled, SettlementError } from '../services/organizerSettlements';
 import { queueOverview, retryFailedJob, retryAllFailed, cleanQueue, QUEUE_NAMES } from '../queue';
 import { sendEmail } from '../services/email';
@@ -157,7 +185,10 @@ function handleError(res: Response, err: unknown): boolean {
     err instanceof OpsError ||
     err instanceof PlatformImageError ||
     err instanceof ConsoleError ||
-    err instanceof SettlementError
+    err instanceof SettlementError ||
+    err instanceof CertificateDesignError ||
+    err instanceof InvoiceLayoutError ||
+    err instanceof EmailTemplateError
   ) {
     res.status(400).json({ error: err.message });
     return true;
@@ -857,5 +888,135 @@ superAdminRouter.post(
     } finally {
       await fsp.unlink(req.file.path).catch(() => undefined);
     }
+  }),
+);
+
+// ---- designers: certificate footer, invoice layout, email templates ----
+// Drag-and-drop editors in the portal (Settings). Each saves a validated
+// design; previews render the unsaved one with sample data.
+
+superAdminRouter.get('/settings/certificate-footer-design', (_req, res) => {
+  res.json({
+    design: getCertificateFooterDesign(),
+    saved: Boolean(getStoredSetting(FOOTER_DESIGN_SETTING)),
+    defaultDesign: defaultFooterDesign(),
+    fonts: CERTIFICATE_FONTS,
+    tokens: CERTIFICATE_TOKENS,
+    footerTopPercent: FOOTER_TOP_PERCENT,
+    maxFields: MAX_FOOTER_FIELDS,
+  });
+});
+
+superAdminRouter.put(
+  '/settings/certificate-footer-design',
+  handle(async (req, res) => {
+    const design = sanitizeFooterDesign(req.body?.design);
+    await saveSetting(FOOTER_DESIGN_SETTING, design, admin(req).email);
+    await log(req, 'settings.certificateFooterDesign', null, { fields: design.fields.length });
+    res.json({ design });
+  }),
+);
+
+superAdminRouter.post(
+  '/settings/certificate-footer-design/preview',
+  handle(async (req, res) => {
+    const png = await certificateFooterPreviewPng(sanitizeFooterDesign(req.body?.design));
+    res.set('Cache-Control', 'no-store').type('image/png').send(png);
+  }),
+);
+
+superAdminRouter.get('/settings/invoice-layout', (_req, res) => {
+  res.json({
+    layout: getInvoiceLayout(),
+    saved: Boolean(getStoredSetting(INVOICE_LAYOUT_SETTING)),
+    defaultLayout: defaultInvoiceLayout(),
+    tokens: INVOICE_TOKENS,
+  });
+});
+
+superAdminRouter.put(
+  '/settings/invoice-layout',
+  handle(async (req, res) => {
+    const layout = sanitizeInvoiceLayout(req.body?.layout);
+    await saveSetting(INVOICE_LAYOUT_SETTING, layout, admin(req).email);
+    await log(req, 'settings.invoiceLayout', null, { blocks: layout.blocks.length });
+    res.json({ layout });
+  }),
+);
+
+superAdminRouter.post(
+  '/settings/invoice-layout/preview',
+  handle(async (req, res) => {
+    const pdf = await invoicePreviewPdf(sanitizeInvoiceLayout(req.body?.layout));
+    res.set('Cache-Control', 'no-store').type('application/pdf').send(pdf);
+  }),
+);
+
+function templateKey(raw: string): EmailTemplateKey {
+  if (!(EMAIL_TEMPLATE_KEYS as string[]).includes(raw)) throw new AdminNotFoundError('Unknown email template');
+  return raw as EmailTemplateKey;
+}
+
+superAdminRouter.get('/settings/email-templates', (_req, res) => {
+  const saved = getEmailTemplates();
+  res.json({
+    templates: EMAIL_TEMPLATE_KEYS.map((key) => ({
+      key,
+      ...EMAIL_TEMPLATE_DEFS[key],
+      saved: Boolean(saved[key]),
+      template: saved[key] ?? defaultEmailTemplate(key),
+      defaultTemplate: defaultEmailTemplate(key),
+    })),
+  });
+});
+
+superAdminRouter.put(
+  '/settings/email-templates/:key',
+  handle(async (req, res) => {
+    const key = templateKey(req.params.key);
+    const template = sanitizeEmailTemplate(key, req.body?.template);
+    const current = getStoredSetting(EMAIL_TEMPLATES_SETTING);
+    const all = { ...(current && typeof current === 'object' ? (current as Record<string, unknown>) : {}), [key]: template };
+    await saveSetting(EMAIL_TEMPLATES_SETTING, all, admin(req).email);
+    await log(req, 'settings.emailTemplate', key, { enabled: template.enabled, blocks: template.blocks.length });
+    res.json({ template });
+  }),
+);
+
+superAdminRouter.delete(
+  '/settings/email-templates/:key',
+  handle(async (req, res) => {
+    const key = templateKey(req.params.key);
+    const current = getStoredSetting(EMAIL_TEMPLATES_SETTING);
+    const all = { ...(current && typeof current === 'object' ? (current as Record<string, unknown>) : {}) };
+    delete all[key];
+    await saveSetting(EMAIL_TEMPLATES_SETTING, all, admin(req).email);
+    await log(req, 'settings.emailTemplate.reset', key);
+    res.json({ template: defaultEmailTemplate(key) });
+  }),
+);
+
+superAdminRouter.post(
+  '/settings/email-templates/:key/preview',
+  handle(async (req, res) => {
+    const key = templateKey(req.params.key);
+    res.json(await emailPreview(key, sanitizeEmailTemplate(key, req.body?.template)));
+  }),
+);
+
+superAdminRouter.post(
+  '/settings/email-templates/:key/test',
+  handle(async (req, res) => {
+    const key = templateKey(req.params.key);
+    const to = String((req.body as { to?: unknown }).to ?? admin(req).email).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to)) throw new AdminValidationError('Enter a valid email');
+    const { subject, html } = await emailPreview(key, sanitizeEmailTemplate(key, req.body?.template));
+    try {
+      await sendEmail({ to, subject: `[Test] ${subject}`, html, kind: 'admin_test' });
+    } catch (err) {
+      throw new AdminValidationError(`Could not send: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    await log(req, 'settings.emailTemplate.test', key, { to });
+    res.json({ ok: true });
   }),
 );

@@ -4,6 +4,7 @@ import { Search, Download, QrCode } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 import { downloadCsv, ATTENDEE_CSV_COLUMNS } from '../../lib/csv';
 import { useEvents } from '../../context/EventsContext';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -31,9 +32,10 @@ function EventParticipantsContent({ event }) {
     }
   }, [event.id, user?.token]);
 
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshTick]);
 
   async function handleCheckIn(ticket) {
     setActioningId(ticket.id);

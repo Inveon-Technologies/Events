@@ -4,6 +4,7 @@ import type { BookingDocumentData, BookingDocumentTicket } from './bookingDocume
 import { istDateLabel, istTimeLabel, venueParts } from './bookingDocuments';
 import { getBranding, getInvoiceSettings } from './platformSettings';
 import { loadStoredImage } from './designAssets';
+import { fillInvoiceText, getInvoiceLayout, type InvoiceBlock, type InvoiceLayout, type InvoiceSectionType } from './invoiceLayout';
 
 // The invoice attached to the confirmation email, laid out after the
 // approved template: header with badge, Billed To / Issued By, event
@@ -137,15 +138,48 @@ function paymentSummary(d: BookingDocumentData): { method: string; gateway: stri
     : { method: 'Online (UPI / Card / Netbanking)', gateway: 'Cashfree Payments India', status: 'PENDING', paid: false };
 }
 
+// The Inveon Events mark — the same four-facet cube the website draws
+// (apps/web/src/components/Logo.tsx), used when no logo image loads.
 function inveonMark(doc: PDFKit.PDFDocument, x: number, y: number, size: number): void {
   const s = size / 32;
   doc.save().translate(x, y).scale(s);
-  doc.path('M4 4L16 28L28 4H20L16 16L12 4H4Z').fill('#0050cb');
-  doc.path('M20 4L16 16L12 4H7L16 22L25 4H20Z').fill(C.orange);
+  doc.path('M7 6L16 11V25L7 20V6Z').fill('#0066FF');
+  doc.path('M19 11L28 6V20L19 25V11Z').fill('#0052CC');
+  doc.path('M16 27L7 22L16 17L25 22L16 27Z').fill('#F59E0B');
+  doc.path('M16 11L25 6L16 1L7 6L16 11Z').fill('#0080FF');
   doc.restore();
 }
 
-export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date = new Date()): Promise<Buffer> {
+// The Inveon Events logo image the website header shows
+// (apps/web/src/lib/brand.ts), for when no logo is set in the super
+// admin portal's Branding settings.
+const INVEON_EVENTS_LOGO_URL =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuDOu7O6QckldNU8Q1b_jyziqMZctME8kx93UHIGU7MEowMcZxp_gd0hAENIKXIAgelubTZMHeS-XB84YCu79O0sSuUOu3AcroKDSkc_wVR2lXX9EaTgpQ51BsWO8Ple49PWdiJKhBmtBtB6HWwnXmpdSk0oeQ9StdhF_ZuPhV4yJyTafymOGm5LdlsgOrrCTuFiFQACtRHytmQPXdbBltzWx0DydPudiHRLzXCu0VvaGlv-FQwGj0cyuDsdv67GQCX4T4o';
+
+// Fetched once per process and kept (it never changes); skipped under
+// tests, which run without network access.
+let defaultLogo: Promise<Buffer | null> | null = null;
+function loadDefaultLogo(): Promise<Buffer | null> {
+  if (process.env.NODE_ENV === 'test') return Promise.resolve(null);
+  if (!defaultLogo) {
+    defaultLogo = loadStoredImage(INVEON_EVENTS_LOGO_URL, 2 * 1024 * 1024).then((buf) => {
+      if (!buf) defaultLogo = null; // try again on the next invoice
+      return buf;
+    });
+  }
+  return defaultLogo;
+}
+
+// pdfkit draws PNG and JPEG only.
+function isPdfImage(buf: Buffer | null): buf is Buffer {
+  return Boolean(buf && (buf.subarray(0, 4).toString('hex') === '89504e47' || buf.subarray(0, 2).toString('hex') === 'ffd8'));
+}
+
+export async function generateInvoicePdf(
+  d: BookingDocumentData,
+  issuedAt: Date = new Date(),
+  layout: InvoiceLayout = getInvoiceLayout(),
+): Promise<Buffer> {
   const taxed = Boolean(d.organizer.gstNumber);
   const lines = buildLines(d.tickets, taxed);
   const pay = paymentSummary(d);
@@ -158,10 +192,29 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
   // portal (Settings → Invoice / Branding).
   const cfg = getInvoiceSettings();
   const brand = getBranding();
+  // Values a custom text block in the invoice designer can use.
+  const tokens: Record<string, string> = {
+    customerName: d.customer.name,
+    customerEmail: d.customer.email,
+    customerPhone: d.customer.phone,
+    eventName: d.event.name,
+    eventDate: istDateLabel(d.event.eventDate),
+    eventTime: istTimeLabel(d.event.eventDate),
+    venue: d.event.venueAddress ?? '',
+    organizerName: d.organizer.name,
+    bookingReference: d.bookingReference,
+    invoiceNumber: number,
+    invoiceDate: istDateLabel(issuedAt),
+    totalAmount: inr(d.totalPaise),
+    ticketCount: String(d.tickets.filter((t) => t.status !== 'cancelled').length),
+    platformName: brand.platformName,
+    companyName: cfg.companyName,
+    supportEmail: brand.supportEmail,
+  };
   const accent = cfg.accentColor;
-  const logo = await loadStoredImage(brand.logoUrl);
-  // pdfkit draws PNG and JPEG only.
-  const logoOk = logo && (logo.subarray(0, 4).toString('hex') === '89504e47' || logo.subarray(0, 2).toString('hex') === 'ffd8');
+  const brandLogo = await loadStoredImage(brand.logoUrl);
+  const logo = isPdfImage(brandLogo) ? brandLogo : await loadDefaultLogo();
+  const logoOk = isPdfImage(logo);
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `${taxed ? 'Tax Invoice' : 'Payment Receipt'} ${number}`, Author: brand.platformName } });
@@ -182,234 +235,271 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
     };
     const label = (str: string, x: number, y: number, w = 110) => text('S', 7.5, C.muted, str, x, y, { width: w });
 
-    // ---- Header
-    if (logoOk) {
-      doc.image(logo, L, 34, { fit: [150, 34] });
-    } else {
-      inveonMark(doc, L, 36, 30);
-      text('B', 17, C.ink, 'INVEON', L + 36, 38);
-      text('B', 7, accent, 'E V E N T S', L + 37, 58);
-    }
-    const badge = taxed ? 'TAX INVOICE / RECEIPT' : 'PAYMENT RECEIPT';
-    doc.font('B').fontSize(9);
-    const bw = doc.widthOfString(badge) + 20;
-    doc.roundedRect(R - bw, 36, bw, 20, 10).fill(C.blueSoft);
-    text('B', 9, accent, badge, R - bw + 10, 41.5);
-    const meta: [string, string][] = [
-      ['Invoice No.', number],
-      ['Invoice Date', istDateLabel(issuedAt)],
-      ['Booking ID', d.bookingReference],
-    ];
-    meta.forEach(([k, v], i) => {
-      text('R', 8, C.muted, k, R - 220, 64 + i * 12, { width: 80 });
-      text('B', 8, C.ink, v, R - 140, 64 + i * 12, { width: 140, align: 'right' });
-    });
-    doc.rect(L, 104, Wd, 2).fill(accent);
-
-    // ---- Parties
-    let y = 116;
-    const colW = (Wd - 12) / 2;
-    const boxH = 104;
-    doc.roundedRect(L, y, Wd, boxH + 16, 6).fill(C.panel);
-    const party = (x: number, title: string, rows: [string, string][], heading: string, tag: string | null) => {
-      doc.roundedRect(x + 8, y + 8, colW - 8, boxH, 4).fillAndStroke('#ffffff', C.line);
-      text('B', 7.5, accent, title, x + 18, y + 16);
-      if (tag) {
-        doc.font('B').fontSize(6.5);
-        const tw = doc.widthOfString(tag) + 10;
-        doc.roundedRect(x + colW - 10 - tw, y + 14, tw, 11, 5.5).fill(C.greenSoft);
-        text('B', 6.5, C.green, tag, x + colW - 5 - tw, y + 16.5);
-      }
-      text('B', 11, C.ink, heading, x + 18, y + 29, { width: colW - 30, height: 14, ellipsis: true });
-      rows.forEach(([k, v], i) => {
-        label(k, x + 18, y + 48 + i * 13, 80);
-        text('R', 8, C.body, v, x + 96, y + 47.5 + i * 13, { width: colW - 106, height: 11, ellipsis: true });
-      });
-    };
-    const placeOfSupply = stateOf(d.event.venueAddress);
-    const billedTo: [string, string][] = [
-      ['Email:', d.customer.email],
-      ['Phone:', d.customer.phone],
-      ...(placeOfSupply ? ([['Place of Supply:', `${placeOfSupply}, India`]] as [string, string][]) : []),
-      ...(d.customer.city ? ([['City:', d.customer.city]] as [string, string][]) : []),
-    ];
-    party(L, 'BILLED TO (CUSTOMER)', billedTo.slice(0, 4), d.customer.name, null);
-    const issuedBy: [string, string][] = [
-      ['Contact:', d.organizer.contactPhone || '—'],
-      ...(d.organizer.contactEmail ? ([['Email:', d.organizer.contactEmail]] as [string, string][]) : []),
-      ...(d.organizer.gstNumber ? ([['GSTIN:', d.organizer.gstNumber]] as [string, string][]) : []),
-      ...(d.organizer.panNumber ? ([['PAN:', d.organizer.panNumber]] as [string, string][]) : []),
-      ['Platform:', cfg.platformLine],
-    ];
-    party(L + colW + 4, 'ISSUED BY / ORGANIZER', issuedBy.slice(0, 4), d.organizer.name, 'VERIFIED ORGANIZER');
-    y += boxH + 28;
-
-    // ---- Event strip
-    const { venue, city } = venueParts(d.event.venueAddress);
-    doc.roundedRect(L, y, Wd, 34, 4).fillAndStroke(C.blueSoft, C.blueLine);
-    const strip: [string, string][] = [
-      ['EVENT', d.event.name],
-      ['DATE', istDateLabel(d.event.eventDate)],
-      [d.event.gateOpenTime ? 'REPORTING' : 'STARTS', istTimeLabel(d.event.gateOpenTime ?? d.event.eventDate)],
-      ['VENUE', [venue, city].filter(Boolean).join(', ')],
-    ];
-    const sw = [Wd * 0.3, Wd * 0.2, Wd * 0.14, Wd * 0.36];
-    let sx = L + 10;
-    strip.forEach(([k, v], i) => {
-      text('S', 6.5, C.muted, k, sx, y + 7);
-      text('B', 8, C.ink, v, sx, y + 17, { width: sw[i] - 14, height: 11, ellipsis: true });
-      sx += sw[i];
-    });
-    y += 46;
-
-    // ---- Item table
-    const cols = taxed
-      ? [
-          { h: '#', w: 20, a: 'left' as const },
-          { h: 'Item Description', w: 160, a: 'left' as const },
-          { h: 'SAC', w: 40, a: 'center' as const },
-          { h: 'Qty', w: 26, a: 'center' as const },
-          { h: 'Unit Price', w: 52, a: 'right' as const },
-          { h: 'Taxable Value', w: 58, a: 'right' as const },
-          { h: 'CGST (9%)', w: 50, a: 'right' as const },
-          { h: 'SGST (9%)', w: 50, a: 'right' as const },
-          { h: 'Total (INR)', w: 57, a: 'right' as const },
-        ]
-      : [
-          { h: '#', w: 24, a: 'left' as const },
-          { h: 'Item Description', w: 297, a: 'left' as const },
-          { h: 'Qty', w: 40, a: 'center' as const },
-          { h: 'Unit Price', w: 75, a: 'right' as const },
-          { h: 'Total (INR)', w: 75, a: 'right' as const },
-        ];
-    const pad = 6;
-    doc.rect(L, y, Wd, 20).fill('#1e293b');
-    let cx = L + pad;
-    for (const c of cols) {
-      text('B', 7, '#ffffff', c.h, cx, y + 6.5, { width: c.w - 4, align: c.a });
-      cx += c.w;
-    }
-    y += 20;
-    lines.forEach((l, i) => {
-      const descW = cols[1].w - 6;
-      doc.font('B').fontSize(8.5);
-      const hTitle = doc.heightOfString(l.title, { width: descW });
-      doc.font('R').fontSize(7.5);
-      const hSub = l.subtitle ? doc.heightOfString(l.subtitle, { width: descW }) : 0;
-      doc.font('R').fontSize(7);
-      const hDetail = doc.heightOfString(`Pass ID: ${l.detail}`, { width: descW });
-      const rowH = Math.max(28, hTitle + hSub + hDetail + 14);
-      if (i % 2 === 1) doc.rect(L, y, Wd, rowH).fill('#f8fafc');
-      const cells = taxed
-        ? [String(i + 1).padStart(2, '0'), '', SAC_CODE, String(l.quantity), inr(l.unitPaise), inr(l.taxablePaise), inr(l.cgstPaise), inr(l.sgstPaise), inr(l.totalPaise)]
-        : [String(i + 1).padStart(2, '0'), '', String(l.quantity), inr(l.unitPaise), inr(l.totalPaise)];
-      cx = L + pad;
-      cols.forEach((c, j) => {
-        if (j === 1) {
-          text('B', 8.5, C.ink, l.title, cx, y + 6, { width: descW });
-          let dy = y + 6 + hTitle;
-          if (l.subtitle) {
-            text('R', 7.5, C.muted, l.subtitle, cx, dy, { width: descW });
-            dy += hSub;
-          }
-          text('R', 7, C.faint, `Pass ID: ${l.detail}`, cx, dy + 1, { width: descW });
+    // Sections in the order (and visibility) set in the super admin
+    // portal's invoice designer (invoiceLayout.ts). Each draws from the
+    // running y and advances it.
+    let y = 34;
+    const sections: Record<InvoiceSectionType, (block: InvoiceBlock) => void> = {
+      header: () => {
+        // Drawn at its original fixed coordinates, shifted to y.
+        doc.save().translate(0, y - 34);
+        if (logoOk) {
+          doc.image(logo, L, 34, { fit: [150, 34] });
         } else {
-          text(j === cols.length - 1 ? 'B' : 'R', 8, C.ink, cells[j], cx, y + 7, { width: c.w - 4, align: c.a });
+          inveonMark(doc, L, 36, 30);
+          text('B', 17, C.ink, 'INVEON', L + 36, 38);
+          text('B', 7, accent, 'E V E N T S', L + 37, 58);
         }
-        cx += c.w;
-      });
-      y += rowH;
-      doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).stroke(C.line);
-    });
-    y += 14;
-
-    // ---- Payment (left) + breakdown (right)
-    const halfW = (Wd - 14) / 2;
-    const topY = y;
-    doc.roundedRect(L, y, halfW, 116, 5).stroke(C.line);
-    text('B', 8, C.ink, 'PAYMENT & TRANSACTION DETAILS', L + 12, y + 11);
-    doc.font('B').fontSize(6.5);
-    const pw = doc.widthOfString(pay.status) + 10;
-    doc.roundedRect(L + halfW - 12 - pw, y + 9, pw, 12, 6).fill(pay.paid ? C.greenSoft : C.amberSoft);
-    text('B', 6.5, pay.paid ? C.green : C.amber, pay.status, L + halfW - 7 - pw, y + 12);
-    const payRows: [string, string][] = [
-      ['Payment Gateway:', pay.gateway],
-      ['Payment Method:', pay.method],
-      ['Order ID:', d.bookingReference],
-      ['Bank Ref / TXN ID:', d.payment.gatewayReference ?? '—'],
-      ['Payment Date & Time:', d.payment.paidAt ? `${istDateLabel(d.payment.paidAt)}, ${istTimeLabel(d.payment.paidAt)} IST` : '—'],
-    ];
-    payRows.forEach(([k, v], i) => {
-      label(k, L + 12, y + 32 + i * 16, 100);
-      text('S', 8, C.ink, v, L + 112, y + 31.5 + i * 16, { width: halfW - 124, height: 11, ellipsis: true });
-    });
-
-    const bx = L + halfW + 14;
-    doc.roundedRect(bx, y, halfW, 116, 5).fill(C.panel);
-    text('B', 8, C.ink, taxed ? 'TAX & FINANCIAL BREAKDOWN' : 'AMOUNT SUMMARY', bx + 12, y + 11);
-    const brk: [string, string][] = taxed
-      ? [
-          ['Subtotal (Taxable Value):', inr(subtotal)],
-          ['CGST @ 9%:', inr(cgst)],
-          ['SGST @ 9%:', inr(sgst)],
-          ['Convenience / Platform Fee:', 'Included (₹0.00)'],
-        ]
-      : [
-          ['Subtotal:', inr(d.totalPaise)],
-          ['GST:', 'Not applicable'],
-          ['Convenience / Platform Fee:', 'Included (₹0.00)'],
+        const badge = taxed ? 'TAX INVOICE / RECEIPT' : 'PAYMENT RECEIPT';
+        doc.font('B').fontSize(9);
+        const bw = doc.widthOfString(badge) + 20;
+        doc.roundedRect(R - bw, 36, bw, 20, 10).fill(C.blueSoft);
+        text('B', 9, accent, badge, R - bw + 10, 41.5);
+        const meta: [string, string][] = [
+          ['Invoice No.', number],
+          ['Invoice Date', istDateLabel(issuedAt)],
+          ['Booking ID', d.bookingReference],
         ];
-    let by = y + 28;
-    for (const [k, v] of brk) {
-      text('R', 8, C.body, k, bx + 12, by, { width: 140 });
-      text('S', 8, C.ink, v, bx + 12, by, { width: halfW - 24, align: 'right' });
-      by += 13;
-    }
-    doc.moveTo(bx + 12, by + 1).lineTo(bx + halfW - 12, by + 1).lineWidth(0.5).stroke(C.line);
-    text('B', 9.5, C.ink, 'Total Invoice Amount:', bx + 12, by + 6, { width: 150 });
-    text('B', 11, accent, inr(d.totalPaise), bx + 12, by + 5, { width: halfW - 24, align: 'right' });
-    text('R', 6.8, C.muted, amountInWords(d.totalPaise), bx + 12, by + 21, { width: halfW - 24, height: 9, ellipsis: true });
-    y = topY + 124;
-    doc.roundedRect(L, y, Wd, 24, 4).fill(pay.paid ? '#f0fdf4' : '#fffbeb');
-    text('S', 8.5, C.body, `Amount Paid: ${inr(paidPaise)}`, L + 12, y + 8);
-    text('B', 9, pay.paid ? C.green : C.amber, `BALANCE DUE: ${inr(d.totalPaise - paidPaise)}${pay.paid ? '' : ' (payable at venue)'}`, L + 12, y + 7.5, {
-      width: Wd - 24,
-      align: 'right',
-    });
-    y += 36;
+        meta.forEach(([k, v], i) => {
+          text('R', 8, C.muted, k, R - 220, 64 + i * 12, { width: 80 });
+          text('B', 8, C.ink, v, R - 140, 64 + i * 12, { width: 140, align: 'right' });
+        });
+        doc.rect(L, 104, Wd, 2).fill(accent);
+        doc.restore();
+        y += 82;
+      },
+      parties: () => {
+        const colW = (Wd - 12) / 2;
+        const boxH = 104;
+        doc.roundedRect(L, y, Wd, boxH + 16, 6).fill(C.panel);
+        const party = (x: number, title: string, rows: [string, string][], heading: string, tag: string | null) => {
+          doc.roundedRect(x + 8, y + 8, colW - 8, boxH, 4).fillAndStroke('#ffffff', C.line);
+          text('B', 7.5, accent, title, x + 18, y + 16);
+          if (tag) {
+            doc.font('B').fontSize(6.5);
+            const tw = doc.widthOfString(tag) + 10;
+            doc.roundedRect(x + colW - 10 - tw, y + 14, tw, 11, 5.5).fill(C.greenSoft);
+            text('B', 6.5, C.green, tag, x + colW - 5 - tw, y + 16.5);
+          }
+          text('B', 11, C.ink, heading, x + 18, y + 29, { width: colW - 30, height: 14, ellipsis: true });
+          rows.forEach(([k, v], i) => {
+            label(k, x + 18, y + 48 + i * 13, 80);
+            text('R', 8, C.body, v, x + 96, y + 47.5 + i * 13, { width: colW - 106, height: 11, ellipsis: true });
+          });
+        };
+        const placeOfSupply = stateOf(d.event.venueAddress);
+        const billedTo: [string, string][] = [
+          ['Email:', d.customer.email],
+          ['Phone:', d.customer.phone],
+          ...(placeOfSupply ? ([['Place of Supply:', `${placeOfSupply}, India`]] as [string, string][]) : []),
+          ...(d.customer.city ? ([['City:', d.customer.city]] as [string, string][]) : []),
+        ];
+        party(L, 'BILLED TO (CUSTOMER)', billedTo.slice(0, 4), d.customer.name, null);
+        const issuedBy: [string, string][] = [
+          ['Contact:', d.organizer.contactPhone || '—'],
+          ...(d.organizer.contactEmail ? ([['Email:', d.organizer.contactEmail]] as [string, string][]) : []),
+          ...(d.organizer.gstNumber ? ([['GSTIN:', d.organizer.gstNumber]] as [string, string][]) : []),
+          ...(d.organizer.panNumber ? ([['PAN:', d.organizer.panNumber]] as [string, string][]) : []),
+          ['Platform:', cfg.platformLine],
+        ];
+        party(L + colW + 4, 'ISSUED BY / ORGANIZER', issuedBy.slice(0, 4), d.organizer.name, 'VERIFIED ORGANIZER');
+        y += boxH + 28;
+      },
+      event: () => {
+        const { venue, city } = venueParts(d.event.venueAddress);
+        doc.roundedRect(L, y, Wd, 34, 4).fillAndStroke(C.blueSoft, C.blueLine);
+        const strip: [string, string][] = [
+          ['EVENT', d.event.name],
+          ['DATE', istDateLabel(d.event.eventDate)],
+          [d.event.gateOpenTime ? 'REPORTING' : 'STARTS', istTimeLabel(d.event.gateOpenTime ?? d.event.eventDate)],
+          ['VENUE', [venue, city].filter(Boolean).join(', ')],
+        ];
+        const sw = [Wd * 0.3, Wd * 0.2, Wd * 0.14, Wd * 0.36];
+        let sx = L + 10;
+        strip.forEach(([k, v], i) => {
+          text('S', 6.5, C.muted, k, sx, y + 7);
+          text('B', 8, C.ink, v, sx, y + 17, { width: sw[i] - 14, height: 11, ellipsis: true });
+          sx += sw[i];
+        });
+        y += 46;
+      },
+      items: () => {
+        const cols = taxed
+          ? [
+              { h: '#', w: 20, a: 'left' as const },
+              { h: 'Item Description', w: 160, a: 'left' as const },
+              { h: 'SAC', w: 40, a: 'center' as const },
+              { h: 'Qty', w: 26, a: 'center' as const },
+              { h: 'Unit Price', w: 52, a: 'right' as const },
+              { h: 'Taxable Value', w: 58, a: 'right' as const },
+              { h: 'CGST (9%)', w: 50, a: 'right' as const },
+              { h: 'SGST (9%)', w: 50, a: 'right' as const },
+              { h: 'Total (INR)', w: 57, a: 'right' as const },
+            ]
+          : [
+              { h: '#', w: 24, a: 'left' as const },
+              { h: 'Item Description', w: 297, a: 'left' as const },
+              { h: 'Qty', w: 40, a: 'center' as const },
+              { h: 'Unit Price', w: 75, a: 'right' as const },
+              { h: 'Total (INR)', w: 75, a: 'right' as const },
+            ];
+        const pad = 6;
+        doc.rect(L, y, Wd, 20).fill('#1e293b');
+        let cx = L + pad;
+        for (const c of cols) {
+          text('B', 7, '#ffffff', c.h, cx, y + 6.5, { width: c.w - 4, align: c.a });
+          cx += c.w;
+        }
+        y += 20;
+        lines.forEach((l, i) => {
+          const descW = cols[1].w - 6;
+          doc.font('B').fontSize(8.5);
+          const hTitle = doc.heightOfString(l.title, { width: descW });
+          doc.font('R').fontSize(7.5);
+          const hSub = l.subtitle ? doc.heightOfString(l.subtitle, { width: descW }) : 0;
+          doc.font('R').fontSize(7);
+          const hDetail = doc.heightOfString(`Pass ID: ${l.detail}`, { width: descW });
+          const rowH = Math.max(28, hTitle + hSub + hDetail + 14);
+          if (i % 2 === 1) doc.rect(L, y, Wd, rowH).fill('#f8fafc');
+          const cells = taxed
+            ? [String(i + 1).padStart(2, '0'), '', SAC_CODE, String(l.quantity), inr(l.unitPaise), inr(l.taxablePaise), inr(l.cgstPaise), inr(l.sgstPaise), inr(l.totalPaise)]
+            : [String(i + 1).padStart(2, '0'), '', String(l.quantity), inr(l.unitPaise), inr(l.totalPaise)];
+          cx = L + pad;
+          cols.forEach((c, j) => {
+            if (j === 1) {
+              text('B', 8.5, C.ink, l.title, cx, y + 6, { width: descW });
+              let dy = y + 6 + hTitle;
+              if (l.subtitle) {
+                text('R', 7.5, C.muted, l.subtitle, cx, dy, { width: descW });
+                dy += hSub;
+              }
+              text('R', 7, C.faint, `Pass ID: ${l.detail}`, cx, dy + 1, { width: descW });
+            } else {
+              text(j === cols.length - 1 ? 'B' : 'R', 8, C.ink, cells[j], cx, y + 7, { width: c.w - 4, align: c.a });
+            }
+            cx += c.w;
+          });
+          y += rowH;
+          doc.moveTo(L, y).lineTo(R, y).lineWidth(0.5).stroke(C.line);
+        });
+        y += 14;
+      },
+      payment: (block) => {
+        const halfW = (Wd - 14) / 2;
+        const topY = y;
+        doc.roundedRect(L, y, halfW, 116, 5).stroke(C.line);
+        text('B', 8, C.ink, (block.title || 'PAYMENT & TRANSACTION DETAILS').toUpperCase(), L + 12, y + 11, { width: halfW - 90, height: 10, ellipsis: true });
+        doc.font('B').fontSize(6.5);
+        const pw = doc.widthOfString(pay.status) + 10;
+        doc.roundedRect(L + halfW - 12 - pw, y + 9, pw, 12, 6).fill(pay.paid ? C.greenSoft : C.amberSoft);
+        text('B', 6.5, pay.paid ? C.green : C.amber, pay.status, L + halfW - 7 - pw, y + 12);
+        const payRows: [string, string][] = [
+          ['Payment Gateway:', pay.gateway],
+          ['Payment Method:', pay.method],
+          ['Order ID:', d.bookingReference],
+          ['Bank Ref / TXN ID:', d.payment.transactionReference || '—'],
+          ['Payment Date & Time:', d.payment.paidAt ? `${istDateLabel(d.payment.paidAt)}, ${istTimeLabel(d.payment.paidAt)} IST` : '—'],
+        ];
+        payRows.forEach(([k, v], i) => {
+          label(k, L + 12, y + 32 + i * 16, 100);
+          text('S', 8, C.ink, v, L + 112, y + 31.5 + i * 16, { width: halfW - 124, height: 11, ellipsis: true });
+        });
 
-    // ---- Terms + signatory
-    const termsW = Wd * 0.64;
-    text('B', 8, C.ink, 'TERMS & DECLARATION', L, y);
-    const terms = [
-      taxed
-        ? 'This is a computer-generated tax invoice and receipt issued under Section 31 of the CGST Act, 2017, and does not require a physical signature. Prices are inclusive of GST.'
-        : 'This is a computer-generated payment receipt and does not require a physical signature. The organizer is not GST-registered, so no tax is charged or shown.',
-      `Issued for event registration and digital ticketing services provided by ${d.organizer.name} through the ${brand.platformName} ticketing platform.`,
-      `Cancellation and refund eligibility are governed by the organizer's policy. For refunds or queries, quote Booking ID ${d.bookingReference}.`,
-      ...(cfg.footerNote ? [cfg.footerNote] : []),
-    ];
-    let ty = y + 13;
-    for (const t of terms) {
-      text('R', 7.2, C.body, `•  ${t}`, L, ty, { width: termsW });
-      ty = doc.y + 3;
+        const bx = L + halfW + 14;
+        doc.roundedRect(bx, y, halfW, 116, 5).fill(C.panel);
+        text('B', 8, C.ink, taxed ? 'TAX & FINANCIAL BREAKDOWN' : 'AMOUNT SUMMARY', bx + 12, y + 11);
+        const brk: [string, string][] = taxed
+          ? [
+              ['Subtotal (Taxable Value):', inr(subtotal)],
+              ['CGST @ 9%:', inr(cgst)],
+              ['SGST @ 9%:', inr(sgst)],
+              ['Convenience / Platform Fee:', 'Included (₹0.00)'],
+            ]
+          : [
+              ['Subtotal:', inr(d.totalPaise)],
+              ['GST:', 'Not applicable'],
+              ['Convenience / Platform Fee:', 'Included (₹0.00)'],
+            ];
+        let by = y + 28;
+        for (const [k, v] of brk) {
+          text('R', 8, C.body, k, bx + 12, by, { width: 140 });
+          text('S', 8, C.ink, v, bx + 12, by, { width: halfW - 24, align: 'right' });
+          by += 13;
+        }
+        doc.moveTo(bx + 12, by + 1).lineTo(bx + halfW - 12, by + 1).lineWidth(0.5).stroke(C.line);
+        text('B', 9.5, C.ink, 'Total Invoice Amount:', bx + 12, by + 6, { width: 150 });
+        text('B', 11, accent, inr(d.totalPaise), bx + 12, by + 5, { width: halfW - 24, align: 'right' });
+        text('R', 6.8, C.muted, amountInWords(d.totalPaise), bx + 12, by + 21, { width: halfW - 24, height: 9, ellipsis: true });
+        y = topY + 124;
+        doc.roundedRect(L, y, Wd, 24, 4).fill(pay.paid ? '#f0fdf4' : '#fffbeb');
+        text('S', 8.5, C.body, `Amount Paid: ${inr(paidPaise)}`, L + 12, y + 8);
+        text('B', 9, pay.paid ? C.green : C.amber, `BALANCE DUE: ${inr(d.totalPaise - paidPaise)}${pay.paid ? '' : ' (payable at venue)'}`, L + 12, y + 7.5, {
+          width: Wd - 24,
+          align: 'right',
+        });
+        y += 36;
+      },
+      terms: (block) => {
+        const termsW = Wd * 0.64;
+        text('B', 8, C.ink, (block.title || 'TERMS & DECLARATION').toUpperCase(), L, y);
+        const terms = [
+          taxed
+            ? 'This is a computer-generated tax invoice and receipt issued under Section 31 of the CGST Act, 2017, and does not require a physical signature. Prices are inclusive of GST.'
+            : 'This is a computer-generated payment receipt and does not require a physical signature. The organizer is not GST-registered, so no tax is charged or shown.',
+          `Issued for event registration and digital ticketing services provided by ${d.organizer.name} through the ${brand.platformName} ticketing platform.`,
+          `Cancellation and refund eligibility are governed by the organizer's policy. For refunds or queries, quote Booking ID ${d.bookingReference}.`,
+          ...(cfg.footerNote ? [cfg.footerNote] : []),
+        ];
+        let ty = y + 13;
+        for (const t of terms) {
+          text('R', 7.2, C.body, `•  ${t}`, L, ty, { width: termsW });
+          ty = doc.y + 3;
+        }
+        const sx0 = L + termsW + 16;
+        const sW = R - sx0;
+        doc.roundedRect(sx0, y, sW, 70, 5).dash(3, { space: 2 }).stroke(C.blueLine).undash();
+        text('B', 7.5, C.muted, 'AUTHORIZED SIGNATORY', sx0, y + 10, { width: sW, align: 'center' });
+        text('B', 9.5, C.ink, d.organizer.name, sx0 + 6, y + 28, { width: sW - 12, align: 'center', height: 13, ellipsis: true });
+        text('S', 7, C.green, `✓ Digitally verified by ${brand.platformName}`, sx0, y + 48, { width: sW, align: 'center' });
+        y = Math.max(y + 70, ty) + 12;
+      },
+      text: (block) => {
+        const str = fillInvoiceText(block.text ?? '', tokens).trim();
+        if (!str) return;
+        if (block.title) {
+          text('B', 8, C.ink, fillInvoiceText(block.title, tokens).toUpperCase(), L, y);
+          y += 13;
+        }
+        text(block.bold ? 'B' : 'R', block.fontSize ?? 8, block.color ?? C.body, str, L, y, { width: Wd, align: block.align ?? 'left' });
+        y = doc.y + 12;
+      },
+      spacer: (block) => {
+        y += block.height ?? 16;
+      },
+    };
+    for (const block of layout.blocks) {
+      if (block.visible) sections[block.type](block);
     }
-    const sx0 = L + termsW + 16;
-    const sW = R - sx0;
-    doc.roundedRect(sx0, y, sW, 70, 5).dash(3, { space: 2 }).stroke(C.blueLine).undash();
-    text('B', 7.5, C.muted, 'AUTHORIZED SIGNATORY', sx0, y + 10, { width: sW, align: 'center' });
-    text('B', 9.5, C.ink, d.organizer.name, sx0 + 6, y + 28, { width: sW - 12, align: 'center', height: 13, ellipsis: true });
-    text('S', 7, C.green, `✓ Digitally verified by ${brand.platformName}`, sx0, y + 48, { width: sW, align: 'center' });
 
     // ---- Footer
     const fy = doc.page.height - 36 - 30;
     doc.moveTo(L, fy).lineTo(R, fy).lineWidth(0.7).stroke(C.line);
     text('R', 7.2, C.muted, `Thank you for booking with ${brand.platformName}. For billing queries, contact ${brand.supportEmail}`, L, fy + 10, { width: Wd * 0.5 });
-    inveonMark(doc, L + Wd * 0.56, fy + 8, 16);
-    text('B', 9, C.ink, brand.platformName.toUpperCase(), L + Wd * 0.56 + 20, fy + 8, { width: 150, height: 11, ellipsis: true });
+    // Footer brand block: the platform's logo image (as in the header),
+    // falling back to the Inveon Events mark and name.
+    const fx = L + Wd * 0.56;
+    let detailsX = fx + 20;
+    if (logoOk) {
+      doc.image(logo, fx, fy + 6, { fit: [60, 22], valign: 'center' });
+      detailsX = fx + 66;
+    } else {
+      inveonMark(doc, fx, fy + 8, 16);
+      text('B', 9, C.ink, brand.platformName.toUpperCase(), detailsX, fy + 8, { width: 150, height: 11, ellipsis: true });
+    }
     const company = [cfg.companyName, cfg.companyGstin ? `GSTIN ${cfg.companyGstin}` : null].filter(Boolean).join(' · ');
-    text('R', 6.5, C.muted, company, L + Wd * 0.56 + 20, fy + 19, { width: 170, height: 8, ellipsis: true });
-    if (cfg.companyAddress) text('R', 6, C.muted, cfg.companyAddress, L + Wd * 0.56 + 20, fy + 27, { width: 170, height: 8, ellipsis: true });
+    const detailsY = logoOk ? fy + 9 : fy + 19;
+    text('R', 6.5, C.muted, company, detailsX, detailsY, { width: 150, height: 8, ellipsis: true });
+    if (cfg.companyAddress) text('R', 6, C.muted, cfg.companyAddress, detailsX, detailsY + 8, { width: 150, height: 8, ellipsis: true });
     text('B', 7.5, C.ink, `INVOICE: ${number}`, R - 150, fy + 12, { width: 150, align: 'right' });
 
     doc.end();

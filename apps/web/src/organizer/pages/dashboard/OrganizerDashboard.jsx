@@ -23,6 +23,7 @@ import StatusBadge from '../../components/common/StatusBadge';
 import { useEvents } from '../../context/EventsContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 
 export default function OrganizerDashboard() {
   const { events, bookings } = useEvents();
@@ -33,6 +34,7 @@ export default function OrganizerDashboard() {
   // show invented trends ("+18.4%", "+12.2%", "+4 today") and a check-in
   // count taken from a mock attendee list.
   const [summary, setSummary] = useState(null);
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     if (!user?.token) return undefined;
     let cancelled = false;
@@ -44,7 +46,7 @@ export default function OrganizerDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [user?.token]);
+  }, [user?.token, refreshTick]);
 
   const publishedEvents = events.filter((e) => e.status === 'published');
   const totalRevenue = events.reduce((acc, curr) => acc + (curr.grossRevenue || 0), 0);

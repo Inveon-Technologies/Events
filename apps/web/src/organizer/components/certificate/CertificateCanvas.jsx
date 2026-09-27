@@ -8,9 +8,7 @@ import { useBranding, DEFAULT_CERTIFICATE_FOOTER } from '../../../lib/branding';
 // text starts at the top of its box and wraps inside its width. The
 // bottom band (from footerTop %) is the fixed footer, not editable.
 
-export const PAGE_RATIO = 1240 / 1754; // A4 landscape
-
-export function fillTokens(text, values) {
+function fillTokens(text, values) {
   return (text || '').replace(/\{(\w+)\}/g, (m, key) => (key in values ? values[key] : m));
 }
 
@@ -50,19 +48,155 @@ function InveonMark({ size }) {
   );
 }
 
+const PLACEHOLDER_PARTNERS = ['Music Partner', 'Co-Sponsor', 'Media Partner', 'Associate Partner'].map((role) => ({
+  name: 'Your Logo Here',
+  role,
+  logoUrl: null,
+}));
+
+function TextBox({ field, values, w, editable }) {
+  let text = fillTokens(field.text, values);
+  if (field.uppercase) text = text.toUpperCase();
+  return (
+    <div
+      className="w-full whitespace-pre-wrap break-words pointer-events-none"
+      style={{
+        fontFamily: `"${field.fontFamily || 'Montserrat'}"`,
+        fontSize: ((field.fontSize || 15) * w) / 1000,
+        fontWeight: field.bold ? 700 : 400,
+        color: field.color || '#1f2937',
+        textAlign: field.align || 'center',
+        letterSpacing: ((field.letterSpacing || 0) * w) / 1000,
+        lineHeight: 1.22,
+      }}
+    >
+      {text || (editable ? <span className="text-slate-400 italic text-[10px]">{field.label} (empty)</span> : null)}
+    </div>
+  );
+}
+
+// The event's partners in a row centred inside the box — the same
+// layout as the server's drawPartnersRow.
+function PartnersRow({ partners, w }) {
+  const px = (n) => (n * w) / 1000;
+  return (
+    <div className="w-full h-full flex items-stretch justify-center">
+      {partners.map((p, i) => (
+        <div
+          key={`${p.name}-${i}`}
+          className="flex flex-col items-center justify-center text-center min-w-0"
+          style={{
+            width: `min(${100 / partners.length}%, ${px(160)}px)`,
+            flex: 'none',
+            borderLeft: i ? '1px solid #d6c08a' : 'none',
+          }}
+        >
+          {p.logoUrl && <img src={p.logoUrl} alt={p.name} style={{ height: '52%', maxWidth: '76%', objectFit: 'contain' }} />}
+          <span className="font-bold text-slate-800 truncate max-w-full" style={{ fontFamily: 'Montserrat', fontSize: px(7.4) }}>
+            {(p.role || p.name).toUpperCase()}
+          </span>
+          {p.role && (
+            <span className="text-slate-500 truncate max-w-full" style={{ fontFamily: 'Montserrat', fontSize: px(7.2) }}>
+              {p.name}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// One field of the designed footer (super admin → Certificate footer).
+function FooterFieldView({ field, values, w, partners, editable }) {
+  if (field.kind === 'partners') {
+    if (partners.length) return <PartnersRow partners={partners} w={w} />;
+    return editable ? (
+      <div className="w-full h-full border-2 border-dashed border-slate-400/80 flex items-center justify-center text-slate-500 text-[10px]">
+        Event partners
+      </div>
+    ) : null;
+  }
+  if (field.kind === 'platformMark') {
+    return (
+      <div className="w-full h-full flex items-center justify-center pointer-events-none">
+        <svg viewBox="0 0 32 32" className="h-full max-w-full" aria-hidden="true">
+          <path d="M4 4L16 28L28 4H20L16 16L12 4H4Z" fill="#0050cb" />
+          <path d="M20 4L16 16L12 4H7L16 22L25 4H20Z" fill="#f97316" />
+        </svg>
+      </div>
+    );
+  }
+  if (field.kind === 'image') {
+    if (field.imageUrl) {
+      return <img src={field.imageUrl} alt={field.label} className="w-full h-full object-contain pointer-events-none" draggable={false} />;
+    }
+    return editable ? (
+      <div className="w-full h-full border-2 border-dashed border-slate-400/80 flex items-center justify-center text-slate-500 text-[10px] text-center px-1">
+        {field.label}
+      </div>
+    ) : null;
+  }
+  if (field.onlyWithPartners && !partners.length && !editable) return null;
+  return <TextBox field={field} values={values} w={w} editable={editable} />;
+}
+
+function DesignedFooter({ design, w, footerTop, partners, values, showPlaceholders, editable, selectedId, onStartDrag }) {
+  const list = partners.length > 0 ? partners : showPlaceholders || editable ? PLACEHOLDER_PARTNERS : [];
+  return (
+    <>
+      <div
+        className="absolute rounded-lg bg-white/85 pointer-events-none"
+        style={{ left: '7.5%', right: '7.5%', top: `${footerTop + 0.4}%`, bottom: '4.5%' }}
+        data-testid="certificate-footer"
+      />
+      {design.fields.map((f) => {
+        const selected = editable && f.id === selectedId;
+        const outline = editable
+          ? selected
+            ? 'outline outline-2 outline-brand-500'
+            : 'hover:outline hover:outline-1 hover:outline-brand-300'
+          : '';
+        return (
+          <div
+            key={f.id}
+            className={`absolute ${outline} ${editable ? 'cursor-move' : 'pointer-events-none'}`}
+            style={{ left: `${f.x}%`, top: `${f.y}%`, width: `${f.w}%`, height: `${f.h}%` }}
+            onPointerDown={(e) => onStartDrag?.(e, f, 'move')}
+            data-footer-field={f.id}
+          >
+            <FooterFieldView field={f} values={values} w={w} partners={list} editable={editable} />
+            {selected && (
+              <span
+                className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-brand-600 rounded-sm cursor-nwse-resize"
+                onPointerDown={(e) => onStartDrag?.(e, f, 'resize')}
+              />
+            )}
+          </div>
+        );
+      })}
+      {showPlaceholders && !editable && (
+        <span
+          className="absolute inline-flex items-center gap-1 rounded-full bg-slate-800/80 text-white pointer-events-none"
+          style={{
+            right: '8%',
+            top: `${footerTop + 1}%`,
+            fontSize: Math.max(9, (7 * w) / 1000),
+            padding: `${(1.5 * w) / 1000}px ${(5 * w) / 1000}px`,
+          }}
+        >
+          <Lock style={{ width: Math.max(9, (7 * w) / 1000), height: Math.max(9, (7 * w) / 1000) }} /> Fixed footer
+        </span>
+      )}
+    </>
+  );
+}
+
+// The footer before it became designable — only used until branding with
+// a design has loaded.
 function FixedFooter({ w, footerTop, partners, showPlaceholders }) {
   // Labels and logo set by Inveon in the super admin portal.
   const footer = useBranding()?.certificateFooter ?? DEFAULT_CERTIFICATE_FOOTER;
-  const list =
-    partners.length > 0
-      ? partners
-      : showPlaceholders
-        ? ['Music Partner', 'Co-Sponsor', 'Media Partner', 'Associate Partner'].map((role) => ({
-            name: 'Your Logo Here',
-            role,
-            logoUrl: null,
-          }))
-        : [];
+  const list = partners.length > 0 ? partners : showPlaceholders ? PLACEHOLDER_PARTNERS : [];
   const px = (n) => (n * w) / 1000;
   const logo = (name, word) =>
     footer.logoUrl ? (
@@ -147,18 +281,27 @@ export default function CertificateCanvas({
   selectedId = null,
   onSelect,
   onChangeField,
+  // Super admin footer designer: edit the footer band instead of the body.
+  footerDesign: footerDesignProp,
+  footerEditable = false,
+  selectedFooterId,
+  onSelectFooter,
+  onChangeFooterField,
 }) {
   const ref = useRef(null);
+  const brandedDesign = useBranding()?.certificateFooterDesign ?? null;
+  const footerDesign = footerDesignProp || brandedDesign;
   const w = useWidth(ref);
   const drag = useRef(null);
 
-  function startDrag(e, field, mode) {
-    if (!editable) return;
+  function startDrag(e, field, mode, target = 'body') {
+    if (target === 'body' ? !editable : !footerEditable) return;
     e.preventDefault();
     e.stopPropagation();
-    onSelect?.(field.id);
+    if (target === 'body') onSelect?.(field.id);
+    else onSelectFooter?.(field.id);
     const rect = ref.current.getBoundingClientRect();
-    drag.current = { id: field.id, mode, startX: e.clientX, startY: e.clientY, orig: { ...field }, rect };
+    drag.current = { id: field.id, mode, target, startX: e.clientX, startY: e.clientY, orig: { ...field }, rect };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   }
 
@@ -169,15 +312,18 @@ export default function CertificateCanvas({
     const dy = ((e.clientY - d.startY) / d.rect.height) * 100;
     const o = d.orig;
     const round = (n) => Math.round(n * 10) / 10;
+    // Body fields stay above the footer band; footer fields inside it.
+    const [minY, maxY, minW, minH] = d.target === 'footer' ? [footerTop, 100, 1, 0.5] : [0, footerTop, 3, 2];
+    const change = d.target === 'footer' ? onChangeFooterField : onChangeField;
     if (d.mode === 'move') {
-      onChangeField?.(d.id, {
+      change?.(d.id, {
         x: round(Math.min(100 - o.w, Math.max(0, o.x + dx))),
-        y: round(Math.min(footerTop - o.h, Math.max(0, o.y + dy))),
+        y: round(Math.min(maxY - o.h, Math.max(minY, o.y + dy))),
       });
     } else {
-      onChangeField?.(d.id, {
-        w: round(Math.min(100 - o.x, Math.max(3, o.w + dx))),
-        h: round(Math.min(footerTop - o.y, Math.max(2, o.h + dy))),
+      change?.(d.id, {
+        w: round(Math.min(100 - o.x, Math.max(minW, o.w + dx))),
+        h: round(Math.min(maxY - o.y, Math.max(minH, o.h + dy))),
       });
     }
   }
@@ -194,7 +340,10 @@ export default function CertificateCanvas({
       onPointerMove={onPointerMove}
       onPointerUp={endDrag}
       onPointerLeave={endDrag}
-      onPointerDown={() => editable && onSelect?.(null)}
+      onPointerDown={() => {
+        if (editable) onSelect?.(null);
+        if (footerEditable) onSelectFooter?.(null);
+      }}
       data-testid="certificate-canvas"
     >
       {design.backgroundUrl ? (
@@ -244,9 +393,6 @@ export default function CertificateCanvas({
             </div>
           );
         }
-        let text = fillTokens(f.text, values);
-        if (f.uppercase) text = text.toUpperCase();
-        const size = ((f.fontSize || 15) * w) / 1000;
         return (
           <div
             key={f.id}
@@ -255,20 +401,7 @@ export default function CertificateCanvas({
             onPointerDown={(e) => startDrag(e, f, 'move')}
             data-field={f.id}
           >
-            <div
-              className="w-full whitespace-pre-wrap break-words pointer-events-none"
-              style={{
-                fontFamily: `"${f.fontFamily || 'Montserrat'}"`,
-                fontSize: size,
-                fontWeight: f.bold ? 700 : 400,
-                color: f.color || '#1f2937',
-                textAlign: f.align || 'center',
-                letterSpacing: ((f.letterSpacing || 0) * w) / 1000,
-                lineHeight: 1.22,
-              }}
-            >
-              {text || (editable ? <span className="text-slate-400 italic text-[10px]">{f.label} (empty)</span> : null)}
-            </div>
+            <TextBox field={f} values={values} w={w} editable={editable} />
             {selected && (
               <span
                 className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-brand-600 rounded-sm cursor-nwse-resize"
@@ -279,7 +412,21 @@ export default function CertificateCanvas({
         );
       })}
 
-      <FixedFooter w={w} footerTop={footerTop} partners={partners} showPlaceholders={editable} />
+      {footerDesign ? (
+        <DesignedFooter
+          design={footerDesign}
+          w={w}
+          footerTop={footerTop}
+          partners={partners}
+          values={values}
+          showPlaceholders={editable}
+          editable={footerEditable}
+          selectedId={selectedFooterId ?? null}
+          onStartDrag={(e, f, mode) => startDrag(e, f, mode, 'footer')}
+        />
+      ) : (
+        <FixedFooter w={w} footerTop={footerTop} partners={partners} showPlaceholders={editable} />
+      )}
     </div>
   );
 }

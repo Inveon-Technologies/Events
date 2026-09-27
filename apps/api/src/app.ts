@@ -5,7 +5,9 @@ import { publicBookingsRouter } from './routes/publicBookings';
 import { webhooksRouter } from './routes/webhooks';
 import { integrationApiRouter } from './routes/integrationApi';
 import { superAdminRouter } from './routes/superAdmin';
+import { seoRouter } from './routes/seo';
 import { getBranding, getCertificateFooter, getInvoiceSettings } from './services/platformSettings';
+import { getCertificateFooterDesign } from './services/certificateFooterDesign';
 import { UPLOAD_DIR } from './services/eventMedia';
 import { getS3Object, isS3Configured, MEDIA_URL_PREFIX, s3KeyFromUrl } from './services/s3Storage';
 import { logger } from './logger';
@@ -98,12 +100,16 @@ export function createApp(): Express {
       companyAddress: invoice.companyAddress,
       companyGstin: invoice.companyGstin,
       certificateFooter: getCertificateFooter(),
+      // The footer band as designed (Settings → Certificate footer), so the
+      // organizer's certificate editor shows it as it will print.
+      certificateFooterDesign: getCertificateFooterDesign(),
     });
   });
 
   // Super admin portal (Inveon staff) — behind a secret path segment.
   app.use('/api/sa/:pathKey', superAdminRouter);
 
+  app.use('/api/seo', seoRouter);
   app.use('/api/v1', integrationApiRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/organizer', organizerRouter);

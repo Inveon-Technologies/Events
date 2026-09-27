@@ -44,8 +44,9 @@ function EventTicketsContent({ event }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTier, setNewTier] = useState({
     name: '',
-    price: 999,
-    quantity: 20,
+    price: '',
+    quantity: '',
+    maxPerBooking: 10,
     description: ''
   });
 
@@ -56,14 +57,14 @@ function EventTicketsContent({ event }) {
     // client-side placeholder id here would make the backend reject
     // the whole request as editing a tier that doesn't exist).
     const submittedTiers = [
-      ...(realTiers || []).map((tier) => ({ id: tier.id, name: tier.name, description: tier.description, price: tier.price, quantity: tier.quantity })),
-      { name: newTier.name, description: newTier.description, price: Number(newTier.price), quantity: Number(newTier.quantity) },
+      ...(realTiers || []).map((tier) => ({ id: tier.id, name: tier.name, description: tier.description, price: tier.price, quantity: tier.quantity, maxPerBooking: tier.maxPerBooking })),
+      { name: newTier.name, description: newTier.description, price: Number(newTier.price), quantity: Number(newTier.quantity), maxPerBooking: Number(newTier.maxPerBooking) || 10 },
     ];
     const ok = await updateEvent(event.id, { ticketTiers: submittedTiers });
     if (ok) {
       showToast(`Added new tier: ${newTier.name}`, 'success');
       setIsModalOpen(false);
-      setNewTier({ name: '', price: 999, quantity: 20, description: '' });
+      setNewTier({ name: '', price: '', quantity: '', maxPerBooking: 10, description: '' });
       await loadRealTiers();
     }
   };
@@ -126,6 +127,12 @@ function EventTicketsContent({ event }) {
                     <span className="text-slate-500">Sales Progress</span>
                     <span className="font-bold text-slate-800">{tier.sold} / {tier.quantity} ({percent}%)</span>
                   </div>
+                  {tier.maxPerBooking ? (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-500">Max per booking</span>
+                      <span className="font-bold text-slate-800">{tier.maxPerBooking}</span>
+                    </div>
+                  ) : null}
                   <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                     <div
                       className={`h-2 rounded-full ${percent >= 100 ? 'bg-slate-700' : 'bg-brand-600'}`}
@@ -160,6 +167,8 @@ function EventTicketsContent({ event }) {
               <input
                 type="number"
                 required
+                min={0}
+                placeholder="0 for free"
                 value={newTier.price}
                 onChange={(e) => setNewTier({ ...newTier, price: e.target.value })}
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
@@ -175,6 +184,20 @@ function EventTicketsContent({ event }) {
                 className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">Max tickets per booking</label>
+            <input
+              type="number"
+              required
+              min={1}
+              max={50}
+              value={newTier.maxPerBooking}
+              onChange={(e) => setNewTier({ ...newTier, maxPerBooking: e.target.value })}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg"
+            />
+            <p className="mt-1 text-[11px] text-slate-500">The most tickets of this pass one customer can buy in a single booking.</p>
           </div>
 
           <div>

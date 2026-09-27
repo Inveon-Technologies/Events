@@ -3,6 +3,7 @@ import { useNotifications } from './NotificationContext';
 import { useAuth } from './AuthContext';
 import { istParts } from '../lib/istTime';
 import { apiRequest, ApiError } from '../lib/api';
+import { useRefreshTick, notifyDataChanged } from '../lib/liveRefresh';
 
 const EventsContext = createContext();
 
@@ -166,6 +167,9 @@ export function EventsProvider({ children }) {
     setBookingsLoadError(null);
   }, [user?.isLoggedIn]);
 
+  // Loads on login, then keeps both lists current (see useRefreshTick):
+  // new bookings, sales and check-ins show up without reloading the page.
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     if (!user?.isLoggedIn || !user?.token) return;
     let cancelled = false;
@@ -179,7 +183,8 @@ export function EventsProvider({ children }) {
       })
       .catch((err) => {
         if (cancelled) return;
-        setEventsLoadError(err.message ?? 'Failed to load events');
+        // A failed background refresh keeps the list already on screen.
+        if (refreshTick === 0) setEventsLoadError(err.message ?? 'Failed to load events');
         setEventsLoaded(true);
       });
 
@@ -190,13 +195,13 @@ export function EventsProvider({ children }) {
         setBookingsLoadError(null);
       })
       .catch((err) => {
-        if (!cancelled) setBookingsLoadError(err.message ?? 'Failed to load bookings');
+        if (!cancelled && refreshTick === 0) setBookingsLoadError(err.message ?? 'Failed to load bookings');
       });
 
     return () => {
       cancelled = true;
     };
-  }, [user?.isLoggedIn, user?.token]);
+  }, [user?.isLoggedIn, user?.token, refreshTick]);
 
   // Event actions
   const addEvent = async (newEvent) => {
@@ -227,6 +232,7 @@ export function EventsProvider({ children }) {
           description: tier.description,
           price: tier.price,
           quantity: tier.quantity,
+          maxPerBooking: tier.maxPerBooking,
         })),
         scheduleItems: (newEvent.scheduleItems || []).map((s) => ({
           time: s.time,
@@ -267,6 +273,7 @@ export function EventsProvider({ children }) {
       await apiRequest(`/organizer/events/${id}`, { method: 'PATCH', token: user?.token, body: updatedFields });
       showToast('Event updated successfully!', 'success');
       await refreshEvents();
+      notifyDataChanged();
       return true;
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not update this event.', 'error');
@@ -309,6 +316,7 @@ export function EventsProvider({ children }) {
             description: tier.description,
             price: tier.price,
             quantity: tier.quantity,
+            maxPerBooking: tier.maxPerBooking,
           })),
           scheduleItems: (formData.scheduleItems || []).map((s) => ({ time: s.time, title: s.title, description: s.description })),
           packingChecklist: (formData.packingChecklist || []).map((p) => ({ item: p.item, mandatory: p.mandatory })),
@@ -317,6 +325,7 @@ export function EventsProvider({ children }) {
         },
       });
       await refreshEvents();
+      notifyDataChanged();
       return result;
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not save changes to this event.', 'error');
@@ -329,6 +338,7 @@ export function EventsProvider({ children }) {
       const created = await apiRequest(`/organizer/events/${id}/duplicate`, { method: 'POST', token: user?.token });
       showToast('Duplicated as a draft — including its images, video, and policy', 'info');
       await refreshEvents();
+      notifyDataChanged();
       return created;
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not duplicate this event.', 'error');
@@ -342,6 +352,7 @@ export function EventsProvider({ children }) {
       await apiRequest(`/organizer/events/${id}`, { method: 'DELETE', token: user?.token });
       showToast(`Event "${event?.title || id}" deleted`, 'info');
       await refreshEvents();
+      notifyDataChanged();
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not delete this event.', 'error');
     }
@@ -352,6 +363,7 @@ export function EventsProvider({ children }) {
       await apiRequest(`/organizer/events/${id}`, { method: 'PATCH', token: user?.token, body: { status: newStatus } });
       showToast(`Event status updated to ${newStatus}`, 'success');
       await refreshEvents();
+      notifyDataChanged();
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not update this event\u2019s status.', 'error');
     }
@@ -362,6 +374,7 @@ export function EventsProvider({ children }) {
       const result = await apiRequest(`/organizer/events/${id}/cancel`, { method: 'POST', token: user?.token, body: { reason } });
       showToast(`Event cancelled — ${result.cancelledBookings.length} booking(s) refunded`, 'info');
       await refreshEvents();
+      notifyDataChanged();
       return result;
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not cancel this event.', 'error');
@@ -378,6 +391,7 @@ export function EventsProvider({ children }) {
       });
       showToast(`Booking cancelled — ₹${Math.round(result.refundAmountPaise / 100)} refund ${result.refundStatus ? `(${result.refundStatus})` : 'processed'}`, 'success');
       await refreshEvents();
+      notifyDataChanged();
       return result;
     } catch (err) {
       showToast(err instanceof ApiError ? err.message : 'Could not cancel this booking.', 'error');

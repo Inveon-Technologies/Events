@@ -19,6 +19,7 @@ import EventGalleryCard from '../../components/EventGalleryCard';
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 
 function formatRupees(paise) {
   return `₹${Math.round((paise || 0) / 100).toLocaleString('en-IN')}`;
@@ -38,6 +39,7 @@ function EventDashboardContent({ event }) {
   const [ticketData, setTicketData] = useState(null);
   const [financials, setFinancials] = useState(null);
 
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     let cancelled = false;
     const token = user?.token;
@@ -54,7 +56,7 @@ function EventDashboardContent({ event }) {
     return () => {
       cancelled = true;
     };
-  }, [event.id, user?.token]);
+  }, [event.id, user?.token, refreshTick]);
 
   const eventBookings = bookings.filter((b) => b.eventId === event.id);
   const paidBookings = eventBookings.filter((b) => b.amount > 0 && b.bookingStatus !== 'cancelled');

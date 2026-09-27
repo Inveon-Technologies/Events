@@ -106,6 +106,7 @@ export default function CreateEvent() {
         name: '',
         price: 0,
         quantity: 0,
+        maxPerBooking: 10,
         sold: 0,
         description: ''
       }
@@ -153,7 +154,7 @@ export default function CreateEvent() {
           partners: (data.partners || []).map((p, i) => ({ id: `partner-${i}`, name: p.name || '', role: p.role || '', logoUrl: p.logoUrl || null })),
           genderRestriction: data.genderRestriction || '',
           ticketTiers: data.ticketTiers.length
-            ? data.ticketTiers.map((t) => ({ id: t.id, name: t.name, price: t.price, quantity: t.quantity, sold: t.sold, description: t.description || '' }))
+            ? data.ticketTiers.map((t) => ({ id: t.id, name: t.name, price: t.price, quantity: t.quantity, maxPerBooking: t.maxPerBooking ?? 10, sold: t.sold, description: t.description || '' }))
             : prev.ticketTiers,
           cancellationPolicy: {
             refundable: Boolean(data.allowSelfServiceCancellation),
@@ -463,11 +464,14 @@ export default function CreateEvent() {
   const addTier = () => {
     const newTier = {
       id: `tier-${Date.now()}`,
-      name: 'New Ticket Tier',
-      price: 999,
-      quantity: 25,
+      // Starts blank for the organizer to fill in — no sample name,
+      // price or perks that could be published by mistake.
+      name: '',
+      price: 0,
+      quantity: 0,
+      maxPerBooking: 10,
       sold: 0,
-      description: 'Description of inclusions and perks.'
+      description: ''
     };
     setFormData((prev) => ({
       ...prev,
@@ -1025,6 +1029,7 @@ export default function CreateEvent() {
                       <input
                         type="text"
                         value={tier.name}
+                        placeholder="e.g. General Entry"
                         onChange={(e) => {
                           const updated = [...formData.ticketTiers];
                           updated[idx].name = e.target.value;
@@ -1048,7 +1053,7 @@ export default function CreateEvent() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Quantity / Allotment</label>
                       <input
@@ -1061,6 +1066,22 @@ export default function CreateEvent() {
                         }}
                         className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg"
                       />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Max tickets per booking</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={tier.maxPerBooking ?? 10}
+                        onChange={(e) => {
+                          const updated = [...formData.ticketTiers];
+                          updated[idx].maxPerBooking = Number(e.target.value);
+                          setFormData({ ...formData, ticketTiers: updated });
+                        }}
+                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg"
+                      />
+                      <p className="mt-1 text-[10px] text-slate-500">Most one customer can book at once (1 to 50).</p>
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">Inclusions / Description</label>

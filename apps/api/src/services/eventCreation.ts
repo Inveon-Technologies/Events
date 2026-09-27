@@ -34,6 +34,18 @@ export interface CreateEventTicketTier {
   description?: string;
   price: number; // rupees — converted to paise here, not by the caller
   quantity: number;
+  // Most tickets of this tier one customer can buy in a single booking.
+  // Optional: omitted keeps the column default (10).
+  maxPerBooking?: number;
+}
+
+export const MAX_PER_BOOKING_LIMIT = 50;
+
+export function validateMaxPerBooking(tier: CreateEventTicketTier) {
+  if (tier.maxPerBooking === undefined) return;
+  if (!Number.isInteger(tier.maxPerBooking) || tier.maxPerBooking < 1 || tier.maxPerBooking > MAX_PER_BOOKING_LIMIT) {
+    throw new ValidationError(`Max tickets per booking for "${tier.name}" must be a whole number from 1 to ${MAX_PER_BOOKING_LIMIT}`);
+  }
 }
 
 export interface CreateEventScheduleItem {
@@ -219,6 +231,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
     if (!tier.name?.trim()) throw new ValidationError('Every ticket tier needs a name');
     if (!(tier.price >= 0)) throw new ValidationError(`Invalid price for tier "${tier.name}"`);
     if (!(tier.quantity > 0)) throw new ValidationError(`Invalid quantity for tier "${tier.name}"`);
+    validateMaxPerBooking(tier);
   }
 
   // A draft can always be saved — an organizer needs to be able to
@@ -305,6 +318,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
           name: tier.name.trim(),
           description: tier.description?.trim() || null,
           pricePaise: Math.round(tier.price * 100),
+          ...(tier.maxPerBooking !== undefined ? { maxPerBooking: tier.maxPerBooking } : {}),
           quotaTotal,
           quotaRemaining: quotaTotal,
         },

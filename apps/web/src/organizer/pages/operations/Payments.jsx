@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { DollarSign, CreditCard, ArrowDownRight, Building, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 import StatCard from '../../components/common/StatCard';
 import StatusBadge from '../../components/common/StatusBadge';
 
@@ -15,6 +16,7 @@ export default function Payments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     let cancelled = false;
     apiRequest('/organizer/payments', { token: user?.token })
@@ -22,7 +24,7 @@ export default function Payments() {
         if (!cancelled) setData(res);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not load payments.');
+        if (!cancelled && refreshTick === 0) setError(err instanceof ApiError ? err.message : 'Could not load payments.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -30,7 +32,7 @@ export default function Payments() {
     return () => {
       cancelled = true;
     };
-  }, [user?.token]);
+  }, [user?.token, refreshTick]);
 
   if (loading) return <p className="text-xs text-slate-500">Loading…</p>;
   if (error || !data) return <p className="text-xs text-red-600">{error || 'Could not load payments.'}</p>;

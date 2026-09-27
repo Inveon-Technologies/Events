@@ -9,7 +9,7 @@ import {
   OTP_RESEND_COOLDOWN_SECONDS,
 } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
-import { otpEmail } from '../emails/templates';
+import { otpMessage } from '../emails/templates';
 import { signCustomerSessionToken } from '../auth/jwt';
 import { logger, logOtpForDevelopment } from '../logger';
 import { ticketLinkToken } from './ticketLinks';
@@ -145,8 +145,11 @@ export async function initiateCustomerLogin(bookingReference: string, contactRaw
   }
 
   try {
-    const html = otpEmail({ recipientName: booking.primaryContactName, otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES });
-    await sendEmail({ to: booking.primaryContactEmail, subject: `Your Inveon Events login code: ${code}`, html });
+    const message = otpMessage(
+      { recipientName: booking.primaryContactName, otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES },
+      `Your Inveon Events login code: ${code}`,
+    );
+    await sendEmail({ to: booking.primaryContactEmail, ...message });
   } catch (err) {
     logger.error({ err, bookingReference: booking.bookingReference }, 'Customer login code email failed');
     await clearOtpResendCooldown('customer_login', email);

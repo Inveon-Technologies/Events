@@ -245,50 +245,6 @@ export function InvoicePage() {
   );
 }
 
-export function CertificateFooterPage() {
-  return (
-    <SettingsForm
-      section="certificateFooter"
-      endpoint="/settings/certificate-footer"
-      intro="Certificate footer|The fixed band at the bottom of every participation certificate (organizers can’t change it)."
-      fields={[
-        { key: 'supportedByLabel', label: 'Partners heading' },
-        { key: 'technologyPartnerLabel', label: 'Left label' },
-        { key: 'technologyPartnerName', label: 'Left name' },
-        { key: 'technologyPartnerTagline', label: 'Left tagline' },
-        { key: 'bookingPartnerLabel', label: 'Right label' },
-        { key: 'bookingPartnerName', label: 'Right name' },
-        { key: 'bookingPartnerTagline', label: 'Right tagline' },
-        { key: 'logoUrl', label: 'Logo (replaces the drawn mark + name on both sides)', kind: 'image' },
-      ]}
-      preview={(v) => (
-        <div className="bg-[#f6efdc] border-4 border-[#0b1c3f] p-3 text-center">
-          <p className="text-[9px] font-bold tracking-[0.2em] text-[#0b1c3f]">{v.supportedByLabel}</p>
-          <p className="text-[10px] text-slate-500 my-1">Event partners appear here</p>
-          <div className="grid grid-cols-2 gap-2 border-t border-[#d6c08a] pt-2">
-            {[
-              [v.technologyPartnerLabel, v.technologyPartnerName, v.technologyPartnerTagline],
-              [v.bookingPartnerLabel, v.bookingPartnerName, v.bookingPartnerTagline],
-            ].map(([label, name, tag], i) => (
-              <div key={i}>
-                <p className="text-[8px] font-bold tracking-widest text-slate-600">{label}</p>
-                {v.logoUrl ? (
-                  <img src={v.logoUrl} alt="" className="h-6 mx-auto object-contain" />
-                ) : (
-                  <p className="font-black text-sm leading-none">
-                    {name}
-                    <span className="block text-[7px] tracking-[0.3em] text-brand-700">{tag}</span>
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    />
-  );
-}
-
 const GROUP_TITLES: Record<string, string> = {
   email: 'Email (Gmail SMTP)',
   cashfree: 'Cashfree payments',

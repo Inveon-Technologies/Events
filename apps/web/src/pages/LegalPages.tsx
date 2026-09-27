@@ -14,7 +14,7 @@ const LEGAL_LAST_UPDATED = '25 September 2026';
 const FALLBACK = {
   companyName: 'Inveon Technologies',
   platformName: 'Inveon Events',
-  email: 'inveontechnologies@gmail.com',
+  email: 'office.inveontech@gmail.com',
   phone: '+91 7030411076',
   address: 'Pune, Maharashtra, India',
   website: 'https://events.inveontechnologies.in',

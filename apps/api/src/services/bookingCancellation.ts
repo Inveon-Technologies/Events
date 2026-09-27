@@ -6,6 +6,8 @@ import { releaseBookingTickets } from './bookingTickets';
 import { cashfreeCreateRefund } from './cashfreeClient';
 import { sendEmail, isEmailConfigured } from './email';
 import { bookingCancellationEmail, eventCancelledOrganizerSummaryEmail } from '../emails/templates';
+import { renderCustomEmail } from './emailTemplates';
+import { getBranding } from './platformSettings';
 import { logger } from '../logger';
 import { enqueueNotification } from '../queue';
 import { enqueueWhatsApp } from './whatsapp/messages';
@@ -298,11 +300,26 @@ export async function deliverBookingCancellationEmail(bookingId: string, isEvent
     refundAmountPaise: booking.refundAmountPaise ?? 0,
     refundStatus: booking.refundStatus ?? null,
   });
+  const refundPaise = booking.refundAmountPaise ?? 0;
+  const custom = renderCustomEmail('bookingCancellation', {
+    customerName: booking.primaryContactName,
+    eventName: event.name,
+    eventDate: formatEventDateLabel(event.eventDate),
+    bookingReference: booking.bookingReference,
+    reason: booking.cancellationReason ?? '',
+    refundAmount: `\u20b9${(refundPaise / 100).toLocaleString('en-IN')}`,
+    refundStatus: booking.refundStatus ?? 'Processing',
+    noRefund: refundPaise === 0 ? 'yes' : '',
+    platformName: getBranding().platformName,
+    supportEmail: getBranding().supportEmail,
+  });
   await sendEmail({
     to: booking.primaryContactEmail,
-    subject: isEventCancellation
-      ? `Event cancelled: ${event.name} (${booking.bookingReference})`
-      : `Booking cancelled: ${event.name} (${booking.bookingReference})`,
-    html,
+    subject:
+      custom?.subject ??
+      (isEventCancellation
+        ? `Event cancelled: ${event.name} (${booking.bookingReference})`
+        : `Booking cancelled: ${event.name} (${booking.bookingReference})`),
+    html: custom?.html ?? html,
   });
 }
