@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { formatINR } from '../lib/format';
 import { fetchDiscoverEvents, DiscoverEvent } from '../lib/events';
@@ -47,6 +47,19 @@ export function HomePage() {
       cancelled = true;
     };
   }, []);
+
+  // Arriving at /#explore (the header and footer Explore links from
+  // another page): scroll to that section. Runs again once the events
+  // above it have loaded, since they push the section down.
+  const location = useLocation();
+  useEffect(() => {
+    const id = location.hash.slice(1);
+    if (!id) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: eventsLoading ? 'auto' : 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [location.hash, location.key, eventsLoading]);
 
   function toggleFavorite(id: string, e: React.MouseEvent) {
     e.preventDefault();

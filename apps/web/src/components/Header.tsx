@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { Icon } from './Icon';
+import { ExploreLink } from './ExploreLink';
 import { clearCustomerSession, useCustomerSession } from '../lib/customerSession';
 import { useBranding } from '../lib/branding';
 import { INVEON_EVENTS_LOGO_URL } from '../lib/brand';
 
 const NAV_LINKS = [
-  { to: '/', label: 'Explore' },
+  { to: '/#explore', label: 'Explore' },
   { to: '/events', label: 'All Events' },
   { to: '/organizers', label: 'Organizers' },
-  { to: '/#categories', label: 'Categories' },
+  { to: '/#explore', label: 'Categories' },
   { to: '/organizer/login', label: 'Host an Event' },
 ];
 
@@ -35,12 +36,13 @@ export function Header() {
     }
   }
 
-  function handleNavClick(to: string) {
-    if (to.includes('#categories')) {
-      const el = document.getElementById('categories');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth' });
-      }
+  function handleNavClick(to: string, e: React.MouseEvent) {
+    // Already on the home page: scroll to the section without adding a
+    // history entry. Elsewhere the link navigates to /#explore and
+    // HomePage scrolls there.
+    if (to.startsWith('/#') && window.location.pathname === '/') {
+      e.preventDefault();
+      document.getElementById(to.slice(2))?.scrollIntoView({ behavior: 'smooth' });
     }
   }
 
@@ -59,18 +61,11 @@ export function Header() {
 
         {/* Center Nav Links */}
         <nav className="hidden md:flex items-center gap-6 lg:gap-8 text-sm font-medium text-slate-600">
-          <a
-            href="#explore"
-            onClick={(e) => {
-              if (window.location.pathname === '/') {
-                e.preventDefault();
-                document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth' });
-              }
-            }}
+          <ExploreLink
             className="hover:text-brand-600 transition-colors"
           >
             Explore
-          </a>
+          </ExploreLink>
           <Link
             to="/events"
             className="hover:text-brand-600 transition-colors"
@@ -83,21 +78,14 @@ export function Header() {
           >
             Organizers
           </Link>
-          <a
-            href="#explore"
-            onClick={(e) => {
-              if (window.location.pathname === '/') {
-                e.preventDefault();
-                document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth' });
-              }
-            }}
+          <ExploreLink
             className="relative group cursor-pointer flex items-center gap-1 hover:text-brand-600 transition-colors"
           >
             <span>Categories</span>
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-4 h-4 transition-transform group-hover:rotate-180">
               <path d="m6 9 6 6 6-6"></path>
             </svg>
-          </a>
+          </ExploreLink>
           <Link
             to="/organizer/login"
             className="hover:text-brand-600 transition-colors"
@@ -194,11 +182,12 @@ export function Header() {
         <div className="md:hidden border-t border-slate-100 bg-white px-4 py-4 space-y-3">
           {NAV_LINKS.map((link) => (
             <NavLink
-              key={link.to}
+              key={link.label}
               to={link.to}
-              onClick={() => {
+              end
+              onClick={(e) => {
                 setMobileOpen(false);
-                handleNavClick(link.to);
+                handleNavClick(link.to, e);
               }}
               className="block py-2 text-[15px] font-medium text-slate-700 hover:text-primary"
             >

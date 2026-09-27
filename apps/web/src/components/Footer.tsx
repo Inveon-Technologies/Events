@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { ExploreLink } from './ExploreLink';
 
 export function Footer() {
   return (
@@ -25,32 +26,18 @@ export function Footer() {
             <h4 className="text-sm font-bold text-white uppercase tracking-wider mb-4">Quick Links</h4>
             <ul className="space-y-2.5 text-sm">
               <li>
-                <a
-                  href="#explore"
-                  onClick={(e) => {
-                    if (window.location.pathname === '/') {
-                      e.preventDefault();
-                      document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }}
+                <ExploreLink
                   className="hover:text-white transition-colors"
                 >
                   Explore
-                </a>
+                </ExploreLink>
               </li>
               <li>
-                <a
-                  href="#explore"
-                  onClick={(e) => {
-                    if (window.location.pathname === '/') {
-                      e.preventDefault();
-                      document.getElementById('explore')?.scrollIntoView({ behavior: 'smooth' });
-                    }
-                  }}
+                <ExploreLink
                   className="hover:text-white transition-colors"
                 >
                   Categories
-                </a>
+                </ExploreLink>
               </li>
               <li>
                 <Link to="/organizer/login" className="hover:text-white transition-colors">
