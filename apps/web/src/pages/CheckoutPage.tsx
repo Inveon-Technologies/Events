@@ -201,13 +201,14 @@ export function CheckoutPage() {
       return;
     }
 
-    if (event?.genderRestriction && !genderConfirmed) {
-      setGenderDialogOpen(true);
+    if (!selectedTier) {
+      showToast('Please select at least 1 ticket.');
       return;
     }
 
-    if (!selectedTier) {
-      showToast('Please select at least 1 ticket.');
+    // Asked last, so a confirmed dialog always goes straight to payment.
+    if (event?.genderRestriction && !genderConfirmed) {
+      setGenderDialogOpen(true);
       return;
     }
 

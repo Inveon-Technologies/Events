@@ -89,6 +89,26 @@ describe('seo', () => {
     expect(html).toContain('<div id="root"><h1>Rajgad</h1></div>');
   });
 
+  it('keeps "$" in page text and drops the shell\'s default Open Graph tags', () => {
+    const shell =
+      '<html><head><title>x</title><meta property="og:type" content="website" /><meta property="og:site_name" content="Inveon Events" /></head><body><div id="root"></div></body></html>';
+    const html = renderShell(shell, {
+      status: 200,
+      title: "Rock $& Roll $' Night",
+      description: 'Win $100',
+      canonical: 'https://events.example.in/events/x',
+      image: null,
+      jsonLd: [],
+      ogType: 'event',
+      bodyHtml: "<h1>Rock $& Roll $' Night</h1>",
+    });
+    expect(html).toContain("<h1>Rock $& Roll $' Night</h1>");
+    expect(html).toContain('Rock $&amp; Roll $&#39; Night');
+    expect(html.match(/property="og:type"/g)).toHaveLength(1);
+    expect(html).toContain('<meta property="og:type" content="event" />');
+    expect(html.match(/property="og:site_name"/g)).toHaveLength(1);
+  });
+
   it('truncates on a word boundary', () => {
     expect(truncate('one two three four five', 12)).toBe('one two…');
   });

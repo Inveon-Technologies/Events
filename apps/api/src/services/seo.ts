@@ -601,9 +601,16 @@ export function renderShell(shell: string, p: PageSeo): string {
   let html = shell
     .replace(/<title>[\s\S]*?<\/title>/i, '')
     .replace(/<meta\s+name="description"[^>]*>/gi, '')
-    .replace(/<link\s+rel="canonical"[^>]*>/gi, '');
-  html = html.replace(/<\/head>/i, `    ${headTags(p)}\n  </head>`);
-  if (p.bodyHtml) html = html.replace(/<div id="root"><\/div>/i, `<div id="root">${p.bodyHtml}</div>`);
+    .replace(/<link\s+rel="canonical"[^>]*>/gi, '')
+    // The shell's own defaults (og:site_name, og:type, …) — headTags sets
+    // them per page, and crawlers take the first of a duplicate.
+    .replace(/<meta\s+(?:property="og:|name="twitter:)[^>]*>\s*/gi, '');
+  // Replacer functions, not strings: page text can contain "$&" or "$'",
+  // which a replacement string would expand.
+  const head = headTags(p);
+  html = html.replace(/<\/head>/i, () => `    ${head}\n  </head>`);
+  const body = p.bodyHtml;
+  if (body) html = html.replace(/<div id="root"><\/div>/i, () => `<div id="root">${body}</div>`);
   return html;
 }
 
