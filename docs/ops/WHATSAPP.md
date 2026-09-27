@@ -237,6 +237,16 @@ of `events-api`):
 docker compose exec events-api node dist/scripts/whatsappTest.js 919922565938
 ```
 
+From any folder, calling the container by name also works
+(`docker ps` lists it; on production it's `events_api`):
+
+```
+docker exec events_api node dist/scripts/whatsappTest.js 919922565938
+```
+
+The script uses the keys saved in the Super Admin portal, falling back to
+`.env`, just like the API.
+
 Each line shows ✓ sent, or ✗ with the provider's error and what to fix:
 
 ```

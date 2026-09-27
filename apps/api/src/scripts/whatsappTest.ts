@@ -10,6 +10,7 @@ import {
   WHATSAPP_MESSAGES,
   type WhatsAppMessage,
 } from '../services/whatsapp/client';
+import { loadPlatformSettings } from '../services/platformSettings';
 
 // Sends each WhatsApp template once to a test number, to check the
 // provider setup end to end (docs/ops/WHATSAPP.md, step 8):
@@ -78,6 +79,8 @@ function samples(): Record<WhatsAppMessage, { params: string[]; headerImage?: { 
 }
 
 function hint(message: string): string {
+  if (/no plan active/i.test(message))
+    return 'The AiSensy account is on the free plan, which has no API access. Upgrade to Basic or higher (step 4).';
   if (/campaign/i.test(message)) return 'Check the API campaign exists with exactly this name and is Live (step 6).';
   if (/template/i.test(message)) return 'Check the template is Approved and its {{…}} count matches (step 5).';
   if (/media|image|download/i.test(message))
@@ -97,10 +100,12 @@ async function main(): Promise<void> {
     console.error('Usage: node dist/scripts/whatsappTest.js <phone, e.g. 919922565938> [--booking INV-BKG-…]');
     process.exit(2);
   }
+  // Keys saved in the Super Admin portal win over .env, as in the API itself.
+  await loadPlatformSettings();
   const provider = whatsAppProvider();
   if (!provider) {
     console.error(
-      'WhatsApp is not configured: set WHATSAPP_PROVIDER=aisensy and AISENSY_API_KEY (or the Meta settings) in apps/api/.env, then restart.',
+      'WhatsApp is not configured: set WHATSAPP_PROVIDER=aisensy and AISENSY_API_KEY (or the Meta settings) in Super Admin → Settings → Integrations, or in apps/api/.env.',
     );
     process.exit(2);
   }
