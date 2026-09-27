@@ -4,7 +4,7 @@ The app sends five WhatsApp messages once this is set up:
 
 | Message | When | Template / API campaign name |
 |---|---|---|
-| Booking confirmation, as a ticket with QR code and View Ticket / PDF buttons | Right after booking, or once online payment succeeds | `booking_confirmation` |
+| Booking confirmation, as a ticket with QR code and View Ticket / PDF buttons | Right after booking, or once online payment succeeds | `booking_confirmation_v2` |
 | Event reminder | About 3 hours before the event starts | `event_reminder` |
 | Booking cancelled | When a customer or the organizer cancels | `booking_cancelled` |
 | Thank-you | 10:00 AM (India time) the day after the event, with photo and rating links | `post_event_thanks` |
@@ -80,7 +80,7 @@ template below:
 
 Submit, then wait for **Approved**. That's usually minutes, at most a day.
 
-### `booking_confirmation`
+### `booking_confirmation_v2`
 
 This one looks like a ticket: the header is a picture of the ticket (event
 photo, details and the QR code), and it has **View Ticket** and **Download
@@ -201,7 +201,7 @@ Samples: `Rahul` · `Rajgad Sunrise Trek`
 The app sends each message by triggering an AiSensy **API campaign**. In
 **Campaigns → Launch → API Campaign**:
 
-1. **Campaign name:** exactly the template name: `booking_confirmation`,
+1. **Campaign name:** exactly the template name: `booking_confirmation_v2`,
    `event_reminder`, `booking_cancelled`, `post_event_thanks`,
    `certificate_ready`.
 2. Pick the matching template.
@@ -250,7 +250,7 @@ The script uses the keys saved in the Super Admin portal, falling back to
 Each line shows ✓ sent, or ✗ with the provider's error and what to fix:
 
 ```
-✓ booking_confirmation   sent (picture: https://…/images/whatsapp-sample-card.jpg)
+✓ booking_confirmation_v2 sent (picture: https://…/images/whatsapp-sample-card.jpg)
 ✓ event_reminder         sent
 ✓ booking_cancelled      sent
 ✗ post_event_thanks      WhatsApp provider returned 400: … campaign …

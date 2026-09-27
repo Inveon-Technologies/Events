@@ -74,7 +74,7 @@ describe('WhatsApp client', () => {
     expect(url).toBe('https://backend.aisensy.com/campaign/t1/api/v2');
     expect(JSON.parse(init.body)).toEqual({
       apiKey: 'secret-key',
-      campaignName: 'booking_confirmation',
+      campaignName: 'booking_confirmation_v2',
       destination: '919876543210',
       userName: 'Asha',
       templateParams: ['Asha', 'Sunrise Trek', '-', 'INV-1'],

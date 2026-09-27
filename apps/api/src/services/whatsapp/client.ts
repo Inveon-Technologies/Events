@@ -14,9 +14,9 @@ export type WhatsAppProvider = 'aisensy' | 'meta';
 
 // One entry per message the app sends. The value is the default template
 // name (Meta) / API campaign name (AiSensy); each can be overridden, e.g.
-// WHATSAPP_TEMPLATE_BOOKING_CONFIRMATION=booking_confirmation_v2.
+// WHATSAPP_TEMPLATE_BOOKING_CONFIRMATION=booking_confirmation_v3.
 export const WHATSAPP_MESSAGES = {
-  bookingConfirmation: 'booking_confirmation',
+  bookingConfirmation: 'booking_confirmation_v2',
   eventReminder: 'event_reminder',
   bookingCancelled: 'booking_cancelled',
   postEventThanks: 'post_event_thanks',
