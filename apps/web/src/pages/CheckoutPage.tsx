@@ -6,6 +6,7 @@ import { EventUnavailablePage } from './EventUnavailablePage';
 import { formatINR } from '../lib/format';
 import { apiRequest, ApiError } from '../organizer/lib/api';
 import { useBranding } from '../lib/branding';
+import { INVEON_EVENTS_LOGO_URL } from '../lib/brand';
 
 interface Attendee {
   name: string;
@@ -75,6 +76,13 @@ export function CheckoutPage() {
   }, [event, location.state]);
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  // The step being animated out, and which way: going forward the
+  // tickets panel slides off to the left while participants slides in
+  // from the right; going back does the reverse.
+  const [leavingStep, setLeavingStep] = useState<{ step: 1 | 2; dir: 'forward' | 'back' } | null>(null);
+  const leaveTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
+  const stepsTopRef = useRef<HTMLDivElement>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
   const [isEventInfoOpen, setIsEventInfoOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -175,8 +183,18 @@ export function CheckoutPage() {
       showToast('Please select at least 1 ticket to proceed.');
       return;
     }
+    if (step === currentStep) return;
+    const from = currentStep as 1 | 2;
+    window.clearTimeout(leaveTimer.current);
+    setLeavingStep({ step: from, dir: step > from ? 'forward' : 'back' });
     setCurrentStep(step);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    leaveTimer.current = window.setTimeout(() => setLeavingStep(null), 420);
+    // Bring the stepper back into view if the customer scrolled past it
+    // (on phones the event banner sits above it).
+    const top = stepsTopRef.current?.getBoundingClientRect().top;
+    if (top !== undefined && top < 0) {
+      stepsTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function handlePrimaryAction() {
@@ -185,8 +203,7 @@ export function CheckoutPage() {
         showToast('Please select at least 1 ticket.');
         return;
       }
-      showToast('Proceeding to: Participant Details (Step 2)');
-      setTimeout(() => goToStep(2), 200);
+      goToStep(2);
     } else if (currentStep === 2) {
       void validateAndConfirm();
     }
@@ -273,648 +290,653 @@ export function CheckoutPage() {
     }
   }
 
-  return (
-    <div className="bg-background font-body-md text-on-surface antialiased min-h-screen flex flex-col justify-between">
-      <main className="w-full flex-1 p-space-md">
-        <div className="flex flex-col w-full max-w-7xl mx-auto px-space-xs sm:px-space-md lg:px-margin text-on-surface">
-          
-          {/* TOP HEADER & BRAND BAR */}
-          <header className="flex items-center justify-between py-space-md mb-space-sm">
-            <Link to="/" className="flex items-center space-x-space-xs cursor-pointer group">
-              {branding?.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.platformName} className="h-10 w-auto object-contain" />
-              ) : (
-                <>
-                  <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary font-headline-lg shadow-sm group-hover:bg-primary-container transition">
-                    <span className="material-symbols-outlined text-headline-md">confirmation_number</span>
-                  </div>
-                  <div>
-                    <div className="font-headline-lg text-primary leading-none tracking-tight flex items-center gap-1">
-                      INVEON<span className="font-headline-sm text-on-surface font-normal">EVENTS</span>
-                    </div>
-                    <p className="font-label-badge text-on-surface-variant uppercase tracking-wider">by Inveon Technologies</p>
-                  </div>
-                </>
-              )}
-            </Link>
-            <div className="flex items-center space-x-2 bg-surface-container px-3 py-1.5 rounded-full text-on-surface-variant text-body-sm shadow-sm">
-              <span className="material-symbols-outlined text-tertiary text-headline-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                lock
+  const heroImage = event.galleryImages[0];
+  const maxPerBooking = selectedTier
+    ? selectedTier.maxPerBooking
+    : Math.max(0, ...event.ticketCategories.map((t) => t.maxPerBooking));
+  const eventDay = (() => {
+    const parsed = new Date(event.date);
+    return Number.isNaN(parsed.getTime())
+      ? ''
+      : parsed.toLocaleDateString('en-IN', { weekday: 'long' });
+  })();
+  const organizerInitials = event.organizer.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
+  const primaryLabel = currentStep === 1 ? 'CONTINUE TO PARTICIPANTS' : 'PROCEED TO SECURE PAYMENT';
+  const primaryDisabled = totalTickets === 0 || isSubmittingBooking;
+
+  const STEPS = [
+    { n: 1, label: 'Tickets' },
+    { n: 2, label: 'Participants' },
+    { n: 3, label: 'Confirmation' },
+  ] as const;
+
+  const renderTicketsStep = () => {
+    return (
+      <section aria-labelledby="checkout-tickets-title">
+        <p className="text-[11px] font-bold tracking-[0.2em] text-[#82a9df]">RESERVE YOUR PLACE</p>
+        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 id="checkout-tickets-title" className="text-[26px] sm:text-[32px] font-extrabold tracking-tight text-[#101f49] leading-tight">
+              Choose Your Tickets
+            </h2>
+            <p className="mt-1.5 text-sm text-[#7887a0]">Select your ticket type and number of attendees.</p>
+          </div>
+          {maxPerBooking > 0 && (
+            <div className="flex items-center gap-2.5 text-[11px] font-semibold text-[#44536d] shrink-0">
+              <span className="w-9 h-9 rounded-full bg-[#edf3fb] text-[#5e769d] flex items-center justify-center">
+                <span className="material-symbols-outlined text-lg">group</span>
               </span>
-              <span className="font-label-sm">Secure Booking • 256-bit SSL</span>
+              <span className="leading-tight">
+                Max {maxPerBooking} ticket{maxPerBooking === 1 ? '' : 's'}
+                <br />
+                per booking
+              </span>
             </div>
-          </header>
+          )}
+        </div>
 
-          {/* STEP PROGRESS BREADCRUMB */}
-          <nav aria-label="Checkout Steps" className="mb-space-lg flex justify-center w-full">
-            <div className="flex items-center space-x-2 sm:space-x-4 bg-surface-container-lowest px-4 sm:px-8 py-3 rounded-full shadow-sm max-w-2xl w-full justify-between overflow-x-auto">
-              
-              {/* Step 1 Indicator */}
-              <button
-                className={`flex items-center space-x-2 font-headline-sm transition-all focus:outline-none ${
-                  currentStep === 1 ? 'text-primary' : currentStep > 1 ? 'text-tertiary' : 'text-on-surface-variant'
-                }`}
-                onClick={() => goToStep(1)}
-                type="button"
+        {event.genderRestriction && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+            <span className="material-symbols-outlined text-base text-amber-600" aria-hidden="true">info</span>
+            <span>
+              This event admits <strong className="capitalize">{event.genderRestriction}</strong> attendees only. You&apos;ll be
+              asked to confirm before payment.
+            </span>
+          </div>
+        )}
+
+        <div className="mt-5 border-t border-[#e8edf5]">
+          {event.ticketCategories.length === 0 && (
+            <p className="py-6 text-sm text-[#71809b]">No tickets are on sale for this event.</p>
+          )}
+          {event.ticketCategories.map((tier, i) => {
+            const qty = quantities[tier.id] ?? 0;
+            const limit = Math.min(tier.maxPerBooking, tier.available);
+            const selected = qty > 0;
+            const soldOut = tier.available <= 0;
+            const tone = TIER_TONES[i % TIER_TONES.length];
+            return (
+              <div
+                key={tier.id}
+                className={`grid grid-cols-[40px_minmax(0,1fr)_auto] sm:grid-cols-[52px_minmax(0,1fr)_auto] items-center gap-x-3 sm:gap-x-4 px-3 sm:px-4 py-4 sm:py-5 border-b border-[#e8edf5] transition-colors ${
+                  selected ? 'bg-gradient-to-r from-[#f0f7ff] to-[#f7fbff] border-l-4 border-l-[#1d68eb]' : 'border-l-4 border-l-transparent'
+                } ${soldOut ? 'opacity-60' : ''}`}
               >
-                <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center font-label-md transition-colors ${
-                    currentStep === 1
-                      ? 'bg-primary text-on-primary'
-                      : currentStep > 1
-                      ? 'bg-tertiary text-on-tertiary'
-                      : 'bg-surface-container text-on-surface-variant'
-                  }`}
-                >
-                  {currentStep > 1 ? (
-                    <span className="material-symbols-outlined text-xs">check</span>
-                  ) : (
-                    '01'
-                  )}
-                </span>
-                <span className="font-label-md whitespace-nowrap">Tickets</span>
-              </button>
-
-              <span
-                className={`h-0.5 w-6 sm:w-12 transition-colors ${
-                  currentStep > 1 ? 'bg-tertiary' : currentStep === 1 ? 'bg-primary-fixed-dim' : 'bg-surface-container-high'
-                }`}
-              />
-
-              {/* Step 2 Indicator */}
-              <button
-                className={`flex items-center space-x-2 font-label-md transition-all focus:outline-none ${
-                  currentStep === 2 ? 'text-primary' : currentStep > 2 ? 'text-tertiary' : 'text-on-surface-variant'
-                }`}
-                onClick={() => goToStep(2)}
-                type="button"
-              >
-                <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center font-label-md transition-colors ${
-                    currentStep === 2
-                      ? 'bg-primary text-on-primary'
-                      : currentStep > 2
-                      ? 'bg-tertiary text-on-tertiary'
-                      : 'bg-surface-container text-on-surface-variant'
-                  }`}
-                >
-                  {currentStep > 2 ? (
-                    <span className="material-symbols-outlined text-xs">check</span>
-                  ) : (
-                    '02'
-                  )}
-                </span>
-                <span className="whitespace-nowrap">Participants</span>
-              </button>
-
-              <span
-                className={`h-0.5 w-6 sm:w-12 transition-colors ${
-                  currentStep > 2 ? 'bg-tertiary' : 'bg-surface-container-high'
-                }`}
-              />
-
-              {/* Step 3 Indicator */}
-              <button
-                className={`flex items-center space-x-2 font-label-md transition-all focus:outline-none ${
-                  currentStep === 3 ? 'text-tertiary font-bold' : 'text-on-surface-variant'
-                }`}
-                disabled
-                type="button"
-              >
-                <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center font-label-md transition-colors ${
-                    currentStep === 3
-                      ? 'bg-tertiary text-on-tertiary'
-                      : 'bg-surface-container text-on-surface-variant'
-                  }`}
-                >
-                  {currentStep === 3 ? (
-                    <span className="material-symbols-outlined text-xs">check</span>
-                  ) : (
-                    '03'
-                  )}
-                </span>
-                <span className="whitespace-nowrap">Confirmation</span>
-              </button>
-            </div>
-          </nav>
-
-          {/* MAIN DUAL-COLUMN WORKSPACE (Steps 1 & 2) */}
-          {currentStep !== 3 && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-lg mb-space-xl">
-              
-              {/* LEFT MAIN COLUMN (Col 8) */}
-              <div className="lg:col-span-8 flex flex-col space-y-space-md">
-                
-                {/* EVENT OVERVIEW SUMMARY CARD */}
-                <article className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm transition-all hover:shadow-md">
-                  <div className="flex flex-col sm:flex-row gap-space-md items-start sm:items-center">
-                    <div className="relative w-full sm:w-48 h-32 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                      {event.galleryImages[0] ? (
-                        <img className="w-full h-full object-cover" alt={event.galleryImages[0].alt} src={event.galleryImages[0].src} />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="material-symbols-outlined text-on-surface-variant text-headline-xl">event</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <h1 className="font-headline-lg text-on-surface tracking-tight truncate">
-                          {event.name}
-                        </h1>
-                        <button
-                          className="font-label-sm text-primary hover:underline flex items-center gap-1 shrink-0 bg-transparent border-0 cursor-pointer"
-                          onClick={() => setIsEventInfoOpen(true)}
-                          type="button"
-                        >
-                          View Event Details <span className="material-symbols-outlined text-sm">arrow_outward</span>
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 my-2 text-body-sm text-on-surface-variant">
-                        <div className="flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-primary text-headline-sm">calendar_month</span>
-                          <span>{event.date}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-primary text-headline-sm">schedule</span>
-                          <span>{event.time} IST</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 sm:col-span-2">
-                          <span className="material-symbols-outlined text-primary text-headline-sm">location_on</span>
-                          <span className="truncate">{event.venue || 'Venue to be announced'}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-2 border-t-0">
-                        <div className="w-6 h-6 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-headline-sm text-xs font-bold">
-                          {event.organizer.name
-                            .split(/\s+/)
-                            .filter(Boolean)
-                            .slice(0, 2)
-                            .map((w) => w[0]?.toUpperCase())
-                            .join('')}
-                        </div>
-                        <span className="font-label-sm text-on-surface font-medium">{event.organizer.name}</span>
-                        <span className="bg-tertiary-container text-on-tertiary-container px-2 py-0.5 rounded-full font-label-badge flex items-center gap-0.5">
-                          <span className="material-symbols-outlined text-xs" style={{ fontVariationSettings: "'FILL' 1" }}>
-                            verified
-                          </span>{' '}
-                          Verified Organizer
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-
-                {/* STEP 1 VIEW: TICKET SELECTION */}
-                {currentStep === 1 && (
-                  <section className="flex flex-col space-y-space-md">
-                    <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
-                      <div className="flex items-center justify-between mb-1">
-                        <h2 className="font-headline-lg text-on-surface">Select Your Tickets</h2>
-                        {selectedTier && (
-                          <span className="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1 rounded-full">
-                            Max {selectedTier.maxPerBooking} per booking
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-body-md text-on-surface-variant mb-space-md">
-                        Choose your ticket type and how many people are coming.
-                      </p>
-
-                      {/* TICKET TIER LIST — the event's real tiers */}
-                      <div className="space-y-space-sm">
-                        {event.ticketCategories.length === 0 && (
-                          <p className="text-body-md text-on-surface-variant">No tickets are on sale for this event.</p>
-                        )}
-                        {event.ticketCategories.map((tier) => {
-                          const qty = quantities[tier.id] ?? 0;
-                          const limit = Math.min(tier.maxPerBooking, tier.available);
-                          return (
-                            <div key={tier.id} className="p-space-md rounded-xl bg-surface-container-low transition-all duration-200 hover:bg-surface-container">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                <div className="flex items-start space-x-space-sm">
-                                  <div className="w-12 h-12 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-center shrink-0 shadow-sm">
-                                    <span className="material-symbols-outlined text-headline-lg">confirmation_number</span>
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <h3 className="font-headline-md text-on-surface">{tier.name}</h3>
-                                      <span className="font-label-badge text-tertiary-container bg-on-tertiary-container px-2 py-0.5 rounded-full">
-                                        {tier.available > 0 ? `${tier.available} seats available` : 'Sold out'}
-                                      </span>
-                                    </div>
-                                    <div className="font-headline-md text-primary mt-0.5">
-                                      {formatINR(tier.price)} <span className="text-body-sm font-normal text-on-surface-variant">/ person</span>
-                                    </div>
-                                    <p className="text-body-sm text-on-surface-variant mt-1">{tier.description}</p>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center justify-end space-x-3 bg-surface-container-lowest px-3 py-1.5 rounded-lg shadow-sm w-fit self-end sm:self-center">
-                                  <button
-                                    aria-label={`Remove one ${tier.name} ticket`}
-                                    className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container disabled:opacity-40"
-                                    onClick={() => updateQty(tier.id, -1)}
-                                    disabled={qty === 0}
-                                    type="button"
-                                  >
-                                    <span className="material-symbols-outlined text-headline-sm">remove</span>
-                                  </button>
-                                  <span className="font-headline-md text-on-surface w-6 text-center">{qty}</span>
-                                  <button
-                                    aria-label={`Add one ${tier.name} ticket`}
-                                    className="w-8 h-8 rounded-full flex items-center justify-center text-primary hover:bg-surface-container disabled:opacity-40"
-                                    onClick={() => updateQty(tier.id, 1)}
-                                    disabled={limit === 0}
-                                    type="button"
-                                  >
-                                    <span className="material-symbols-outlined text-headline-sm">add</span>
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {event.ticketCategories.length > 1 && (
-                          <p className="text-body-sm text-on-surface-variant">One ticket type per booking — choosing another type replaces your current selection.</p>
-                        )}
-                      </div>
-                    </div>
-                  </section>
-                )}
-
-                {/* STEP 2 VIEW: PARTICIPANT DETAILS */}
-                {currentStep === 2 && (
-                  <section className="flex flex-col space-y-space-md">
-                    <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
-                      <div className="flex items-center justify-between mb-1">
-                        <h2 className="font-headline-lg text-on-surface">Participant Details</h2>
-                        <button
-                          className="font-label-sm text-primary hover:underline flex items-center gap-1 bg-transparent border-0 cursor-pointer"
-                          onClick={() => goToStep(1)}
-                          type="button"
-                        >
-                          <span className="material-symbols-outlined text-sm">edit</span> Change Ticket Counts
-                        </button>
-                      </div>
-                      <p className="text-body-md text-on-surface-variant mb-space-md">
-                        Please enter details for each attendee.
-                      </p>
-
-                      {/* DYNAMIC ATTENDEE FORMS CONTAINER */}
-                      <div className="space-y-space-md">
-                        {attendees.map((attendee, index) => (
-                          <div key={index} className="p-space-md rounded-xl bg-surface-container-low border-0 relative">
-                            <div className="flex items-center justify-between mb-3 pb-2 border-b border-outline-variant/20">
-                              <div className="flex items-center space-x-2">
-                                <span className="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-badge">
-                                  {index + 1}
-                                </span>
-                                <h3 className="font-headline-sm text-on-surface">Participant {index + 1}</h3>
-                                <span className="font-label-badge bg-surface-container px-2 py-0.5 rounded text-primary font-semibold">
-                                  {attendee.tier}
-                                </span>
-                              </div>
-                              <span className="text-body-sm text-on-surface-variant flex items-center gap-1">
-                                <span className="material-symbols-outlined text-xs">person</span> Holder Details
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              <div>
-                                <label className="block font-label-sm text-on-surface-variant mb-1">Full Name *</label>
-                                <input
-                                  type="text"
-                                  value={attendee.name}
-                                  onChange={(e) => updateAttendeeField(index, 'name', e.target.value)}
-                                  placeholder="e.g. Rahul Sharma"
-                                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-on-surface outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                                  required
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-label-sm text-on-surface-variant mb-1">Email Address *</label>
-                                <input
-                                  type="email"
-                                  value={attendee.email}
-                                  onChange={(e) => updateAttendeeField(index, 'email', e.target.value)}
-                                  placeholder="name@example.com"
-                                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-on-surface outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                                  required
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-label-sm text-on-surface-variant mb-1">Phone Number *</label>
-                                <div className="flex">
-                                  <span className="inline-flex items-center px-2.5 rounded-l-lg bg-surface-container text-on-surface-variant text-body-sm font-medium">
-                                    +91
-                                  </span>
-                                  <input
-                                    type="tel"
-                                    value={attendee.phone}
-                                    onChange={(e) => updateAttendeeField(index, 'phone', e.target.value)}
-                                    placeholder="9876543210"
-                                    className="w-full bg-surface-container-lowest px-3 py-2 rounded-r-lg font-body-sm text-on-surface outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                                    required
-                                  />
-                                </div>
-                                {index === 0 && (
-                                  <p className="mt-1 text-[11px] text-on-surface-variant">
-                                    We&apos;ll send your tickets and event updates to this number on WhatsApp.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                              <div>
-                                <label className="block font-label-sm text-on-surface-variant mb-1">Emergency Contact Person</label>
-                                <input
-                                  type="text"
-                                  value={attendee.emergencyName}
-                                  onChange={(e) => updateAttendeeField(index, 'emergencyName', e.target.value)}
-                                  placeholder="Parent / Spouse / Friend"
-                                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-on-surface outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                                />
-                              </div>
-                              <div>
-                                <label className="block font-label-sm text-on-surface-variant mb-1">Emergency SOS Contact Number</label>
-                                <input
-                                  type="tel"
-                                  value={attendee.emergencyPhone}
-                                  onChange={(e) => updateAttendeeField(index, 'emergencyPhone', e.target.value)}
-                                  placeholder="Mobile number"
-                                  className="w-full bg-surface-container-lowest px-3 py-2 rounded-lg font-body-sm text-on-surface outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <p className="text-body-sm text-on-surface-variant mt-space-md flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-base text-tertiary">timer</span>
-                        Your seats are held for 2 minutes while you pay. If the payment isn't finished by then they go back on sale.
-                      </p>
-                      {bookingError && (
-                        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 mt-space-md" role="alert">
-                          {bookingError}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between pt-space-md">
-                        <button
-                          className="px-5 py-2.5 rounded-lg bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md flex items-center gap-2 transition"
-                          onClick={() => goToStep(1)}
-                          type="button"
-                        >
-                          <span className="material-symbols-outlined text-base">arrow_back</span> Back to Tickets
-                        </button>
-                        <button
-                          className="px-6 py-2.5 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-label-md flex items-center gap-2 shadow-sm transition active:scale-98 disabled:opacity-60 disabled:cursor-not-allowed"
-                          disabled={isSubmittingBooking}
-                          onClick={() => void validateAndConfirm()}
-                          type="button"
-                        >
-                          {isSubmittingBooking ? 'Processing…' : 'Proceed to Secure Payment'} <span className="material-symbols-outlined text-base">arrow_forward</span>
-                        </button>
-                      </div>
-                      <p className="pt-2 text-right text-[11px] text-on-surface-variant">
-                        By continuing you agree to our{' '}
-                        <Link to="/terms" target="_blank" className="underline hover:text-primary">
-                          Terms &amp; Conditions
-                        </Link>{' '}
-                        and{' '}
-                        <Link to="/refund-policy" target="_blank" className="underline hover:text-primary">
-                          Refunds &amp; Cancellations policy
-                        </Link>
-                        .
-                      </p>
-                    </div>
-                  </section>
-                )}
-              </div>
-
-              {/* RIGHT SUMMARY SIDEBAR (Col 4) */}
-              <aside className="lg:col-span-4 flex flex-col space-y-space-md">
-                <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm sticky top-6">
-                  <h2 className="font-headline-lg text-on-surface mb-space-sm pb-2">Your Booking</h2>
-                  
-                  {/* Sidebar mini trek thumbnail */}
-                  <div className="flex items-center space-x-3 p-2 bg-surface-container-low rounded-lg mb-space-sm">
-                    <div className="w-14 h-14 rounded-md overflow-hidden bg-surface-container shrink-0">
-                      {event.galleryImages[0] && (
-                        <img className="w-full h-full object-cover" alt={event.galleryImages[0].alt} src={event.galleryImages[0].src} />
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-headline-sm text-on-surface truncate">{event.name}</p>
-                      <p className="text-body-sm text-on-surface-variant flex items-center gap-1">
-                        <span className="material-symbols-outlined text-xs">calendar_today</span> {event.date}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* LINE ITEMS */}
-                  <div className="space-y-3 pt-2 text-body-sm">
-                    {selectedTier && (
-                      <div className="flex justify-between items-start font-body-md">
-                        <div>
-                          <div className="font-headline-sm text-on-surface">{selectedTier.name}</div>
-                          <div className="text-body-sm text-on-surface-variant">{formatINR(selectedTier.price)} × {quantities[selectedTier.id]}</div>
-                        </div>
-                        <div className="font-headline-sm text-on-surface">
-                          {formatINR(selectedTier.price * (quantities[selectedTier.id] ?? 0))}
-                        </div>
-                      </div>
-                    )}
-
-                    {totalTickets === 0 && (
-                      <p className="text-on-surface-variant text-center py-2">No tickets selected yet.</p>
-                    )}
-
-                    <div className="pt-3 border-t border-dashed border-outline-variant/30 flex justify-between text-body-sm text-on-surface-variant">
-                      <span>Total Tickets</span>
-                      <span className="font-headline-sm text-on-surface">{totalTickets}</span>
-                    </div>
-
-                    <div className="flex justify-between text-body-sm text-on-surface-variant">
-                      <span>Subtotal</span>
-                      <span className="text-on-surface">{formatINR(totalAmount)}</span>
-                    </div>
-
-                    <div className="flex justify-between text-body-sm text-on-surface-variant">
-                      <span>Booking &amp; Gateway Fee</span>
-                      <span className="text-tertiary font-label-sm font-semibold">FREE</span>
-                    </div>
-                  </div>
-
-                  {/* TOTAL HERO BLOCK */}
-                  <div className="mt-space-md p-space-sm bg-surface-container rounded-lg flex items-center justify-between">
-                    <div>
-                      <span className="font-label-badge uppercase tracking-wider text-on-surface-variant block">Total Payable</span>
-                      <span className="font-headline-xl text-primary font-bold tracking-tight">
-                        {formatINR(totalAmount)}
+                <div className={`self-start w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center ${tone}`}>
+                  <span className="material-symbols-outlined text-2xl" aria-hidden="true">{tierIcon(tier.name)}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-[15px] font-bold text-[#101f49]">{tier.name}</h3>
+                    {selected && (
+                      <span className="inline-flex items-center gap-0.5 rounded-full bg-[#1260e8] px-2 py-0.5 text-[10px] font-bold text-white">
+                        <span className="material-symbols-outlined text-[12px]" aria-hidden="true">check</span> SELECTED
                       </span>
-                    </div>
-                    <span className="material-symbols-outlined text-headline-xl text-primary-container">payments</span>
+                    )}
                   </div>
-
-                  {/* PRIMARY CTA BUTTON */}
-                  <div className="mt-space-md">
+                  <div className="mt-1 text-lg font-medium text-[#1768e9]">
+                    {formatINR(tier.price)} <span className="text-xs text-[#65748d]">/ person</span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-[11px] text-[#6d7c93]">
+                    <span className={`inline-block w-2 h-2 rounded-full ${soldOut ? 'bg-red-500' : 'bg-[#16a765]'}`} />
+                    {soldOut ? 'Sold out' : `${tier.available} seats available`}
+                  </div>
+                  {tier.description && <p className="mt-1.5 text-xs text-[#71809b]">{tier.description}</p>}
+                </div>
+                <div className="flex justify-end">
+                  <div className="flex items-stretch rounded-lg border border-[#dce3ee] bg-white overflow-hidden">
                     <button
-                      className={`w-full py-3.5 px-4 rounded-lg bg-primary hover:bg-primary-container text-on-primary font-headline-sm font-semibold tracking-wide flex items-center justify-center space-x-2 shadow-md transition-transform duration-150 active:scale-98 ${
-                        totalTickets === 0 ? 'opacity-50 cursor-not-allowed' : ''
-                      }`}
-                      disabled={totalTickets === 0}
-                      onClick={handlePrimaryAction}
+                      aria-label={`Remove one ${tier.name} ticket`}
+                      className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#687890] hover:bg-[#f4f7fb] disabled:opacity-40 disabled:cursor-not-allowed"
+                      onClick={() => updateQty(tier.id, -1)}
+                      disabled={qty === 0}
                       type="button"
                     >
-                      <span>{currentStep === 1 ? 'CONTINUE TO PARTICIPANTS' : 'PROCEED TO SECURE PAYMENT'}</span>
-                      <span className="material-symbols-outlined text-headline-sm">arrow_forward</span>
+                      <span className="material-symbols-outlined text-xl">remove</span>
+                    </button>
+                    <span className="w-8 h-9 sm:w-10 sm:h-10 flex items-center justify-center border-x border-[#dce3ee] text-sm font-semibold text-[#40506a]" aria-live="polite">
+                      {qty}
+                    </span>
+                    <button
+                      aria-label={`Add one ${tier.name} ticket`}
+                      className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center text-[#1260e8] hover:bg-[#f4f7fb] disabled:opacity-40 disabled:cursor-not-allowed"
+                      onClick={() => updateQty(tier.id, 1)}
+                      disabled={limit === 0}
+                      type="button"
+                    >
+                      <span className="material-symbols-outlined text-xl">add</span>
                     </button>
                   </div>
-
-                  <p className="text-center text-body-sm text-on-surface-variant mt-2 flex items-center justify-center gap-1">
-                    <span className="material-symbols-outlined text-xs text-tertiary">lock</span> Secure 128-bit Cashfree Checkout
-                  </p>
-
-                  {/* SECURITY TRUST CARDS */}
-                  <div className="mt-space-md space-y-2 pt-space-xs text-body-sm text-on-surface-variant">
-                    <div className="flex items-center space-x-2">
-                      <span className="material-symbols-outlined text-tertiary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        check_circle
-                      </span>
-                      <span>Instant confirmation with dynamic QR code</span>
-                    </div>
-                    {event?.allowSelfServiceCancellation ? (
-                      <div className="flex items-center space-x-2">
-                        <span className="material-symbols-outlined text-tertiary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                          check_circle
-                        </span>
-                        <span>{event.refundPercentage}% refund up to {event.refundCutoffDays} day{event.refundCutoffDays === 1 ? '' : 's'} before the event</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2 text-red-600">
-                        <span className="material-symbols-outlined text-red-600 text-sm">block</span>
-                        <span className="font-semibold">No Refund Policy — this booking cannot be cancelled</span>
-                      </div>
-                    )}
-                    <div className="flex items-center space-x-2">
-                      <span className="material-symbols-outlined text-tertiary text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        check_circle
-                      </span>
-                      <span>Ticket &amp; QR code emailed on payment</span>
-                    </div>
-                  </div>
-
-                  {/* HELP DESK BOX */}
-                  <div className="mt-space-md p-3 bg-surface-container-low rounded-lg flex items-start space-x-3">
-                    <span className="material-symbols-outlined text-primary text-headline-md">support_agent</span>
-                    <div className="text-body-sm">
-                      <p className="font-headline-sm text-on-surface">Need help booking?</p>
-                      <p className="text-on-surface-variant">
-                        Call our team at{' '}
-                        <a className="text-primary hover:underline font-label-sm font-semibold" href="tel:+917030411076">
-                          +91 7030411076
-                        </a>{' '}
-                        for instant assistance.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </aside>
-            </div>
-          )}
-
-          {/* EVENT DETAILS QUICK INFO MODAL */}
-          {isEventInfoOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 backdrop-blur-sm p-4">
-              <div className="bg-surface-container-lowest w-full max-w-lg rounded-2xl p-space-md shadow-xl animate-in fade-in zoom-in-95 duration-200">
-                <div className="flex items-center justify-between pb-2 border-b border-outline-variant/30">
-                  <h3 className="font-headline-lg text-on-surface">About {event.name}</h3>
-                  <button
-                    className="text-on-surface-variant hover:text-on-surface p-1 rounded-full bg-transparent border-0 cursor-pointer"
-                    onClick={() => setIsEventInfoOpen(false)}
-                    type="button"
-                  >
-                    <span className="material-symbols-outlined">close</span>
-                  </button>
-                </div>
-
-                <div className="py-space-md space-y-3 text-body-sm text-on-surface-variant">
-                  <p>{event.about || 'The organizer hasn\'t added a description for this event yet.'}</p>
-                  <div className="p-3 bg-surface-container rounded-lg space-y-1">
-                    <p>
-                      <strong className="text-on-surface font-semibold">When:</strong> {event.date}, {event.time} IST
-                    </p>
-                    <p>
-                      <strong className="text-on-surface font-semibold">Where:</strong> {event.venue || 'Venue to be announced'}
-                    </p>
-                    <p>
-                      <strong className="text-on-surface font-semibold">Organizer:</strong> {event.organizer.name}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <button
-                    className="px-5 py-2 bg-primary text-on-primary font-label-md rounded-lg hover:bg-primary-container transition"
-                    onClick={() => setIsEventInfoOpen(false)}
-                    type="button"
-                  >
-                    Got It
-                  </button>
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* FLOATING TOAST NOTIFICATION */}
-          {toastMessage && (
-            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-inverse-surface text-inverse-on-surface px-4 py-2.5 rounded-full shadow-xl border border-outline-variant/30 text-label-md transition-all duration-200 animate-in fade-in slide-in-from-top-4">
-              <span className="material-symbols-outlined text-tertiary-fixed text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                check_circle
-              </span>
-              <span>{toastMessage}</span>
-            </div>
-          )}
-
-          {/* BOTTOM FOOTER */}
-          <footer className="mt-space-xl pt-space-lg pb-space-md text-body-sm text-on-surface-variant border-t border-outline-variant/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-5 h-5 rounded bg-primary text-on-primary flex items-center justify-center font-bold text-xs">
-                I
-              </div>
-              <span>© 2026 Inveon Technologies. All rights reserved.</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() =>
-                  showToast(
-                    event.allowSelfServiceCancellation
-                      ? `Refund policy: ${event.refundPercentage}% refund up to ${event.refundCutoffDays} day(s) before the event.`
-                      : 'Refund policy: this event does not offer self-service cancellation or refunds — contact the organizer.',
-                  )
-                }
-                className="hover:text-primary transition bg-transparent border-0 cursor-pointer text-body-sm text-on-surface-variant"
-              >
-                Refund Policy
-              </button>
-              <Link to="/terms" target="_blank" className="hover:text-primary transition text-body-sm text-on-surface-variant">
-                Terms
-              </Link>
-              <Link to="/contact" target="_blank" className="hover:text-primary transition text-body-sm text-on-surface-variant">
-                Contact Support
-              </Link>
-            </div>
-          </footer>
-
+            );
+          })}
         </div>
+        {event.ticketCategories.length > 1 && (
+          <p className="mt-3 text-xs text-[#71809b]">
+            One ticket type per booking. Choosing another type replaces your current selection.
+          </p>
+        )}
+      </section>
+    );
+  };
+
+  const inputClass =
+    'w-full bg-white px-3 py-2.5 rounded-lg border border-[#dce3ee] text-sm text-[#101f49] outline-none focus:border-[#1260e8] focus:ring-2 focus:ring-[#1260e8]/20';
+
+  const renderParticipantsStep = () => {
+    return (
+      <section aria-labelledby="checkout-participants-title">
+        <p className="text-[11px] font-bold tracking-[0.2em] text-[#82a9df]">WHO&apos;S COMING</p>
+        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 id="checkout-participants-title" className="text-[26px] sm:text-[32px] font-extrabold tracking-tight text-[#101f49] leading-tight">
+              Participant Details
+            </h2>
+            <p className="mt-1.5 text-sm text-[#7887a0]">Please enter details for each attendee.</p>
+          </div>
+          <button
+            className="self-start text-[13px] font-semibold text-[#1260e8] hover:underline flex items-center gap-1 bg-transparent border-0 cursor-pointer"
+            onClick={() => goToStep(1)}
+            type="button"
+          >
+            <span className="material-symbols-outlined text-base">edit</span> Change Ticket Counts
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {attendees.map((attendee, index) => (
+            <div key={index} className="rounded-xl border border-[#e8edf5] bg-[#f7faff] p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-[#e8edf5]">
+                <div className="flex items-center gap-2">
+                  <span className="w-7 h-7 rounded-full bg-[#1260e8] text-white flex items-center justify-center text-xs font-bold">
+                    {index + 1}
+                  </span>
+                  <h3 className="text-[15px] font-bold text-[#101f49]">Participant {index + 1}</h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wide bg-white border border-[#dce3ee] px-2 py-0.5 rounded-full text-[#1260e8]">
+                    {attendee.tier}
+                  </span>
+                </div>
+                {index === 0 && (
+                  <span className="text-[11px] text-[#71809b] flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">person</span> Lead contact
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    value={attendee.name}
+                    onChange={(e) => updateAttendeeField(index, 'name', e.target.value)}
+                    placeholder="e.g. Rahul Sharma"
+                    autoComplete={index === 0 ? 'name' : 'off'}
+                    className={inputClass}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    value={attendee.email}
+                    onChange={(e) => updateAttendeeField(index, 'email', e.target.value)}
+                    placeholder="name@example.com"
+                    autoComplete={index === 0 ? 'email' : 'off'}
+                    inputMode="email"
+                    className={inputClass}
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Phone Number *</label>
+                  <div className="flex">
+                    <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-[#dce3ee] bg-[#eef2f8] text-[#63708a] text-sm font-medium">
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      value={attendee.phone}
+                      onChange={(e) => updateAttendeeField(index, 'phone', e.target.value)}
+                      placeholder="9876543210"
+                      autoComplete={index === 0 ? 'tel-national' : 'off'}
+                      inputMode="numeric"
+                      className={`${inputClass} rounded-l-none`}
+                      required
+                    />
+                  </div>
+                  {index === 0 && (
+                    <p className="mt-1 text-[11px] text-[#71809b]">
+                      We&apos;ll send your tickets and event updates to this number on WhatsApp.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Emergency Contact Person</label>
+                  <input
+                    type="text"
+                    value={attendee.emergencyName}
+                    onChange={(e) => updateAttendeeField(index, 'emergencyName', e.target.value)}
+                    placeholder="Parent / Spouse / Friend"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Emergency SOS Contact Number</label>
+                  <input
+                    type="tel"
+                    value={attendee.emergencyPhone}
+                    onChange={(e) => updateAttendeeField(index, 'emergencyPhone', e.target.value)}
+                    placeholder="Mobile number"
+                    inputMode="numeric"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[13px] text-[#71809b] mt-4 flex items-start gap-1.5">
+          <span className="material-symbols-outlined text-base text-[#18a765]">timer</span>
+          Your seats are held for 2 minutes while you pay. If the payment isn&apos;t finished by then they go back on sale.
+        </p>
+        {bookingError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 mt-4" role="alert">
+            {bookingError}
+          </div>
+        )}
+        <div className="hidden xl:flex items-center justify-between pt-5">
+          <button
+            className="px-5 py-2.5 rounded-lg border border-[#dce3ee] bg-white hover:bg-[#f4f7fb] text-[#101f49] text-sm font-semibold flex items-center gap-2 transition"
+            onClick={() => goToStep(1)}
+            type="button"
+          >
+            <span className="material-symbols-outlined text-base">arrow_back</span> Back to Tickets
+          </button>
+        </div>
+        <p className="pt-3 text-[11px] text-[#71809b]">
+          By continuing you agree to our{' '}
+          <Link to="/terms" target="_blank" className="underline hover:text-[#1260e8]">
+            Terms &amp; Conditions
+          </Link>{' '}
+          and{' '}
+          <Link to="/refund-policy" target="_blank" className="underline hover:text-[#1260e8]">
+            Refunds &amp; Cancellations policy
+          </Link>
+          .
+        </p>
+      </section>
+    );
+  };
+
+  function renderStep(step: 1 | 2) {
+    return step === 1 ? renderTicketsStep() : renderParticipantsStep();
+  }
+
+  const activeStep = currentStep === 3 ? 2 : currentStep;
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-[#101f49] antialiased lg:grid lg:grid-cols-[minmax(0,38%)_minmax(0,1fr)]">
+      {/* LEFT: EVENT HERO (a banner on top on phones) */}
+      <section className="relative overflow-hidden bg-[#11131e] text-white min-h-[360px] sm:min-h-[440px] lg:sticky lg:top-0 lg:h-screen lg:min-h-0">
+        {heroImage && (
+          <img src={heroImage.src} alt={heroImage.alt} className="absolute inset-0 w-full h-full object-cover" />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-b from-[#050c23]/40 via-[#11131e]/55 to-[#10131f]" aria-hidden="true" />
+
+        <div className="relative z-10 flex h-full min-h-[inherit] flex-col justify-between p-5 sm:p-8 lg:p-10 xl:px-12">
+          <div className="flex items-center justify-between gap-3">
+            <Link to="/" aria-label={`${branding?.platformName || 'Inveon Events'} Home`} className="inline-flex items-center rounded-xl bg-white/95 px-3 py-1.5 shadow-sm">
+              <img src={branding?.logoUrl || INVEON_EVENTS_LOGO_URL} alt={branding?.platformName || 'Inveon Events'} className="h-7 sm:h-8 w-auto object-contain" />
+            </Link>
+            <Link
+              to={`/events/${eventId}`}
+              className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"
+            >
+              <span className="material-symbols-outlined text-sm" aria-hidden="true">arrow_back</span> Back to event
+            </Link>
+          </div>
+
+          <div className="mt-10">
+            <div className="flex flex-wrap gap-2">
+              {event.category && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide backdrop-blur">
+                  <span className="material-symbols-outlined text-[14px]" style={{ fontVariationSettings: "'FILL' 1" }} aria-hidden="true">star</span>
+                  {event.category}
+                </span>
+              )}
+              {event.genderRestriction && (
+                <span className="inline-flex items-center rounded-full bg-pink-500/80 px-3 py-1.5 text-[11px] font-semibold capitalize">
+                  {event.genderRestriction} only
+                </span>
+              )}
+            </div>
+            <h1 className="mt-3 text-[34px] sm:text-[44px] xl:text-[54px] font-extrabold leading-[1.05] tracking-tight break-words">
+              {event.name}
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-base sm:text-lg font-medium">
+              <span className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-[11px] font-bold">{organizerInitials}</span>
+              <span>{event.organizer.name}</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#dff8e9] px-2 py-0.5 text-[10px] font-bold text-[#158353]">
+                <span className="material-symbols-outlined text-[12px]" style={{ fontVariationSettings: "'FILL' 1" }} aria-hidden="true">verified</span>
+                Verified Organizer
+              </span>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-y-4 sm:gap-x-0 border-t border-white/25 pt-4">
+              <div className="flex gap-2.5 sm:pr-3">
+                <span className="material-symbols-outlined text-xl text-[#2d82ff]" aria-hidden="true">calendar_month</span>
+                <div>
+                  <div className="text-[13px] font-semibold">{event.date}</div>
+                  {eventDay && <div className="mt-0.5 text-[11px] text-white/70">{eventDay}</div>}
+                </div>
+              </div>
+              <div className="flex gap-2.5 sm:border-l sm:border-white/25 sm:px-4">
+                <span className="material-symbols-outlined text-xl text-[#2d82ff]" aria-hidden="true">schedule</span>
+                <div>
+                  <div className="text-[13px] font-semibold">{event.time} IST</div>
+                  <div className="mt-0.5 text-[11px] text-white/70">Event starts</div>
+                </div>
+              </div>
+              <div className="flex gap-2.5 min-w-0 sm:col-span-2">
+                <span className="material-symbols-outlined text-xl text-[#2d82ff]" aria-hidden="true">location_on</span>
+                <div className="min-w-0 text-[13px] font-semibold break-words">{event.venue || 'Venue to be announced'}</div>
+              </div>
+            </div>
+
+            <button
+              className="mt-5 inline-flex items-center gap-1 border-b border-[#2f86ff] pb-1 text-[13px] font-semibold text-[#2f86ff] bg-transparent cursor-pointer"
+              onClick={() => setIsEventInfoOpen(true)}
+              type="button"
+            >
+              View Event Details <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* RIGHT: CHECKOUT */}
+      <main className="min-w-0 bg-white pb-28 xl:pb-0">
+        {/* STEPPER */}
+        <div ref={stepsTopRef} className="scroll-mt-0 border-b border-[#e9edf4] px-4 sm:px-8 lg:px-10 py-4 sm:py-6 flex items-center justify-between gap-3">
+          <nav aria-label="Checkout Steps" className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {STEPS.map((s, i) => {
+              const done = currentStep > s.n;
+              const active = currentStep === s.n;
+              return (
+                <div key={s.n} className="flex items-center gap-2 sm:gap-3 min-w-0">
+                  {i > 0 && (
+                    <span className={`h-0.5 w-4 sm:w-10 xl:w-16 rounded-full ${currentStep >= s.n ? 'bg-[#1260e8]' : 'bg-[#d9e0eb]'}`} aria-hidden="true" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => s.n !== 3 && goToStep(s.n)}
+                    disabled={s.n === 3}
+                    aria-current={active ? 'step' : undefined}
+                    className={`flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide bg-transparent ${
+                      active ? 'text-[#1260e8]' : done ? 'text-[#18a765]' : 'text-[#8793aa]'
+                    }`}
+                  >
+                    <span
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${
+                        active ? 'bg-[#1260e8] text-white' : done ? 'bg-[#18a765] text-white' : 'bg-[#eef2f8] text-[#63708a]'
+                      }`}
+                    >
+                      {done ? <span className="material-symbols-outlined text-base">check</span> : `0${s.n}`}
+                    </span>
+                    <span className={active ? 'hidden sm:inline' : 'hidden md:inline'}>{s.label}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+          <div className="flex items-center gap-2 rounded-xl bg-[#f4f7fb] px-3 py-2 shrink-0">
+            <span className="material-symbols-outlined text-lg text-[#118a68]" style={{ fontVariationSettings: "'FILL' 1" }} aria-hidden="true">lock</span>
+            <div className="text-[11px] font-semibold text-[#3d4d68] leading-tight">
+              Secure Checkout
+              <span className="hidden sm:block text-[10px] font-medium text-[#7e8ba1]">Powered by Cashfree</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-8 xl:gap-0 px-4 sm:px-8 lg:px-10 py-6 sm:py-8">
+          {/* STEP PANELS: the current one slides in, the previous one slides out */}
+          <div className="relative min-w-0 overflow-hidden xl:pr-8">
+            {leavingStep && (
+              <div
+                aria-hidden="true"
+                className={`absolute inset-x-0 top-0 pointer-events-none xl:pr-8 ${
+                  leavingStep.dir === 'forward' ? 'checkout-step-exit-forward' : 'checkout-step-exit-back'
+                }`}
+              >
+                {renderStep(leavingStep.step)}
+              </div>
+            )}
+            <div
+              key={activeStep}
+              className={leavingStep ? (leavingStep.dir === 'forward' ? 'checkout-step-enter-forward' : 'checkout-step-enter-back') : undefined}
+            >
+              {renderStep(activeStep)}
+            </div>
+          </div>
+
+          {/* RESERVATION SUMMARY */}
+          <aside className="border-t border-[#dbe3ee] pt-6 xl:border-t-0 xl:pt-0 xl:border-l xl:pl-7 relative">
+            <span className="hidden xl:block absolute -left-[5px] top-0 w-2.5 h-2.5 rounded-full bg-[#1e73eb]" aria-hidden="true" />
+            <div className="xl:sticky xl:top-6">
+              <h2 className="text-sm font-extrabold tracking-[0.06em] mb-5">YOUR RESERVATION</h2>
+
+              <div className="flex gap-3.5 pb-5 border-b border-dashed border-[#dbe2ec]">
+                <div className="w-20 h-14 rounded-lg overflow-hidden bg-[#eef2f8] shrink-0">
+                  {heroImage && <img className="w-full h-full object-cover" alt="" src={heroImage.src} />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{event.name}</p>
+                  <p className="mt-1.5 text-[11px] text-[#68778e] flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[13px]" aria-hidden="true">calendar_month</span> {event.date}
+                  </p>
+                  <p className="mt-1 text-[11px] text-[#68778e] flex items-center gap-1 min-w-0">
+                    <span className="material-symbols-outlined text-[13px]" aria-hidden="true">location_on</span>
+                    <span className="truncate">{event.venue || 'Venue to be announced'}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="py-4 border-b border-dashed border-[#dbe2ec] space-y-2.5 text-[12px] text-[#68778e]">
+                {selectedTier ? (
+                  <div className="flex justify-between gap-3">
+                    <span>
+                      {selectedTier.name}
+                      <br />
+                      {formatINR(selectedTier.price)} × {quantities[selectedTier.id]}
+                    </span>
+                    <strong className="text-[#253553]">{formatINR(selectedTier.price * (quantities[selectedTier.id] ?? 0))}</strong>
+                  </div>
+                ) : (
+                  <p className="text-center py-1">No tickets selected yet.</p>
+                )}
+                <div className="flex justify-between">
+                  <span>Total Tickets</span>
+                  <strong className="text-[#253553]">{totalTickets}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <strong className="text-[#253553]">{formatINR(totalAmount)}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Booking &amp; Gateway Fee</span>
+                  <strong className="text-[#238b68]">FREE</strong>
+                </div>
+                <div className="rounded-md bg-[#eff6ff] px-3.5 py-3 mt-3">
+                  <div className="text-[11px] text-[#65758f]">TOTAL PAYABLE</div>
+                  <div className="text-[28px] font-extrabold text-[#1664e8] leading-tight">{formatINR(totalAmount)}</div>
+                </div>
+              </div>
+
+              <button
+                className="hidden xl:flex w-full h-12 mt-4 mb-3 rounded-md bg-[#1160e8] hover:bg-[#0d52c9] text-white text-[13px] font-bold items-center justify-center gap-2 shadow-[0_6px_14px_rgba(18,96,232,.22)] transition active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={primaryDisabled}
+                onClick={handlePrimaryAction}
+                type="button"
+              >
+                <span>{isSubmittingBooking ? 'Processing…' : primaryLabel}</span>
+                <span className="material-symbols-outlined text-lg" aria-hidden="true">arrow_forward</span>
+              </button>
+
+              <div className="pb-2 border-b border-[#e2e7ef] space-y-2.5 pt-2 text-[12px] text-[#64738b]">
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-lg text-[#1670e8]" aria-hidden="true">bolt</span>
+                  Instant booking confirmation
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-lg text-[#1670e8]" aria-hidden="true">qr_code_2</span>
+                  Digital ticket with QR code
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-lg text-[#1670e8]" aria-hidden="true">mail</span>
+                  Ticket delivered after successful payment
+                </div>
+              </div>
+
+              <div className="py-3.5 border-b border-[#e2e7ef]">
+                <p className="text-[12px] font-bold mb-2">Cancellation Policy</p>
+                <div className="flex items-center justify-between gap-3 text-[12px]">
+                  {event.allowSelfServiceCancellation ? (
+                    <span className="flex items-center gap-1.5 text-[#18a765]">
+                      <span className="material-symbols-outlined text-sm" aria-hidden="true">check_circle</span>
+                      {event.refundPercentage}% refund up to {event.refundCutoffDays} day{event.refundCutoffDays === 1 ? '' : 's'} before the event
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[#ee4f4f] font-semibold">
+                      <span className="material-symbols-outlined text-sm" aria-hidden="true">block</span>
+                      No Refund Policy — this booking cannot be cancelled
+                    </span>
+                  )}
+                  <Link to="/refund-policy" target="_blank" className="shrink-0 text-[#2d71e5] hover:underline">
+                    View policy →
+                  </Link>
+                </div>
+              </div>
+
+              <div className="pt-3.5">
+                <p className="text-[12px] font-bold mb-1">Need help?</p>
+                <p className="text-[11px] text-[#7b899f]">Our support team is available to assist you.</p>
+                <a className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-semibold text-[#1768e9] hover:underline" href="tel:+917030411076">
+                  <span className="material-symbols-outlined text-sm" aria-hidden="true">call</span> +91 70304 11076
+                </a>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <footer className="mx-4 sm:mx-8 lg:mx-10 mt-4 py-5 text-[12px] text-[#71809b] border-t border-[#e8edf5] flex flex-col sm:flex-row items-center justify-between gap-3">
+          <span>© {new Date().getFullYear()} Inveon Technologies. All rights reserved.</span>
+          <div className="flex items-center gap-4">
+            <Link to="/refund-policy" target="_blank" className="hover:text-[#1260e8]">Refund Policy</Link>
+            <Link to="/terms" target="_blank" className="hover:text-[#1260e8]">Terms</Link>
+            <Link to="/contact" target="_blank" className="hover:text-[#1260e8]">Contact Support</Link>
+          </div>
+        </footer>
       </main>
+
+      {/* MOBILE / TABLET STICKY ACTION BAR (under the checkout column) */}
+      <div className="xl:hidden fixed inset-x-0 lg:left-[38%] bottom-0 z-40 border-t border-[#e2e7ef] bg-white/95 backdrop-blur px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-8px_24px_rgba(25,54,100,.08)]">
+        <div className="mx-auto flex max-w-3xl items-center gap-3">
+          {currentStep === 2 && (
+            <button
+              type="button"
+              onClick={() => goToStep(1)}
+              aria-label="Back to Tickets"
+              className="w-11 h-11 shrink-0 rounded-lg border border-[#dce3ee] flex items-center justify-center text-[#44536d]"
+            >
+              <span className="material-symbols-outlined">arrow_back</span>
+            </button>
+          )}
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold text-[#65758f]">
+              {totalTickets} ticket{totalTickets === 1 ? '' : 's'} · TOTAL
+            </div>
+            <div className="text-lg font-extrabold text-[#1664e8] leading-tight">{formatINR(totalAmount)}</div>
+          </div>
+          <button
+            className="ml-auto h-11 flex-1 max-w-xs rounded-lg bg-[#1160e8] text-white text-[12px] font-bold flex items-center justify-center gap-1.5 shadow-[0_6px_14px_rgba(18,96,232,.22)] active:scale-[.98] disabled:opacity-50"
+            disabled={primaryDisabled}
+            onClick={handlePrimaryAction}
+            type="button"
+          >
+            <span>{isSubmittingBooking ? 'Processing…' : currentStep === 1 ? 'CONTINUE' : 'PAY SECURELY'}</span>
+            <span className="material-symbols-outlined text-base" aria-hidden="true">arrow_forward</span>
+          </button>
+        </div>
+      </div>
+
+      {/* EVENT DETAILS QUICK INFO MODAL */}
+      {isEventInfoOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4">
+          <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-5 shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-[#e8edf5]">
+              <h3 className="text-lg font-bold">About {event.name}</h3>
+              <button
+                className="text-[#71809b] hover:text-[#101f49] p-1 rounded-full bg-transparent border-0 cursor-pointer"
+                onClick={() => setIsEventInfoOpen(false)}
+                aria-label="Close"
+                type="button"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3 text-sm text-[#44536d]">
+              <p>{event.about || 'The organizer hasn\'t added a description for this event yet.'}</p>
+              <div className="p-3 bg-[#f4f7fb] rounded-lg space-y-1">
+                <p>
+                  <strong className="text-[#101f49] font-semibold">When:</strong> {event.date}, {event.time} IST
+                </p>
+                <p>
+                  <strong className="text-[#101f49] font-semibold">Where:</strong> {event.venue || 'Venue to be announced'}
+                </p>
+                <p>
+                  <strong className="text-[#101f49] font-semibold">Organizer:</strong> {event.organizer.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Link to={`/events/${eventId}`} className="px-4 py-2 text-sm font-semibold text-[#1260e8] rounded-lg hover:bg-[#f4f7fb]">
+                Full event page
+              </Link>
+              <button
+                className="px-5 py-2 bg-[#1260e8] text-white text-sm font-semibold rounded-lg hover:bg-[#0d52c9] transition"
+                onClick={() => setIsEventInfoOpen(false)}
+                type="button"
+              >
+                Got It
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-[#101f49] text-white px-4 py-2.5 rounded-full shadow-xl text-[13px] font-medium max-w-[calc(100vw-2rem)]" role="status">
+          <span className="material-symbols-outlined text-[#5ee0a0] text-sm" style={{ fontVariationSettings: "'FILL' 1" }} aria-hidden="true">
+            info
+          </span>
+          <span>{toastMessage}</span>
+        </div>
+      )}
 
       {genderDialogOpen && event?.genderRestriction && (
         <div
@@ -954,7 +976,7 @@ export function CheckoutPage() {
                   setGenderDialogOpen(false);
                   void validateAndConfirm(true);
                 }}
-                className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white hover:opacity-90"
+                className="rounded-lg bg-[#1260e8] px-4 py-2 text-sm font-bold text-white hover:opacity-90"
               >
                 Yes, I confirm and continue
               </button>
@@ -964,4 +986,25 @@ export function CheckoutPage() {
       )}
     </div>
   );
+}
+
+// Icon backgrounds cycle through the mockup's blue / amber / pink / green.
+const TIER_TONES = [
+  'bg-[#eef4fd] text-[#286ad7]',
+  'bg-[#fff6e8] text-[#ee8c18]',
+  'bg-[#fff0f2] text-[#ef6174]',
+  'bg-[#e9fbf3] text-[#209463]',
+];
+
+// A Material Symbols icon that fits the ticket name, for scanning a long list.
+function tierIcon(name: string): string {
+  const n = name.toLowerCase();
+  if (/\b(female|women|woman|ladies|girls?)\b/.test(n)) return 'woman';
+  if (/\b(male|men|man|gents|boys?)\b/.test(n)) return 'man';
+  if (/couple|pair|duo/.test(n)) return 'favorite';
+  if (/vip|premium|gold|platinum|backstage/.test(n)) return 'workspace_premium';
+  if (/student/.test(n)) return 'school';
+  if (/child|kid/.test(n)) return 'child_care';
+  if (/group|family/.test(n)) return 'groups';
+  return 'confirmation_number';
 }

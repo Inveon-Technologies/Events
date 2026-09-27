@@ -81,3 +81,34 @@ body {
     radial-gradient(#d4af37 0.65px, transparent 0.65px);
   background-size: 100% 100%, 100% 100%, 14px 14px;
 }
+
+/* Checkout steps: Continue slides the tickets panel off to the left while
+   the participants panel slides in from the right; Back reverses it. */
+@keyframes checkout-in-from-right {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes checkout-out-to-left {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(-100%); opacity: 0; }
+}
+@keyframes checkout-in-from-left {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+@keyframes checkout-out-to-right {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+.checkout-step-enter-forward { animation: checkout-in-from-right 0.4s cubic-bezier(0.22, 0.8, 0.26, 1) both; }
+.checkout-step-exit-forward { animation: checkout-out-to-left 0.36s cubic-bezier(0.5, 0, 0.75, 0) both; }
+.checkout-step-enter-back { animation: checkout-in-from-left 0.4s cubic-bezier(0.22, 0.8, 0.26, 1) both; }
+.checkout-step-exit-back { animation: checkout-out-to-right 0.36s cubic-bezier(0.5, 0, 0.75, 0) both; }
+@media (prefers-reduced-motion: reduce) {
+  .checkout-step-enter-forward,
+  .checkout-step-exit-forward,
+  .checkout-step-enter-back,
+  .checkout-step-exit-back { animation: none; }
+  .checkout-step-exit-forward,
+  .checkout-step-exit-back { display: none; }
+}

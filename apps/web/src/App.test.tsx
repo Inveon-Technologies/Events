@@ -36,6 +36,26 @@ describe('App routing', () => {
     expect(screen.getByText(/Discover\. Book\./i)).toBeInTheDocument();
   });
 
+  it('Explore on /events goes to the home page section as a new history entry, not /events#explore', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => [] }));
+    // jsdom has no scrollIntoView; record which element the home page scrolls to.
+    const scrolledTo: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolledTo.push(this.id);
+    };
+    try {
+      renderApp('/events');
+      await user.click(screen.getAllByRole('link', { name: 'Explore' })[0]);
+      expect(await screen.findByText(/Discover\. Book\./i)).toBeInTheDocument();
+      await waitFor(() => expect(scrolledTo).toContain('explore'));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('shows the real fetched event data, not the mock catalog', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
