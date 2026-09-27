@@ -142,6 +142,12 @@ export const getBranding = (): BrandingSettings => merged('branding', DEFAULT_BR
 export const getInvoiceSettings = (): InvoiceSettings => merged('invoice', DEFAULT_INVOICE);
 export const getCertificateFooter = (): CertificateFooterSettings => merged('certificateFooter', DEFAULT_CERTIFICATE_FOOTER);
 
+// A stored setting's raw value (designs and templates validated by
+// their own modules), or undefined when nothing has been saved.
+export function getStoredSetting(key: string): unknown {
+  return cache.get(key);
+}
+
 export async function saveSetting(key: string, value: unknown, updatedBy: string): Promise<void> {
   await PlatformSetting.upsert({ key, value: value as object, updatedBy });
   await loadPlatformSettings();

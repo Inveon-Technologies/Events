@@ -3,7 +3,7 @@ import { hashPassword } from '../auth/password';
 import { signAccessToken } from '../auth/jwt';
 import { issueOtp, verifyOtp as checkOtp, OTP_EXPIRY_MINUTES } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
-import { otpEmail, registrationSuccessEmail } from '../emails/templates';
+import { otpMessage, registrationSuccessEmail } from '../emails/templates';
 import { logger, logOtpForDevelopment } from '../logger';
 
 export class EmailInUseError extends Error {
@@ -74,8 +74,7 @@ export async function initiateSignup(params: InitiateSignupParams): Promise<void
   if (isEmailConfigured()) {
     await sendEmail({
       to: params.email,
-      subject: 'Verify your email — Inveon Events',
-      html: otpEmail({ recipientName: params.fullName, otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }),
+      ...otpMessage({ recipientName: params.fullName, otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }, 'Verify your email — Inveon Events'),
     });
   } else {
     logOtpForDevelopment('signup', params.email, code);
@@ -91,8 +90,10 @@ export async function resendSignupOtp(email: string): Promise<void> {
   if (isEmailConfigured()) {
     await sendEmail({
       to: email,
-      subject: 'Your new verification code — Inveon Events',
-      html: otpEmail({ recipientName: user.name ?? 'there', otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }),
+      ...otpMessage(
+        { recipientName: user.name ?? 'there', otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES },
+        'Your new verification code — Inveon Events',
+      ),
     });
   } else {
     logOtpForDevelopment('signup (resend)', email, code);

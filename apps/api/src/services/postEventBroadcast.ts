@@ -2,6 +2,8 @@ import { Op } from 'sequelize';
 import { Event, Booking, Ticket, Organizer } from '../models';
 import { sendEmail, isEmailConfigured } from './email';
 import { postEventThankYouEmail } from '../emails/templates';
+import { renderCustomEmail } from './emailTemplates';
+import { getBranding } from './platformSettings';
 import { logger } from '../logger';
 import { enqueueWhatsApp } from './whatsapp/messages';
 import { certificateTicketsForBooking, eventCertificateRenderer } from './certificates';
@@ -114,7 +116,7 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
         }
       }
 
-      const html = postEventThankYouEmail({
+      const view = {
         attendeeName: joinNames(Array.from(new Set(tickets.map((t) => t.attendeeName)))) || booking.primaryContactName,
         eventName: event.name,
         organizerName: organizer?.name ?? 'the organizer',
@@ -124,15 +126,32 @@ export async function sendPostEventBroadcast(event: Event): Promise<PostEventBro
         feedbackUrl: base ? `${base}/bookings/${encodeURIComponent(booking.bookingReference)}/feedback` : null,
         bookingsUrl: base ? `${base}/bookings/my` : null,
         certificateCount: certificate?.count ?? 0,
+      };
+      // The super admin portal's custom template, when switched on.
+      const custom = renderCustomEmail('postEventThankYou', {
+        customerName: view.attendeeName,
+        eventName: view.eventName,
+        organizerName: view.organizerName,
+        bookingReference: view.bookingReference,
+        galleryUrl: view.galleryUrl ?? '',
+        galleryNote: view.galleryNote ?? '',
+        feedbackUrl: view.feedbackUrl ?? '',
+        bookingsUrl: view.bookingsUrl ?? '',
+        certificateCount: String(view.certificateCount),
+        platformName: getBranding().platformName,
+        supportEmail: getBranding().supportEmail,
       });
+      const html = custom?.html ?? postEventThankYouEmail(view);
       // eslint-disable-next-line no-await-in-loop
       await sendEmail({
         to: booking.primaryContactEmail,
-        subject: event.galleryUrl
-          ? `Your photos from ${event.name} are here`
-          : certificate
-            ? `Your certificate from ${event.name}`
-            : `Thanks for joining ${event.name}`,
+        subject:
+          custom?.subject ??
+          (event.galleryUrl
+            ? `Your photos from ${event.name} are here`
+            : certificate
+              ? `Your certificate from ${event.name}`
+              : `Thanks for joining ${event.name}`),
         html,
         attachments: certificate
           ? [{ filename: `Certificate-${booking.bookingReference}.pdf`, content: certificate.pdf, contentType: 'application/pdf' }]

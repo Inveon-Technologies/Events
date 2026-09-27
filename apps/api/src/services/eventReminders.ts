@@ -2,6 +2,8 @@ import { Op } from 'sequelize';
 import { Event, Booking, Ticket } from '../models';
 import { sendEmail, isEmailConfigured } from './email';
 import { eventReminderEmail } from '../emails/templates';
+import { renderCustomEmail } from './emailTemplates';
+import { getBranding } from './platformSettings';
 import { buildVenueMapUrl } from './mapsUrl';
 import { logger } from '../logger';
 import { enqueueWhatsApp } from './whatsapp/messages';
@@ -95,8 +97,19 @@ export async function sendEventReminder(event: Event): Promise<ReminderSendResul
         venueAddress: event.venueAddress,
         mapUrl,
       });
+      // The super admin portal's custom template, when switched on.
+      const custom = renderCustomEmail('eventReminder', {
+        customerName: joinNames(attendeeNames),
+        eventName: event.name,
+        eventTime: eventTimeLabel,
+        venue: event.venueAddress ?? '',
+        mapUrl: mapUrl ?? '',
+        bookingReference: booking.bookingReference,
+        platformName: getBranding().platformName,
+        supportEmail: getBranding().supportEmail,
+      });
       // eslint-disable-next-line no-await-in-loop
-      await sendEmail({ to: booking.primaryContactEmail, subject: `${event.name} starts in 3 hours`, html });
+      await sendEmail({ to: booking.primaryContactEmail, subject: custom?.subject ?? `${event.name} starts in 3 hours`, html: custom?.html ?? html });
       result.emailsSent += 1;
       result.attendeesCovered += tickets.length;
     } catch (err) {

@@ -24,6 +24,8 @@ import {
   LineChart,
   TerminalSquare,
   TriangleAlert,
+  LayoutTemplate,
+  MailPlus,
 } from 'lucide-react';
 import { saRequest, SaError, getSaSession, saveSaSession, clearSaSession, setUnauthorizedHandler, type SaSession } from './api';
 import { Button, Notice } from './ui';
@@ -33,7 +35,8 @@ import { OrganizersPage, OrganizerDetailPage, CustomersPage } from './pages/Peop
 import { EventsPage, BookingsPage, PaymentsPage } from './pages/Commerce';
 import { MessagesPage, QueuePage } from './pages/Messages';
 import { SystemPage, ServerPage, BackupsPage } from './pages/Technical';
-import { BrandingPage, InvoicePage, CertificateFooterPage, IntegrationsPage } from './pages/Settings';
+import { BrandingPage, InvoicePage, IntegrationsPage } from './pages/Settings';
+import { CertificateFooterDesignerPage, InvoiceDesignerPage, EmailTemplatesPage } from './pages/Designers';
 import { AdminsPage, AuditPage } from './pages/Security';
 import { ConfigCheckPage, MonitoringPage, ConsolePage, DangerPage } from './pages/Ops';
 
@@ -194,8 +197,10 @@ const NAV: { section: string; items: [string, string, typeof LayoutDashboard][] 
     section: 'Settings',
     items: [
       ['branding', 'Branding & logo', Palette],
-      ['invoice', 'Invoice', FileText],
+      ['invoice', 'Invoice details', FileText],
+      ['invoice-designer', 'Invoice designer', LayoutTemplate],
       ['certificate', 'Certificate footer', Award],
+      ['email-templates', 'Email templates', MailPlus],
       ['integrations', 'Integrations', Plug],
     ],
   },
@@ -278,7 +283,9 @@ function Shell({ session, onSignOut }: { session: SaSession; onSignOut: () => vo
             <Route path="danger" element={<DangerPage />} />
             <Route path="branding" element={<BrandingPage />} />
             <Route path="invoice" element={<InvoicePage />} />
-            <Route path="certificate" element={<CertificateFooterPage />} />
+            <Route path="invoice-designer" element={<InvoiceDesignerPage />} />
+            <Route path="certificate" element={<CertificateFooterDesignerPage />} />
+            <Route path="email-templates" element={<EmailTemplatesPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
             <Route path="admins" element={<AdminsPage />} />
             <Route path="audit" element={<AuditPage />} />

@@ -146,3 +146,25 @@ export async function saDownload(key: string, path: string, filename: string): P
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+// POSTs JSON and returns the response as a file (PDF / PNG previews).
+export async function saBlob(key: string, path: string, body: unknown): Promise<Blob> {
+  const session = getSaSession();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (session) headers.Authorization = `Bearer ${session.token}`;
+  const res = await fetch(`${saBase(key)}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+    let message = `Preview failed (${res.status})`;
+    try {
+      message = ((await res.json()) as { error?: string }).error ?? message;
+    } catch {
+      // not JSON
+    }
+    if (res.status === 401) {
+      clearSaSession();
+      onUnauthorized?.();
+    }
+    throw new SaError(message, res.status);
+  }
+  return res.blob();
+}

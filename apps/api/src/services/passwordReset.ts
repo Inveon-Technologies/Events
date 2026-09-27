@@ -3,7 +3,7 @@ import { User } from '../models';
 import { hashPassword } from '../auth/password';
 import { issueOtp, verifyOtp, OTP_EXPIRY_MINUTES } from './otp';
 import { sendEmail, isEmailConfigured } from './email';
-import { otpEmail } from '../emails/templates';
+import { otpMessage } from '../emails/templates';
 import { redis } from '../db/redis';
 import { logger, logOtpForDevelopment } from '../logger';
 
@@ -38,8 +38,7 @@ export async function initiateForgotPassword(email: string): Promise<void> {
   if (isEmailConfigured()) {
     await sendEmail({
       to: email,
-      subject: 'Reset your password — Inveon Events',
-      html: otpEmail({ recipientName: user.name ?? 'there', otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }),
+      ...otpMessage({ recipientName: user.name ?? 'there', otpCode: code, expiresInMinutes: OTP_EXPIRY_MINUTES }, 'Reset your password — Inveon Events'),
     });
   } else {
     logOtpForDevelopment('password reset', email, code);

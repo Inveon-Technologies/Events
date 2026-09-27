@@ -1,7 +1,8 @@
 import { sendEmail, isEmailConfigured, type EmailAttachment } from './email';
 import { generateTicketQrPng } from './qrCode';
 import { generateInvoicePdf, invoiceNumber } from './invoice';
-import { ticketConfirmationEmail } from '../emails/ticketConfirmation';
+import { ticketConfirmationEmail, ticketConfirmationParts } from '../emails/ticketConfirmation';
+import { renderCustomEmail } from './emailTemplates';
 import { getBranding } from './platformSettings';
 import { loadBookingDocumentData, istDateLabel, istTimeLabel, istWeekday, venueParts, type BookingDocumentData } from './bookingDocuments';
 import { emailSafePng, renderEventHeaderPng } from './eventHeaderImage';
@@ -71,12 +72,12 @@ export async function deliverBookingConfirmationEmail(result: CreateBookingResul
   const d = await loadBookingDocumentData(result.bookingId);
   if (!d) throw new Error(`Booking ${result.bookingReference} not found for its confirmation email`);
 
-  const { html, attachments } = await buildConfirmationEmail(d);
+  const { html, subject, attachments } = await buildConfirmationEmail(d);
   const invoicePdf = await generateInvoicePdf(d);
 
   await sendEmail({
     to: d.customer.email,
-    subject: `Booking confirmed: ${d.event.name} (${d.bookingReference})`,
+    subject,
     html,
     attachments: [
       { filename: `Invoice-${invoiceNumber(d.bookingReference)}.pdf`, content: invoicePdf, contentType: 'application/pdf' },
@@ -90,7 +91,9 @@ function formatInr(paise: number): string {
 }
 
 // The email HTML plus the inline images it references by cid.
-export async function buildConfirmationEmail(d: BookingDocumentData): Promise<{ html: string; attachments: EmailAttachment[] }> {
+export async function buildConfirmationEmail(
+  d: BookingDocumentData,
+): Promise<{ html: string; subject: string; attachments: EmailAttachment[] }> {
   const attachments: EmailAttachment[] = [];
   const inline = (cid: string, filename: string, content: Buffer, contentType = 'image/png') => {
     attachments.push({ filename, content, contentType, cid });
@@ -144,7 +147,7 @@ export async function buildConfirmationEmail(d: BookingDocumentData): Promise<{ 
       ? `your booking is confirmed and ${generated} — please pay at the venue`
       : `your payment has been successfully verified and ${generated}`;
 
-  const html = ticketConfirmationEmail({
+  const view = {
     headerCid,
     eventName: d.event.name,
     customerName: d.customer.name,
@@ -166,8 +169,35 @@ export async function buildConfirmationEmail(d: BookingDocumentData): Promise<{ 
     partners,
     amountLine: free ? null : cashDue ? `Amount due at the venue: ${formatInr(d.totalPaise)}` : `Amount paid: ${formatInr(d.totalPaise)} · Invoice attached`,
     supportEmail: getBranding().supportEmail,
-  });
-  return { html, attachments };
+  };
+  // The super admin portal's custom template, when switched on — the
+  // same sections (tickets with QR codes, event details, …) in the order
+  // it sets, around its own text.
+  const custom = renderCustomEmail(
+    'bookingConfirmation',
+    {
+      customerName: d.customer.name,
+      eventName: d.event.name,
+      eventDate: istDateLabel(d.event.eventDate),
+      eventTime: istTimeLabel(d.event.eventDate),
+      venue,
+      city,
+      organizerName: d.organizer.name,
+      organizerPhone: d.organizer.contactPhone ?? '',
+      bookingReference: d.bookingReference,
+      ticketCount: String(active.length),
+      amount: free ? 'Free' : formatInr(d.totalPaise),
+      ticketPageUrl: d.links.ticketPage ?? '',
+      platformName: getBranding().platformName,
+      supportEmail: getBranding().supportEmail,
+    },
+    ticketConfirmationParts(view),
+  );
+  return {
+    html: custom?.html ?? ticketConfirmationEmail(view),
+    subject: custom?.subject ?? `Booking confirmed: ${d.event.name} (${d.bookingReference})`,
+    attachments,
+  };
 }
 
 // Best-effort variant, never throws — for callers that just want the

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { getCertificateFooter } from './platformSettings';
+import { getCertificateFooterDesign, type CertificateFooterDesign, type FooterField } from './certificateFooterDesign';
 import { createCanvas, GlobalFonts, loadImage, Path2D, type Image, type SKRSContext2D } from '@napi-rs/canvas';
 import PDFDocument from 'pdfkit';
 import { FONT_DIR } from './canvasKit';
@@ -50,9 +50,21 @@ export interface CertificateAssets {
   organizerLogo: Image | null;
   images: Map<string, Image>; // field id → uploaded image
   partners: { name: string; role: string | null; logo: Image | null }[];
-  // Replaces the drawn Inveon mark in the footer (Settings → Certificate
-  // footer in the super admin portal).
-  footerLogo?: Image | null;
+  // The footer band's design and its uploaded images (Settings →
+  // Certificate footer in the super admin portal).
+  footer?: { design: CertificateFooterDesign; images: Map<string, Image> };
+}
+
+export async function loadFooterAssets(design: CertificateFooterDesign = getCertificateFooterDesign()) {
+  const images = new Map<string, Image>();
+  for (const f of design.fields) {
+    if (f.kind === 'image' && f.imageUrl) {
+      // eslint-disable-next-line no-await-in-loop
+      const img = await image(f.imageUrl);
+      if (img) images.set(f.id, img);
+    }
+  }
+  return { design, images };
 }
 
 async function image(url: string | null | undefined): Promise<Image | null> {
@@ -85,7 +97,7 @@ export async function loadCertificateAssets(
     organizerLogo: await image(organizerLogoUrl),
     images,
     partners: await Promise.all(partners.map(async (p) => ({ name: p.name, role: p.role, logo: await image(p.logoUrl) }))),
-    footerLogo: await image(getCertificateFooter().logoUrl),
+    footer: await loadFooterAssets(),
   };
 }
 
@@ -216,40 +228,53 @@ function drawImageField(ctx: SKRSContext2D, f: CertificateField, assets: Certifi
 const INVEON_MARK_BLUE = new Path2D('M4 4L16 28L28 4H20L16 16L12 4H4Z');
 const INVEON_MARK_ORANGE = new Path2D('M20 4L16 16L12 4H7L16 22L25 4H20Z');
 
-function inveonLogo(ctx: SKRSContext2D, x: number, y: number, size: number, name: string, word: string, logo: Image | null | undefined): number {
-  if (logo) {
-    contain(ctx, logo, x, y - size * 0.1, size * 4.2, size * 1.2);
-    return size * 4.2;
-  }
+function drawPlatformMark(ctx: SKRSContext2D, x: number, y: number, w: number, h: number): void {
+  const size = Math.min(w, h);
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(x + (w - size) / 2, y + (h - size) / 2);
   ctx.scale(size / 32, size / 32);
   ctx.fillStyle = '#0050cb';
   ctx.fill(INVEON_MARK_BLUE);
   ctx.fillStyle = '#f97316';
   ctx.fill(INVEON_MARK_ORANGE);
   ctx.restore();
-  ctx.save();
-  ctx.fillStyle = '#0f172a';
-  ctx.font = `bold ${size * 0.62}px "Montserrat"`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = `${size * 0.04}px`;
-  ctx.fillText(name, x + size * 1.1, y + size * 0.62);
-  ctx.fillStyle = '#0050cb';
-  ctx.font = `bold ${size * 0.22}px "Montserrat"`;
-  (ctx as unknown as { letterSpacing: string }).letterSpacing = `${size * 0.09}px`;
-  ctx.fillText(word, x + size * 1.12, y + size * 0.95);
-  const width = size * 1.1 + Math.max(ctx.measureText(word).width, size * 2.6);
-  ctx.restore();
-  return width;
 }
 
-// The part organizers can't change: Supported By (the event's partners,
-// or placeholder tiles in the organizer's preview when there are none)
-// and the Inveon technology / booking partners.
-function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: number, H: number, preview: boolean): void {
-  const footer = getCertificateFooter();
+type FooterPartner = { name: string; role: string | null; logo: Image | null };
+
+// The event's Supported By partners, in a row centred inside the box.
+function drawPartnersRow(ctx: SKRSContext2D, partners: FooterPartner[], x: number, y: number, w: number, h: number, W: number): void {
+  if (partners.length === 0) return;
+  const cellW = Math.min(w / partners.length, W * 0.16);
+  const startX = x + w / 2 - (cellW * partners.length) / 2;
+  partners.forEach((p, i) => {
+    const cx = startX + i * cellW;
+    if (i > 0) {
+      ctx.fillStyle = '#d6c08a';
+      ctx.fillRect(cx, y + h * 0.15, 1.5, h * 0.7);
+    }
+    if (p.logo) contain(ctx, p.logo, cx + cellW * 0.12, y, cellW * 0.76, h * 0.52);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#1e293b';
+    ctx.font = `bold ${W * 0.0074}px "Montserrat"`;
+    const roleY = p.logo ? y + h * 0.7 : y + h * 0.45;
+    ctx.fillText((p.role || p.name).toUpperCase(), cx + cellW / 2, roleY, cellW - 8);
+    if (p.role) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = `${W * 0.0072}px "Montserrat"`;
+      ctx.fillText(p.name, cx + cellW / 2, roleY + W * 0.011, cellW - 8);
+    }
+    ctx.restore();
+  });
+}
+
+// The band organizers can't change, drawn from the footer design set in
+// the super admin portal (certificateFooterDesign.ts): the event's
+// Supported By partners (or placeholder tiles in the organizer's
+// preview when there are none) and the Inveon partners.
+function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, values: CertificateValues, W: number, H: number, preview: boolean): void {
+  const footer = assets.footer ?? { design: getCertificateFooterDesign(), images: new Map<string, Image>() };
   const top = (FOOTER_TOP_PERCENT / 100) * H + H * 0.004;
   const left = W * 0.075;
   const width = W - left * 2;
@@ -260,7 +285,7 @@ function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: numbe
   ctx.fill();
   ctx.restore();
 
-  const partners =
+  const partners: FooterPartner[] =
     assets.partners.length > 0
       ? assets.partners
       : preview
@@ -271,59 +296,20 @@ function drawFixedFooter(ctx: SKRSContext2D, assets: CertificateAssets, W: numbe
           }))
         : [];
 
-  const label = (text: string, cx: number, y: number, size: number, color = '#0b1c3f') => {
-    ctx.save();
-    ctx.font = `bold ${size}px "Montserrat"`;
-    ctx.fillStyle = color;
-    ctx.textAlign = 'center';
-    (ctx as unknown as { letterSpacing: string }).letterSpacing = `${size * 0.25}px`;
-    ctx.fillText(text, cx, y);
-    ctx.restore();
-  };
-
-  let techTop = top + H * 0.035;
-  if (partners.length > 0) {
-    label(footer.supportedByLabel, W / 2, top + H * 0.022, W * 0.0082);
-    const rowTop = top + H * 0.029;
-    const rowH = H * 0.062;
-    const cellW = Math.min(width / partners.length, W * 0.16);
-    const startX = W / 2 - (cellW * partners.length) / 2;
-    partners.forEach((p, i) => {
-      const cx = startX + i * cellW;
-      if (i > 0) {
-        ctx.fillStyle = '#d6c08a';
-        ctx.fillRect(cx, rowTop + rowH * 0.15, 1.5, rowH * 0.7);
-      }
-      if (p.logo) contain(ctx, p.logo, cx + cellW * 0.12, rowTop, cellW * 0.76, rowH * 0.52);
-      ctx.save();
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#1e293b';
-      ctx.font = `bold ${W * 0.0074}px "Montserrat"`;
-      const roleY = p.logo ? rowTop + rowH * 0.7 : rowTop + rowH * 0.45;
-      ctx.fillText((p.role || p.name).toUpperCase(), cx + cellW / 2, roleY, cellW - 8);
-      if (p.role) {
-        ctx.fillStyle = '#64748b';
-        ctx.font = `${W * 0.0072}px "Montserrat"`;
-        ctx.fillText(p.name, cx + cellW / 2, roleY + W * 0.011, cellW - 8);
-      }
-      ctx.restore();
-    });
-    techTop = rowTop + rowH + H * 0.006;
-    ctx.fillStyle = '#d6c08a';
-    ctx.fillRect(left + width * 0.08, techTop - H * 0.004, width * 0.84, 1.5);
+  for (const f of footer.design.fields as FooterField[]) {
+    const x = (f.x / 100) * W;
+    const y = (f.y / 100) * H;
+    const w = (f.w / 100) * W;
+    const h = (f.h / 100) * H;
+    if (f.kind === 'partners') drawPartnersRow(ctx, partners, x, y, w, h, W);
+    else if (f.kind === 'platformMark') drawPlatformMark(ctx, x, y, w, h);
+    else if (f.kind === 'image') {
+      const img = footer.images.get(f.id);
+      if (img) contain(ctx, img, x, y, w, h);
+    } else if (!f.onlyWithPartners || partners.length > 0) {
+      drawTextField(ctx, f as CertificateField, values, W, H);
+    }
   }
-
-  // Technology partner | Event booking partner
-  const size = W * 0.018;
-  const colW = W * 0.22;
-  const labelsY = techTop + H * 0.014;
-  const logoY = labelsY + H * 0.006;
-  label(footer.technologyPartnerLabel, W / 2 - colW / 2, labelsY, W * 0.0068, '#334155');
-  label(footer.bookingPartnerLabel, W / 2 + colW / 2, labelsY, W * 0.0068, '#334155');
-  ctx.fillStyle = '#cbd5e1';
-  ctx.fillRect(W / 2, labelsY - H * 0.01, 1.5, H * 0.05);
-  inveonLogo(ctx, W / 2 - colW / 2 - size * 1.9, logoY, size, footer.technologyPartnerName, footer.technologyPartnerTagline, assets.footerLogo);
-  inveonLogo(ctx, W / 2 + colW / 2 - size * 1.9, logoY, size, footer.bookingPartnerName, footer.bookingPartnerTagline, assets.footerLogo);
 }
 
 export function renderCertificateCanvas(
@@ -343,7 +329,7 @@ export function renderCertificateCanvas(
     if (f.kind === 'image') drawImageField(ctx, f, assets, W, H, Boolean(opts.preview));
     else drawTextField(ctx, f, values, W, H);
   }
-  drawFixedFooter(ctx, assets, W, H, Boolean(opts.preview));
+  drawFixedFooter(ctx, assets, values, W, H, Boolean(opts.preview));
   return canvas;
 }
 

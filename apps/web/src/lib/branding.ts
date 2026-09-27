@@ -16,6 +16,33 @@ export interface CertificateFooterBranding {
   logoUrl: string | null;
 }
 
+// The certificate footer band as designed in the super admin portal
+// (mirrors apps/api/src/services/certificateFooterDesign.ts).
+export interface CertificateFooterField {
+  id: string;
+  kind: 'text' | 'image' | 'partners' | 'platformMark';
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  color?: string;
+  bold?: boolean;
+  align?: 'left' | 'center' | 'right';
+  letterSpacing?: number;
+  uppercase?: boolean;
+  imageUrl?: string | null;
+  onlyWithPartners?: boolean;
+}
+
+export interface CertificateFooterDesign {
+  version: 1;
+  fields: CertificateFooterField[];
+}
+
 export interface Branding {
   platformName: string;
   logoUrl: string | null;
@@ -26,6 +53,7 @@ export interface Branding {
   companyAddress?: string | null;
   companyGstin?: string | null;
   certificateFooter: CertificateFooterBranding;
+  certificateFooterDesign?: CertificateFooterDesign | null;
 }
 
 export const DEFAULT_CERTIFICATE_FOOTER: CertificateFooterBranding = {

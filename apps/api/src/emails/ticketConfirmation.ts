@@ -132,40 +132,15 @@ function initials(name: string): string {
   );
 }
 
-export function ticketConfirmationEmail(v: TicketConfirmationEmailView): string {
-  const plural = v.tickets.length > 1;
-  const header = v.headerCid
+function bannerRow(v: TicketConfirmationEmailView): string {
+  return v.headerCid
     ? `<tr><td style="padding:0;line-height:0;"><img src="cid:${v.headerCid}" width="680" alt="${e(v.eventName)}" style="display:block;width:100%;max-width:680px;height:auto;border:0;" /></td></tr>`
     : `<tr><td align="center" style="padding:28px 20px;background:#170414;color:#fcd34d;font-size:26px;font-weight:800;">${e(v.eventName)}</td></tr>`;
+}
 
-  const actions = [
-    v.ticketPageUrl ? button(v.ticketPageUrl, `VIEW MY ${plural ? 'TICKETS' : 'TICKET'} &rarr;`, true) : '',
-    v.ticketPdfUrl ? button(v.ticketPdfUrl, '&#11015; DOWNLOAD TICKET PDF', false) : '',
-  ].join('');
-
-  const orgBadge = v.organizerLogoCid
-    ? `<img src="cid:${v.organizerLogoCid}" width="52" height="52" alt="${e(v.organizerName)}" style="display:block;width:52px;height:52px;border-radius:26px;border:1px solid #d4af37;" />`
-    : `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" valign="middle" width="52" height="52" style="width:52px;height:52px;border-radius:26px;background:#18091c;border:1px solid #d4af37;color:#fbbf24;font-size:14px;font-weight:800;">${e(initials(v.organizerName))}</td></tr></table>`;
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="x-apple-disable-message-reformatting" />
-<title>${e(v.eventName)} — Booking Confirmed</title>
-</head>
-<body style="margin:0;padding:0;background:#eef2f7;font-family:${FONT};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your ${plural ? 'tickets' : 'ticket'} for ${e(v.eventName)} ${plural ? 'are' : 'is'} ready — Booking ID ${e(v.bookingReference)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;">
-<tr><td align="center" style="padding:20px 10px;">
-<table role="presentation" width="680" cellpadding="0" cellspacing="0" style="width:100%;max-width:680px;background:#fcfdfe;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-  ${header}
-  <tr><td style="padding:20px 14px 8px;font-size:0;" align="center">
-    <!-- Left column: confirmation + event details -->
-    <div style="display:inline-block;width:100%;max-width:320px;vertical-align:top;font-size:14px;text-align:left;">
-      <div style="margin:0 6px 12px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef8f1;border:1px solid #c5e8ce;border-radius:8px;">
+function confirmationBox(v: TicketConfirmationEmailView): string {
+  const plural = v.tickets.length > 1;
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef8f1;border:1px solid #c5e8ce;border-radius:8px;">
           <tr>
             <td valign="top" width="36" style="padding:14px 0 14px 14px;"><div style="width:28px;height:28px;border-radius:14px;background:#16a34a;color:#ffffff;font-size:16px;line-height:28px;text-align:center;font-weight:700;">&#10003;</div></td>
             <td style="padding:14px;">
@@ -175,10 +150,11 @@ export function ticketConfirmationEmail(v: TicketConfirmationEmailView): string 
               ${v.amountLine ? `<p style="margin:6px 0 0;font-size:11px;color:#2f523a;">${e(v.amountLine)}</p>` : ''}
             </td>
           </tr>
-        </table>
-      </div>
-      <div style="margin:0 6px 12px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e9ecef;border-radius:8px;">
+        </table>`;
+}
+
+function eventDetailsBox(v: TicketConfirmationEmailView): string {
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e9ecef;border-radius:8px;">
           <tr><td style="padding:12px 14px 8px;border-bottom:1px solid #f3f4f6;font-size:12px;font-weight:800;letter-spacing:0.08em;color:#1f2937;">&#128197; EVENT DETAILS</td></tr>
           <tr><td style="padding:12px 14px 2px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -186,31 +162,27 @@ export function ticketConfirmationEmail(v: TicketConfirmationEmailView): string 
               ${v.reportingTime ? detailRow('&#9200;', e(v.reportingTime), 'Reporting Time') : ''}
               ${detailRow('&#128339;', `${e(v.eventTime)} onwards`, 'Event Time')}
               ${detailRow('&#128205;', e(v.venue), v.city ? e(v.city) : null)}
-            </table>
-          </td></tr>
-          <tr><td style="padding:10px 14px 12px;border-top:1px dashed #e5e7eb;">
-            <p style="margin:0;font-size:10px;color:#9ca3af;text-transform:uppercase;">Organized by</p>
-            <p style="margin:0;font-size:13px;font-weight:700;color:#1f2937;">${e(v.organizerName)}</p>
-            ${v.organizerPhone ? `<p style="margin:4px 0 0;font-size:12px;font-weight:600;color:#1f2937;">&#128222; <a href="tel:${e(v.organizerPhone.replace(/\s/g, ''))}" style="color:#1f2937;text-decoration:none;">${e(v.organizerPhone)}</a></p>` : ''}
-            ${v.inviteNote ? `<p style="margin:8px 0 0;font-size:11px;color:#4b5563;line-height:1.5;">${e(v.inviteNote)}</p>` : ''}
-          </td></tr>
-        </table>
-      </div>
-    </div>
-    <!-- Right column: entry ticket(s) -->
-    <div style="display:inline-block;width:100%;max-width:320px;vertical-align:top;font-size:14px;text-align:left;">
-      <div style="margin:0 6px 12px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+            </table>`;
+}
+
+function ticketsBox(v: TicketConfirmationEmailView): string {
+  const plural = v.tickets.length > 1;
+  const actions = [
+    v.ticketPageUrl ? button(v.ticketPageUrl, `VIEW MY ${plural ? 'TICKETS' : 'TICKET'} &rarr;`, true) : '',
+    v.ticketPdfUrl ? button(v.ticketPdfUrl, '&#11015; DOWNLOAD TICKET PDF', false) : '',
+  ].join('');
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
           <tr><td style="padding:12px 14px 8px;font-size:12px;font-weight:800;letter-spacing:0.08em;color:#1f2937;">&#127903; YOUR ENTRY ${plural ? `TICKETS (${v.tickets.length})` : 'TICKET'}</td></tr>
           <tr><td style="padding:0 14px 4px;">${v.tickets.map((t) => ticketCard(t, v.bookingReference)).join('')}</td></tr>
           ${actions ? `<tr><td style="padding:6px 14px 10px;">${actions}</td></tr>` : ''}
-        </table>
-      </div>
-    </div>
-  </td></tr>
-  ${partnersSection(v.partners)}
-  <tr><td align="center" style="background:#170514;padding:14px 10px;font-size:0;">
-    <div style="display:inline-block;width:100%;max-width:220px;vertical-align:middle;font-size:14px;">
+        </table>`;
+}
+
+function organizerBandInner(v: TicketConfirmationEmailView): string {
+  const orgBadge = v.organizerLogoCid
+    ? `<img src="cid:${v.organizerLogoCid}" width="52" height="52" alt="${e(v.organizerName)}" style="display:block;width:52px;height:52px;border-radius:26px;border:1px solid #d4af37;" />`
+    : `<table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" valign="middle" width="52" height="52" style="width:52px;height:52px;border-radius:26px;background:#18091c;border:1px solid #d4af37;color:#fbbf24;font-size:14px;font-weight:800;">${e(initials(v.organizerName))}</td></tr></table>`;
+  return `<div style="display:inline-block;width:100%;max-width:220px;vertical-align:middle;font-size:14px;">
       <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:6px auto;"><tr>
         <td valign="middle" style="padding-right:12px;">${orgBadge}</td>
         <td valign="middle" style="text-align:left;">
@@ -235,7 +207,73 @@ export function ticketConfirmationEmail(v: TicketConfirmationEmailView): string 
         <p style="margin:0;font-size:9px;font-weight:700;letter-spacing:0.24em;color:#ffffff;">EVENTS</p>
         <p style="margin:2px 0 0;font-size:9px;color:#9ca3af;">by Inveon Technologies</p>
       </div>
+    </div>`;
+}
+
+// The confirmation email's sections, for a custom template built in the
+// super admin portal's email designer (emailTemplates.ts): each is a
+// self-contained table that sits in a 600px column.
+export function ticketConfirmationParts(v: TicketConfirmationEmailView): Record<string, string> {
+  const wrap = (inner: string, bg = 'transparent') =>
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;background:${bg};"><tr><td style="font-family:${FONT};">${inner}</td></tr></table>`;
+  return {
+    banner: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">${bannerRow(v)}</table>`,
+    confirmation: wrap(confirmationBox(v)),
+    eventDetails: wrap(eventDetailsBox(v)),
+    tickets: wrap(ticketsBox(v)),
+    partners: v.partners.length
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;">${partnersSection(v.partners).replace('padding:0 20px 20px;', 'padding:0;')}</table>`
+      : '',
+    organizer: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 16px;border-radius:8px;overflow:hidden;"><tr><td align="center" style="background:#170514;padding:14px 10px;font-size:0;">${organizerBandInner(v)}</td></tr></table>`,
+  };
+}
+
+export function ticketConfirmationEmail(v: TicketConfirmationEmailView): string {
+  const plural = v.tickets.length > 1;
+  const header = bannerRow(v);
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>${e(v.eventName)} — Booking Confirmed</title>
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:${FONT};">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your ${plural ? 'tickets' : 'ticket'} for ${e(v.eventName)} ${plural ? 'are' : 'is'} ready — Booking ID ${e(v.bookingReference)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;">
+<tr><td align="center" style="padding:20px 10px;">
+<table role="presentation" width="680" cellpadding="0" cellspacing="0" style="width:100%;max-width:680px;background:#fcfdfe;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+  ${header}
+  <tr><td style="padding:20px 14px 8px;font-size:0;" align="center">
+    <!-- Left column: confirmation + event details -->
+    <div style="display:inline-block;width:100%;max-width:320px;vertical-align:top;font-size:14px;text-align:left;">
+      <div style="margin:0 6px 12px;">
+        ${confirmationBox(v)}
+      </div>
+      <div style="margin:0 6px 12px;">
+        ${eventDetailsBox(v)}
+          </td></tr>
+          <tr><td style="padding:10px 14px 12px;border-top:1px dashed #e5e7eb;">
+            <p style="margin:0;font-size:10px;color:#9ca3af;text-transform:uppercase;">Organized by</p>
+            <p style="margin:0;font-size:13px;font-weight:700;color:#1f2937;">${e(v.organizerName)}</p>
+            ${v.organizerPhone ? `<p style="margin:4px 0 0;font-size:12px;font-weight:600;color:#1f2937;">&#128222; <a href="tel:${e(v.organizerPhone.replace(/\s/g, ''))}" style="color:#1f2937;text-decoration:none;">${e(v.organizerPhone)}</a></p>` : ''}
+            ${v.inviteNote ? `<p style="margin:8px 0 0;font-size:11px;color:#4b5563;line-height:1.5;">${e(v.inviteNote)}</p>` : ''}
+          </td></tr>
+        </table>
+      </div>
     </div>
+    <!-- Right column: entry ticket(s) -->
+    <div style="display:inline-block;width:100%;max-width:320px;vertical-align:top;font-size:14px;text-align:left;">
+      <div style="margin:0 6px 12px;">
+        ${ticketsBox(v)}
+      </div>
+    </div>
+  </td></tr>
+  ${partnersSection(v.partners)}
+  <tr><td align="center" style="background:#170514;padding:14px 10px;font-size:0;">
+    ${organizerBandInner(v)}
   </td></tr>
   <tr><td align="center" style="padding:12px 20px;background:#0f030d;font-size:11px;color:#9ca3af;line-height:1.6;">
     Your invoice is attached. Questions about the event? Contact ${e(v.organizerName)}${v.organizerPhone ? ` on ${e(v.organizerPhone)}` : ''}.

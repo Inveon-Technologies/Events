@@ -1,4 +1,5 @@
 import { DEFAULT_BRANDING, getBranding } from '../services/platformSettings';
+import { renderCustomEmail } from '../services/emailTemplates';
 
 // Table-based layout throughout these templates, not flexbox/grid — a
 // well-established constraint for HTML email, since many mail clients
@@ -82,6 +83,24 @@ export function otpEmail(params: { recipientName: string; otpCode: string; expir
     </p>
   `;
   return emailShell(body, `Your verification code is ${params.otpCode}`);
+}
+
+// A verification-code email and its subject: the super admin portal's
+// custom OTP template when one is switched on, else the built-in one
+// with the caller's subject.
+export function otpMessage(
+  params: { recipientName: string; otpCode: string; expiresInMinutes: number },
+  defaultSubject: string,
+): { subject: string; html: string } {
+  const b = getBranding();
+  const custom = renderCustomEmail('otp', {
+    customerName: params.recipientName,
+    otpCode: params.otpCode,
+    expiresInMinutes: String(params.expiresInMinutes),
+    platformName: b.platformName,
+    supportEmail: b.supportEmail,
+  });
+  return custom ?? { subject: defaultSubject, html: otpEmail(params) };
 }
 
 export function registrationSuccessEmail(params: { recipientName: string; orgName: string; dashboardUrl: string }): string {

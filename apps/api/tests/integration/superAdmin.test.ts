@@ -273,6 +273,82 @@ describe('super admin portal (real DB)', () => {
     expect(JSON.stringify(audit!.details)).not.toContain('aisensy-secret-key');
   });
 
+  it('saves the certificate footer, invoice and email designs, with previews', async () => {
+    const auth = { Authorization: `Bearer ${token}` };
+
+    const footer = await request(app).get(`${base}/settings/certificate-footer-design`).set(auth);
+    expect(footer.status).toBe(200);
+    const design = {
+      ...footer.body.design,
+      fields: [...footer.body.design.fields, { id: 'note', kind: 'text', text: '{event}', x: 10, y: 96, w: 30, h: 2 }],
+    };
+    const png = await request(app)
+      .post(`${base}/settings/certificate-footer-design/preview`)
+      .set(auth)
+      .send({ design })
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(png.status).toBe(200);
+    expect(png.headers['content-type']).toBe('image/png');
+    const savedFooter = await request(app).put(`${base}/settings/certificate-footer-design`).set(auth).send({ design });
+    expect(savedFooter.status).toBe(200);
+    const pub = await request(app).get('/api/platform/branding');
+    expect(pub.body.certificateFooterDesign.fields.at(-1)).toMatchObject({ id: 'note', text: '{event}' });
+    const badFooter = await request(app)
+      .put(`${base}/settings/certificate-footer-design`)
+      .set(auth)
+      .send({ design: { fields: [{ kind: 'image', imageUrl: 'ftp://x/y.png' }] } });
+    expect(badFooter.status).toBe(400);
+
+    const layout = { blocks: [{ type: 'items' }, { type: 'text', text: 'Thanks {customerName}' }, { type: 'header' }] };
+    const pdf = await request(app).post(`${base}/settings/invoice-layout/preview`).set(auth).send({ layout });
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    const savedLayout = await request(app).put(`${base}/settings/invoice-layout`).set(auth).send({ layout });
+    expect(savedLayout.body.layout.blocks).toHaveLength(7);
+    const noItems = await request(app)
+      .put(`${base}/settings/invoice-layout`)
+      .set(auth)
+      .send({ layout: { blocks: [{ type: 'items', visible: false }] } });
+    expect(noItems.status).toBe(400);
+    expect((await request(app).get(`${base}/settings/invoice-layout`).set(auth)).body.saved).toBe(true);
+
+    const list = await request(app).get(`${base}/settings/email-templates`).set(auth);
+    expect(list.body.templates.map((t: { key: string }) => t.key)).toContain('otp');
+    const template = {
+      enabled: true,
+      subject: 'Code for {customerName}',
+      preheader: '',
+      blocks: [
+        { type: 'heading', text: 'Your code, {customerName}' },
+        { type: 'section', section: 'code' },
+      ],
+    };
+    const preview = await request(app).post(`${base}/settings/email-templates/otp/preview`).set(auth).send({ template });
+    expect(preview.body.subject).toMatch(/^Code for /);
+    const savedEmail = await request(app).put(`${base}/settings/email-templates/otp`).set(auth).send({ template });
+    expect(savedEmail.body.template.enabled).toBe(true);
+
+    // The next OTP email (an organizer's password reset) goes out in the new design.
+    mockSendEmail.mockClear();
+    await request(app).post('/api/auth/forgot-password').send({ email: ownerEmail });
+    const sent = mockSendEmail.mock.calls[0][0];
+    expect(sent.subject).toMatch(/^Code for /);
+    expect(sent.html).toMatch(/>\d{6}</);
+
+    const reset = await request(app).delete(`${base}/settings/email-templates/otp`).set(auth);
+    expect(reset.body.template.enabled).toBe(false);
+    const unknown = await request(app).put(`${base}/settings/email-templates/nope`).set(auth).send({ template });
+    expect(unknown.status).toBe(404);
+    // Leave the shared test database with the standard designs.
+    await PlatformSetting.destroy({ where: { key: ['invoiceLayout', 'certificateFooterDesign', 'emailTemplates'] } });
+    await loadPlatformSettings();
+  });
+
   it('makes a downloadable .zip backup of the database', async () => {
     const auth = { Authorization: `Bearer ${token}` };
     const created = await request(app).post(`${base}/backups`).set(auth);
@@ -382,7 +458,15 @@ describe('super admin portal (real DB)', () => {
     const now = Date.now();
     const lines = [
       { t: new Date(now - 30 * 3600_000).toISOString(), cpu: 1, load1: 0.1, memUsedBytes: 1, memTotalBytes: 2, diskPercent: 10, c: {} },
-      { t: new Date(now - 60_000).toISOString(), cpu: 12.5, load1: 0.4, memUsedBytes: 5, memTotalBytes: 8, diskPercent: 40, c: { events_api: [3.1, 1000] } },
+      {
+        t: new Date(now - 60_000).toISOString(),
+        cpu: 12.5,
+        load1: 0.4,
+        memUsedBytes: 5,
+        memTotalBytes: 8,
+        diskPercent: 40,
+        c: { events_api: [3.1, 1000] },
+      },
     ];
     fs.writeFileSync(path.join(opsDir, 'metrics.jsonl'), `${lines.map((l) => JSON.stringify(l)).join('\n')}\n{broken`);
     const res = await request(app).get(`${base}/server/metrics?hours=6`).set('Authorization', `Bearer ${token}`);
