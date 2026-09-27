@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { Logo } from './Logo';
 import { Icon } from './Icon';
 import { clearCustomerSession, useCustomerSession } from '../lib/customerSession';
 import { useBranding } from '../lib/branding';
