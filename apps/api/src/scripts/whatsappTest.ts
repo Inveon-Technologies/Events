@@ -10,6 +10,7 @@ import {
   WHATSAPP_MESSAGES,
   type WhatsAppMessage,
 } from '../services/whatsapp/client';
+import { loadPlatformSettings } from '../services/platformSettings';
 
 // Sends each WhatsApp template once to a test number, to check the
 // provider setup end to end (docs/ops/WHATSAPP.md, step 8):
@@ -97,10 +98,12 @@ async function main(): Promise<void> {
     console.error('Usage: node dist/scripts/whatsappTest.js <phone, e.g. 919922565938> [--booking INV-BKG-…]');
     process.exit(2);
   }
+  // Keys saved in the Super Admin portal win over .env, as in the API itself.
+  await loadPlatformSettings();
   const provider = whatsAppProvider();
   if (!provider) {
     console.error(
-      'WhatsApp is not configured: set WHATSAPP_PROVIDER=aisensy and AISENSY_API_KEY (or the Meta settings) in apps/api/.env, then restart.',
+      'WhatsApp is not configured: set WHATSAPP_PROVIDER=aisensy and AISENSY_API_KEY (or the Meta settings) in Super Admin → Settings → Integrations, or in apps/api/.env.',
     );
     process.exit(2);
   }
