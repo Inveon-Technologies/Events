@@ -8,9 +8,7 @@ import { useBranding, DEFAULT_CERTIFICATE_FOOTER } from '../../../lib/branding';
 // text starts at the top of its box and wraps inside its width. The
 // bottom band (from footerTop %) is the fixed footer, not editable.
 
-export const PAGE_RATIO = 1240 / 1754; // A4 landscape
-
-export function fillTokens(text, values) {
+function fillTokens(text, values) {
   return (text || '').replace(/\{(\w+)\}/g, (m, key) => (key in values ? values[key] : m));
 }
 
@@ -109,7 +107,7 @@ function PartnersRow({ partners, w }) {
 }
 
 // One field of the designed footer (super admin → Certificate footer).
-export function FooterFieldView({ field, values, w, partners, editable }) {
+function FooterFieldView({ field, values, w, partners, editable }) {
   if (field.kind === 'partners') {
     if (partners.length) return <PartnersRow partners={partners} w={w} />;
     return editable ? (
