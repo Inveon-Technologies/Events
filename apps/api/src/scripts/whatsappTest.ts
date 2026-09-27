@@ -79,6 +79,8 @@ function samples(): Record<WhatsAppMessage, { params: string[]; headerImage?: { 
 }
 
 function hint(message: string): string {
+  if (/no plan active/i.test(message))
+    return 'The AiSensy account is on the free plan, which has no API access. Upgrade to Basic or higher (step 4).';
   if (/campaign/i.test(message)) return 'Check the API campaign exists with exactly this name and is Live (step 6).';
   if (/template/i.test(message)) return 'Check the template is Approved and its {{…}} count matches (step 5).';
   if (/media|image|download/i.test(message))
