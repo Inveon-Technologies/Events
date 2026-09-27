@@ -2,6 +2,7 @@ import { Booking, Event, Organizer, Payment, Ticket, TicketCategory } from '../m
 import type { EventPartner } from '../models/Event';
 import { getEventTicketDesign } from './ticketDesign';
 import { ticketDisplayReference, ticketPageUrl, ticketPdfUrl } from './ticketLinks';
+import { cashfreeGetOrderPayments } from './cashfreeClient';
 
 // Everything the booking's documents (confirmation email, invoice PDF)
 // print, loaded once from the booking id — always the stored values,
@@ -45,12 +46,37 @@ export interface BookingDocumentData {
     method: 'online' | 'cash';
     status: string | null;
     gatewayReference: string | null;
+    // The real payment's bank reference (UTR / RRN) or, failing that,
+    // Cashfree's payment id — not the order id, which is just our own
+    // booking reference. Null for cash or when Cashfree can't be reached.
+    transactionReference?: string | null;
     paidAt: Date | null;
   };
   design: { backgroundUrl: string | null; partners: EventPartner[] };
   // Only when the site's public URL is configured — a link without a
   // host is useless in an email.
   links: { ticketPage: string | null; ticketPdf: string | null };
+}
+
+const TXN_LOOKUP_TIMEOUT_MS = 5000;
+
+// Looks up the successful payment attempt on the booking's Cashfree
+// order. Best effort: an invoice never fails to render because the
+// gateway was slow or unreachable.
+export async function paymentTransactionReference(payment: Payment | null): Promise<string | null> {
+  if (!payment || payment.method !== 'online' || !payment.gatewayReference) return null;
+  if (payment.status !== 'paid' && payment.status !== 'refunded') return null;
+  try {
+    const attempts = await Promise.race([
+      cashfreeGetOrderPayments(payment.gatewayReference),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), TXN_LOOKUP_TIMEOUT_MS).unref()),
+    ]);
+    const success = (Array.isArray(attempts) ? attempts : []).find((a) => a.payment_status === 'SUCCESS');
+    if (!success) return null;
+    return success.bank_reference?.trim() || String(success.cf_payment_id);
+  } catch {
+    return null;
+  }
 }
 
 export async function loadBookingDocumentData(bookingId: string): Promise<BookingDocumentData | null> {
@@ -111,6 +137,7 @@ export async function loadBookingDocumentData(bookingId: string): Promise<Bookin
       method: payment?.method ?? booking.paymentMethod,
       status: payment?.status ?? null,
       gatewayReference: payment?.gatewayReference ?? null,
+      transactionReference: await paymentTransactionReference(payment),
       paidAt: payment?.status === 'paid' ? (payment.verifiedAt ?? payment.updatedAt) : null,
     },
     design: { backgroundUrl: design.backgroundUrl, partners: design.partners },

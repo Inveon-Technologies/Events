@@ -4,7 +4,8 @@ import { apiRequest } from '../lib/api';
 
 const NotificationContext = createContext();
 
-const POLL_INTERVAL_MS = 60 * 1000;
+// Matches the rest of the portal's live refresh (see lib/liveRefresh.js).
+const POLL_INTERVAL_MS = 20 * 1000;
 
 function relativeTime(iso) {
   const diffMs = Date.now() - new Date(iso).getTime();

@@ -3,6 +3,7 @@ import { useParams, NavLink } from 'react-router-dom';
 import { DollarSign, CreditCard, ArrowDownRight, CheckCircle2, Building } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 import StatCard from '../../components/common/StatCard';
 
 function formatINR(paise) {
@@ -16,16 +17,20 @@ export default function EventPayments() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError('');
+    const silent = refreshTick > 0;
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     apiRequest(`/organizer/events/${id}/financials`, { token: user?.token })
       .then((data) => {
         if (!cancelled) setFinancials(data);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof ApiError ? err.message : 'Could not load financials.');
+        if (!cancelled && !silent) setError(err instanceof ApiError ? err.message : 'Could not load financials.');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -33,7 +38,7 @@ export default function EventPayments() {
     return () => {
       cancelled = true;
     };
-  }, [id, user?.token]);
+  }, [id, user?.token, refreshTick]);
 
   if (loading) {
     return <p className="text-xs text-slate-500">Loading…</p>;

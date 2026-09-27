@@ -4,6 +4,7 @@ import { QrCode, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 import StatusBadge from '../../components/common/StatusBadge';
 import Tabs from '../../components/common/Tabs';
 
@@ -18,23 +19,27 @@ export default function Tickets() {
   const [selectedEventId, setSelectedEventId] = useState('all');
   const [actioningId, setActioningId] = useState(null);
 
-  async function load() {
-    setLoading(true);
-    setError('');
+  async function load(silent = false) {
+    if (!silent) {
+      setLoading(true);
+      setError('');
+    }
     try {
       const res = await apiRequest('/organizer/tickets', { token: user?.token });
       setData(res);
+      setError('');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not load tickets.');
+      if (!silent) setError(err instanceof ApiError ? err.message : 'Could not load tickets.');
     } finally {
       setLoading(false);
     }
   }
 
+  const refreshTick = useRefreshTick();
   useEffect(() => {
-    load();
+    load(refreshTick > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshTick]);
 
   async function handleUndo(ticket) {
     setActioningId(ticket.id);

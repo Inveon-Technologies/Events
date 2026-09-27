@@ -137,12 +137,41 @@ function paymentSummary(d: BookingDocumentData): { method: string; gateway: stri
     : { method: 'Online (UPI / Card / Netbanking)', gateway: 'Cashfree Payments India', status: 'PENDING', paid: false };
 }
 
+// The Inveon Events mark — the same four-facet cube the website draws
+// (apps/web/src/components/Logo.tsx), used when no logo image loads.
 function inveonMark(doc: PDFKit.PDFDocument, x: number, y: number, size: number): void {
   const s = size / 32;
   doc.save().translate(x, y).scale(s);
-  doc.path('M4 4L16 28L28 4H20L16 16L12 4H4Z').fill('#0050cb');
-  doc.path('M20 4L16 16L12 4H7L16 22L25 4H20Z').fill(C.orange);
+  doc.path('M7 6L16 11V25L7 20V6Z').fill('#0066FF');
+  doc.path('M19 11L28 6V20L19 25V11Z').fill('#0052CC');
+  doc.path('M16 27L7 22L16 17L25 22L16 27Z').fill('#F59E0B');
+  doc.path('M16 11L25 6L16 1L7 6L16 11Z').fill('#0080FF');
   doc.restore();
+}
+
+// The Inveon Events logo image the website header shows
+// (apps/web/src/lib/brand.ts), for when no logo is set in the super
+// admin portal's Branding settings.
+const INVEON_EVENTS_LOGO_URL =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuDOu7O6QckldNU8Q1b_jyziqMZctME8kx93UHIGU7MEowMcZxp_gd0hAENIKXIAgelubTZMHeS-XB84YCu79O0sSuUOu3AcroKDSkc_wVR2lXX9EaTgpQ51BsWO8Ple49PWdiJKhBmtBtB6HWwnXmpdSk0oeQ9StdhF_ZuPhV4yJyTafymOGm5LdlsgOrrCTuFiFQACtRHytmQPXdbBltzWx0DydPudiHRLzXCu0VvaGlv-FQwGj0cyuDsdv67GQCX4T4o';
+
+// Fetched once per process and kept (it never changes); skipped under
+// tests, which run without network access.
+let defaultLogo: Promise<Buffer | null> | null = null;
+function loadDefaultLogo(): Promise<Buffer | null> {
+  if (process.env.NODE_ENV === 'test') return Promise.resolve(null);
+  if (!defaultLogo) {
+    defaultLogo = loadStoredImage(INVEON_EVENTS_LOGO_URL, 2 * 1024 * 1024).then((buf) => {
+      if (!buf) defaultLogo = null; // try again on the next invoice
+      return buf;
+    });
+  }
+  return defaultLogo;
+}
+
+// pdfkit draws PNG and JPEG only.
+function isPdfImage(buf: Buffer | null): buf is Buffer {
+  return Boolean(buf && (buf.subarray(0, 4).toString('hex') === '89504e47' || buf.subarray(0, 2).toString('hex') === 'ffd8'));
 }
 
 export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date = new Date()): Promise<Buffer> {
@@ -159,9 +188,9 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
   const cfg = getInvoiceSettings();
   const brand = getBranding();
   const accent = cfg.accentColor;
-  const logo = await loadStoredImage(brand.logoUrl);
-  // pdfkit draws PNG and JPEG only.
-  const logoOk = logo && (logo.subarray(0, 4).toString('hex') === '89504e47' || logo.subarray(0, 2).toString('hex') === 'ffd8');
+  const brandLogo = await loadStoredImage(brand.logoUrl);
+  const logo = isPdfImage(brandLogo) ? brandLogo : await loadDefaultLogo();
+  const logoOk = isPdfImage(logo);
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `${taxed ? 'Tax Invoice' : 'Payment Receipt'} ${number}`, Author: brand.platformName } });
@@ -336,7 +365,7 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
       ['Payment Gateway:', pay.gateway],
       ['Payment Method:', pay.method],
       ['Order ID:', d.bookingReference],
-      ['Bank Ref / TXN ID:', d.payment.gatewayReference ?? '—'],
+      ['Bank Ref / TXN ID:', d.payment.transactionReference || '—'],
       ['Payment Date & Time:', d.payment.paidAt ? `${istDateLabel(d.payment.paidAt)}, ${istTimeLabel(d.payment.paidAt)} IST` : '—'],
     ];
     payRows.forEach(([k, v], i) => {
@@ -405,11 +434,21 @@ export async function generateInvoicePdf(d: BookingDocumentData, issuedAt: Date 
     const fy = doc.page.height - 36 - 30;
     doc.moveTo(L, fy).lineTo(R, fy).lineWidth(0.7).stroke(C.line);
     text('R', 7.2, C.muted, `Thank you for booking with ${brand.platformName}. For billing queries, contact ${brand.supportEmail}`, L, fy + 10, { width: Wd * 0.5 });
-    inveonMark(doc, L + Wd * 0.56, fy + 8, 16);
-    text('B', 9, C.ink, brand.platformName.toUpperCase(), L + Wd * 0.56 + 20, fy + 8, { width: 150, height: 11, ellipsis: true });
+    // Footer brand block: the platform's logo image (as in the header),
+    // falling back to the Inveon Events mark and name.
+    const fx = L + Wd * 0.56;
+    let detailsX = fx + 20;
+    if (logoOk) {
+      doc.image(logo, fx, fy + 6, { fit: [60, 22], valign: 'center' });
+      detailsX = fx + 66;
+    } else {
+      inveonMark(doc, fx, fy + 8, 16);
+      text('B', 9, C.ink, brand.platformName.toUpperCase(), detailsX, fy + 8, { width: 150, height: 11, ellipsis: true });
+    }
     const company = [cfg.companyName, cfg.companyGstin ? `GSTIN ${cfg.companyGstin}` : null].filter(Boolean).join(' · ');
-    text('R', 6.5, C.muted, company, L + Wd * 0.56 + 20, fy + 19, { width: 170, height: 8, ellipsis: true });
-    if (cfg.companyAddress) text('R', 6, C.muted, cfg.companyAddress, L + Wd * 0.56 + 20, fy + 27, { width: 170, height: 8, ellipsis: true });
+    const detailsY = logoOk ? fy + 9 : fy + 19;
+    text('R', 6.5, C.muted, company, detailsX, detailsY, { width: 150, height: 8, ellipsis: true });
+    if (cfg.companyAddress) text('R', 6, C.muted, cfg.companyAddress, detailsX, detailsY + 8, { width: 150, height: 8, ellipsis: true });
     text('B', 7.5, C.ink, `INVOICE: ${number}`, R - 150, fy + 12, { width: 150, align: 'right' });
 
     doc.end();

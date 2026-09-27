@@ -12,6 +12,7 @@ import {
 import { useEvents } from '../../context/EventsContext';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest, ApiError } from '../../lib/api';
+import { useRefreshTick } from '../../lib/liveRefresh';
 
 // Real audio feedback via Web Audio API — unchanged from before, this
 // part was already real.
@@ -69,9 +70,9 @@ export default function CheckIn() {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0].id);
   }, [events, selectedEventId]);
 
-  async function loadQueue() {
+  async function loadQueue(silent = false) {
     if (!selectedEventId) return;
-    setQueueLoading(true);
+    if (!silent) setQueueLoading(true);
     try {
       const res = await apiRequest(`/organizer/tickets?eventId=${selectedEventId}&status=valid`, { token: user?.token });
       setQueue(res.tickets);
@@ -82,10 +83,16 @@ export default function CheckIn() {
     }
   }
 
+  const refreshTick = useRefreshTick();
   useEffect(() => {
     loadQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEventId]);
+  // Quiet background refresh of the pending list (other gates check people in too).
+  useEffect(() => {
+    if (refreshTick > 0) loadQueue(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshTick]);
 
   async function processScan(qrToken) {
     if (!selectedEventId) {

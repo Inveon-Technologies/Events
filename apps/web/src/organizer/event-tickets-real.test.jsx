@@ -114,6 +114,11 @@ describe('EventTickets.jsx: real tier display and real tier-add payload', () => 
 
     await user.click(screen.getByRole('button', { name: /add ticket pass/i }));
     await user.type(screen.getByPlaceholderText(/vip backstage pass/i), 'VIP Pass');
+    // The form starts blank (no sample price or quota filled in).
+    expect(screen.getByPlaceholderText(/0 for free/i)).toHaveValue(null);
+    await user.type(screen.getByPlaceholderText(/0 for free/i), '999');
+    const quota = screen.getByText('Ticket Allotment Quota').parentElement.querySelector('input');
+    await user.type(quota, '20');
     await user.click(screen.getByRole('button', { name: /create ticket tier/i }));
 
     await waitFor(() => {
@@ -124,7 +129,7 @@ describe('EventTickets.jsx: real tier display and real tier-add payload', () => 
     const body = JSON.parse(patchOpts.body);
     expect(body.ticketTiers).toHaveLength(2);
     expect(body.ticketTiers[0]).toEqual({ id: 'real-tier-uuid-aaa', name: 'General', description: 'Standard entry', price: 500, quantity: 20 });
-    expect(body.ticketTiers[1]).toEqual({ name: 'VIP Pass', description: '', price: 999, quantity: 20 });
+    expect(body.ticketTiers[1]).toEqual({ name: 'VIP Pass', description: '', price: 999, quantity: 20, maxPerBooking: 10 });
     expect(body.ticketTiers[1].id).toBeUndefined();
   });
 });

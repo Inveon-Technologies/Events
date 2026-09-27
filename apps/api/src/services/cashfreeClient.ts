@@ -296,6 +296,9 @@ export async function cashfreeGetOrder(orderId: string): Promise<CashfreeOrderRe
 export interface CashfreeOrderPayment {
   cf_payment_id: string | number;
   payment_status: 'SUCCESS' | 'NOT_ATTEMPTED' | 'FAILED' | 'USER_DROPPED' | 'VOID' | 'CANCELLED' | 'PENDING';
+  // The bank's / UPI network's own reference (UTR / RRN) for a completed
+  // payment — what a customer sees in their bank statement.
+  bank_reference?: string | null;
 }
 
 export async function cashfreeGetOrderPayments(orderId: string): Promise<CashfreeOrderPayment[]> {

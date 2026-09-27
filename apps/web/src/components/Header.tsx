@@ -54,7 +54,7 @@ export function Header() {
           <img
             src={branding?.logoUrl || INVEON_EVENTS_LOGO_URL}
             alt={branding?.platformName || 'Inveon Events'}
-            className="h-8 sm:h-9 w-auto object-contain"
+            className="h-10 sm:h-12 w-auto object-contain"
           />
         </Link>
 

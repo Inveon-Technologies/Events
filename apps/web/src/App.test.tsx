@@ -881,18 +881,22 @@ describe('App routing', () => {
     await user.type(screen.getByPlaceholderText('name@example.com'), 'attendee@example.com');
     await user.type(screen.getByPlaceholderText('9876543210'), '9000000001');
 
-    // Real confirmation checkbox for the real restriction — present and unchecked by default.
-    const confirmCheckbox = screen.getByRole('checkbox', { name: /confirm this attendee is male/i });
-    expect(confirmCheckbox).not.toBeChecked();
-
-    // Submitting without confirming never calls the real booking endpoint.
+    // Proceeding opens the confirmation dialog (with the no-refund
+    // notice) instead of calling the booking endpoint straight away.
     await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent(/male attendees only/i);
+    expect(dialog).toHaveTextContent(/will not be refunded/i);
     await new Promise((r) => { setTimeout(r, 50); });
     expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/bookings'))).toBe(false);
 
-    await user.click(confirmCheckbox);
-    expect(confirmCheckbox).toBeChecked();
+    // Going back closes it without booking.
+    await user.click(screen.getByRole('button', { name: /go back/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([u]) => String(u).endsWith('/bookings'))).toBe(false);
+
     await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+    await user.click(await screen.findByRole('button', { name: /yes, i confirm and continue/i }));
 
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/bookings'));

@@ -111,6 +111,10 @@ export function CheckoutPage() {
   const selectedTier = event?.ticketCategories.find((t) => (quantities[t.id] ?? 0) > 0) ?? null;
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
+  // Gender-restricted events: one confirmation dialog before payment
+  // (replaces the per-attendee checkbox) that also states the
+  // no-refund consequence of booking someone the event doesn't admit.
+  const [genderDialogOpen, setGenderDialogOpen] = useState(false);
 
   if (loadError === 'not_found') {
     return <EventUnavailablePage reference={eventId ?? '404'} />;
@@ -188,7 +192,7 @@ export function CheckoutPage() {
     }
   }
 
-  async function validateAndConfirm() {
+  async function validateAndConfirm(genderConfirmed = false) {
     if (isSubmittingBooking) return;
 
     const lead = attendees[0];
@@ -197,8 +201,8 @@ export function CheckoutPage() {
       return;
     }
 
-    if (event?.genderRestriction && attendees.some((a) => a.gender !== event.genderRestriction)) {
-      showToast(`Please confirm every attendee is ${event.genderRestriction} — this event is ${event.genderRestriction} attendees only.`);
+    if (event?.genderRestriction && !genderConfirmed) {
+      setGenderDialogOpen(true);
       return;
     }
 
@@ -223,7 +227,7 @@ export function CheckoutPage() {
             primaryContactEmail: lead.email,
             paymentMethod: 'online',
             attendeeNames: attendees.map((a) => a.name || lead.name),
-            attendeeGenders: event?.genderRestriction ? attendees.map((a) => a.gender) : undefined,
+            attendeeGenders: event?.genderRestriction ? attendees.map(() => event.genderRestriction!) : undefined,
           },
         },
       );
@@ -625,23 +629,6 @@ export function CheckoutPage() {
                               </div>
                             </div>
 
-                            {event?.genderRestriction && (
-                              <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={attendee.gender === event.genderRestriction}
-                                    onChange={(e) => updateAttendeeField(index, 'gender', e.target.checked ? event.genderRestriction! : '')}
-                                    className="w-4 h-4 accent-primary"
-                                    required
-                                  />
-                                  <span className="text-body-sm text-amber-900 font-medium capitalize">
-                                    Yes, I confirm this attendee is {event.genderRestriction} — this event is {event.genderRestriction} attendees only.
-                                  </span>
-                                </label>
-                              </div>
-                            )}
-
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                               <div>
                                 <label className="block font-label-sm text-on-surface-variant mb-1">Emergency Contact Person</label>
@@ -927,7 +914,53 @@ export function CheckoutPage() {
 
         </div>
       </main>
+
+      {genderDialogOpen && event?.genderRestriction && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gender-dialog-title"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-amber-600 text-3xl" aria-hidden="true">
+                info
+              </span>
+              <h2 id="gender-dialog-title" className="text-lg font-bold text-slate-900">
+                <span className="capitalize">{event.genderRestriction}</span> attendees only
+              </h2>
+            </div>
+            <p className="mt-3 text-sm text-slate-700">
+              This event admits {event.genderRestriction} attendees only. Please confirm that every attendee in this
+              booking is {event.genderRestriction}.
+            </p>
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              <strong>No refund:</strong> if an attendee does not meet this requirement, they can be refused entry
+              at the venue and the booking will not be refunded.
+            </div>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setGenderDialogOpen(false)}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                Go back
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGenderDialogOpen(false);
+                  void validateAndConfirm(true);
+                }}
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-bold text-white hover:opacity-90"
+              >
+                Yes, I confirm and continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
