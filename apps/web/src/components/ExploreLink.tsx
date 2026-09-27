@@ -8,15 +8,7 @@ import { Link, useLocation } from 'react-router-dom';
 // visitor came from. Now they route to /#explore (a real history entry)
 // and HomePage scrolls to the section; on the home page itself they
 // scroll in place without adding an entry.
-export function ExploreLink({
-  className,
-  children,
-  onNavigate,
-}: {
-  className?: string;
-  children: ReactNode;
-  onNavigate?: () => void;
-}) {
+export function ExploreLink({ className, children, onNavigate }: { className?: string; children: ReactNode; onNavigate?: () => void }) {
   const location = useLocation();
   return (
     <Link
