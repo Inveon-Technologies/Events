@@ -142,8 +142,8 @@ describe('WhatsApp notifications', () => {
 
   it('sends the booking confirmation like the ticket mockup: card image, details, View Ticket + PDF buttons', async () => {
     const { reference, bookingId } = await book('098765 43210');
-    await waitFor(() => sentTo('booking_confirmation_v2', '919876543210').some((b) => b.templateParams[7] === reference));
-    const msg = sentTo('booking_confirmation_v2', '919876543210').find((b) => b.templateParams[7] === reference)!;
+    await waitFor(() => sentTo('booking_confirmation_v3', '919876543210').some((b) => b.templateParams[7] === reference));
+    const msg = sentTo('booking_confirmation_v3', '919876543210').find((b) => b.templateParams[7] === reference)!;
     const token = ticketLinkToken(reference);
     expect(msg.userName).toBe('Asha Patil');
     expect(msg.templateParams).toEqual([
@@ -188,7 +188,7 @@ describe('WhatsApp notifications', () => {
     const { bookingId, reference } = await book('9876500001');
     await Booking.update({ status: 'confirmed' }, { where: { id: bookingId } });
     await organizerCancelBooking(bookingId, organizerId, 'Weather');
-    const msg = sentTo('booking_cancelled', '919876500001').find((b) => b.templateParams[1] === reference);
+    const msg = sentTo('booking_cancelled_v3', '919876500001').find((b) => b.templateParams[1] === reference);
     expect(msg).toBeTruthy();
     expect(msg!.templateParams[3]).toBe('No payment was due for this booking.');
   });
@@ -197,7 +197,7 @@ describe('WhatsApp notifications', () => {
     const { bookingId, reference } = await book('9876500005');
     await Booking.update({ status: 'confirmed', totalAmountPaise: 150000 }, { where: { id: bookingId } });
     await organizerCancelBooking(bookingId, organizerId, 'Weather');
-    const msg = sentTo('booking_cancelled', '919876500005').find((b) => b.templateParams[1] === reference);
+    const msg = sentTo('booking_cancelled_v3', '919876500005').find((b) => b.templateParams[1] === reference);
     expect(msg!.templateParams[3]).toBe('A refund of ₹1,500 is due; the organizer will arrange it with you.');
   });
 
@@ -221,20 +221,20 @@ describe('WhatsApp notifications', () => {
 
     const event = (await Event.findByPk(eventId))!;
     await sendEventReminder(event);
-    const reminder = sentTo('event_reminder', '919876500002').find((b) => b.templateParams[5] === reference);
+    const reminder = sentTo('event_reminder_v3', '919876500002').find((b) => b.templateParams[5] === reference);
     expect(reminder).toBeTruthy();
     expect(reminder!.templateParams[2]).toBe('6:30 am');
     expect(reminder!.templateParams[3]).toMatch(/Rajgad Base/);
     expect(reminder!.templateParams[4]).toMatch(/^https:\/\/www\.google\.com\/maps/);
-    expect(sentTo('event_reminder', '919876500003')).toHaveLength(0);
+    expect(sentTo('event_reminder_v3', '919876500003')).toHaveLength(0);
 
     await sendPostEventBroadcast((await Event.findByPk(eventId))!);
-    const thanks = sentTo('post_event_thanks', '919876500002');
+    const thanks = sentTo('post_event_thanks_v3', '919876500002');
     expect(thanks).toHaveLength(1);
     expect(thanks[0].templateParams[2]).toBe(`WhatsApp Org ${suffix}`);
     expect(thanks[0].templateParams[3]).toBe('See the photos and videos here: https://drive.google.com/drive/folders/xyz');
     expect(thanks[0].templateParams[4]).toBe(`https://events.test.example/bookings/${reference}/feedback`);
-    expect(sentTo('post_event_thanks', '919876500003')).toHaveLength(0);
+    expect(sentTo('post_event_thanks_v3', '919876500003')).toHaveLength(0);
   });
 
   it('sends nothing when WhatsApp is not configured', async () => {

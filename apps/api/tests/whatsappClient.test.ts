@@ -74,7 +74,7 @@ describe('WhatsApp client', () => {
     expect(url).toBe('https://backend.aisensy.com/campaign/t1/api/v2');
     expect(JSON.parse(init.body)).toEqual({
       apiKey: 'secret-key',
-      campaignName: 'booking_confirmation_v2',
+      campaignName: 'booking_confirmation_v3',
       destination: '919876543210',
       userName: 'Asha',
       templateParams: ['Asha', 'Sunrise Trek', '-', 'INV-1'],
@@ -86,7 +86,7 @@ describe('WhatsApp client', () => {
     process.env.WHATSAPP_PROVIDER = 'meta';
     process.env.WHATSAPP_PHONE_NUMBER_ID = '1234567890';
     process.env.WHATSAPP_ACCESS_TOKEN = 'meta-token';
-    process.env.WHATSAPP_TEMPLATE_BOOKING_CONFIRMATION = 'booking_confirmation_v2';
+    process.env.WHATSAPP_TEMPLATE_BOOKING_CONFIRMATION = 'booking_confirmation_custom';
 
     await sendWhatsAppTemplate({ message: 'bookingConfirmation', to: '9876543210', recipientName: 'Asha', params: ['Asha', 'Trek'] });
 
@@ -98,7 +98,7 @@ describe('WhatsApp client', () => {
       to: '919876543210',
       type: 'template',
       template: {
-        name: 'booking_confirmation_v2',
+        name: 'booking_confirmation_custom',
         language: { code: 'en' },
         components: [
           {
@@ -111,7 +111,7 @@ describe('WhatsApp client', () => {
         ],
       },
     });
-    expect(templateName('eventReminder')).toBe('event_reminder');
+    expect(templateName('eventReminder')).toBe('event_reminder_v3');
   });
 
   it('sends a header image and URL button values (AiSensy media/buttons, Meta components)', async () => {

@@ -4,11 +4,11 @@ The app sends five WhatsApp messages once this is set up:
 
 | Message | When | Template / API campaign name |
 |---|---|---|
-| Booking confirmation, as a ticket with QR code and View Ticket / PDF buttons | Right after booking, or once online payment succeeds | `booking_confirmation_v2` |
-| Event reminder | About 3 hours before the event starts | `event_reminder` |
-| Booking cancelled | When a customer or the organizer cancels | `booking_cancelled` |
-| Thank-you | 10:00 AM (India time) the day after the event, with photo and rating links | `post_event_thanks` |
-| Certificate ready, with a Download Certificate button | Same time, only for attendees who checked in, on events with certificates switched on | `certificate_ready` |
+| Booking confirmation, as a ticket with QR code and View Ticket / PDF buttons | Right after booking, or once online payment succeeds | `booking_confirmation_v3` |
+| Event reminder | About 3 hours before the event starts | `event_reminder_v3` |
+| Booking cancelled | When a customer or the organizer cancels | `booking_cancelled_v3` |
+| Thank-you | 10:00 AM (India time) the day after the event, with photo and rating links | `post_event_thanks_v3` |
+| Certificate ready, with a Download Certificate button | Same time, only for attendees who checked in, on events with certificates switched on | `certificate_ready_v3` |
 
 Messages go through the background queue, like emails: a failed send is
 retried 5 times, and WhatsApp problems never block a booking. Nothing is
@@ -80,7 +80,7 @@ template below:
 
 Submit, then wait for **Approved**. That's usually minutes, at most a day.
 
-### `booking_confirmation_v2`
+### `booking_confirmation_v3`
 
 This one looks like a ticket: the header is a picture of the ticket (event
 photo, details and the QR code), and it has **View Ticket** and **Download
@@ -142,7 +142,7 @@ If the WhatsApp message fails, the booking still goes through, the ticket
 still arrives by email, and the ticket page shows WhatsApp as "Not
 delivered".
 
-### `event_reminder`
+### `event_reminder_v3`
 
 ```
 Hi {{1}}, a reminder that {{2}} starts today at {{3}}.
@@ -154,7 +154,7 @@ Keep your QR code ready for check-in (booking ref {{6}}). Have a great time!
 ```
 Samples: `Asha` · `Rajgad Sunrise Trek` · `6:30 am` · `Gunjavane village, Pune` · `https://www.google.com/maps/search/?api=1&query=Gunjavane` · `INV-BKG-2026-8F3K2Q`
 
-### `booking_cancelled`
+### `booking_cancelled_v3`
 
 ```
 Hi {{1}}, your booking {{2}} for {{3}} has been cancelled. {{4}}
@@ -163,7 +163,7 @@ If you have any questions, just reply to this message.
 ```
 Samples: `Asha` · `INV-BKG-2026-8F3K2Q` · `Rajgad Sunrise Trek` · `A refund of ₹1,000 has been started to your original payment method.`
 
-### `post_event_thanks`
+### `post_event_thanks_v3`
 
 ```
 Hi {{1}}, thank you for joining {{2}} with {{3}}! {{4}}
@@ -172,12 +172,12 @@ Please rate your experience at {{5}}. Your feedback helps us plan better events.
 ```
 Samples: `Asha` · `Rajgad Sunrise Trek` · `Eco Pandhari Club` · `See the photos and videos here: https://drive.google.com/drive/folders/abc` · `https://events.inveontechnologies.in/bookings/INV-BKG-2026-8F3K2Q/feedback`
 
-Meta may approve `post_event_thanks` as **Marketing** instead of Utility,
+Meta may approve `post_event_thanks_v3` as **Marketing** instead of Utility,
 because it asks for a rating. That's about ₹1.09 a message instead of
 ₹0.145. It still works either way. To save money, you can skip creating it
 and the thank-you goes out by email only.
 
-### `certificate_ready`
+### `certificate_ready_v3`
 
 For events where the organizer switched on participation certificates.
 Sent only to bookings with at least one checked-in attendee.
@@ -201,9 +201,9 @@ Samples: `Rahul` · `Rajgad Sunrise Trek`
 The app sends each message by triggering an AiSensy **API campaign**. In
 **Campaigns → Launch → API Campaign**:
 
-1. **Campaign name:** exactly the template name: `booking_confirmation_v2`,
-   `event_reminder`, `booking_cancelled`, `post_event_thanks`,
-   `certificate_ready`.
+1. **Campaign name:** exactly the template name: `booking_confirmation_v3`,
+   `event_reminder_v3`, `booking_cancelled_v3`, `post_event_thanks_v3`,
+   `certificate_ready_v3`.
 2. Pick the matching template.
 3. Leave the parameters as they are. The app sends them.
 4. Set the campaign **Live**.
@@ -250,10 +250,10 @@ The script uses the keys saved in the Super Admin portal, falling back to
 Each line shows ✓ sent, or ✗ with the provider's error and what to fix:
 
 ```
-✓ booking_confirmation_v2 sent (picture: https://…/images/whatsapp-sample-card.jpg)
-✓ event_reminder         sent
-✓ booking_cancelled      sent
-✗ post_event_thanks      WhatsApp provider returned 400: … campaign …
+✓ booking_confirmation_v3 sent (picture: https://…/images/whatsapp-sample-card.jpg)
+✓ event_reminder_v3       sent
+✓ booking_cancelled_v3    sent
+✗ post_event_thanks_v3    WhatsApp provider returned 400: … campaign …
   → Check the API campaign exists with exactly this name and is Live (step 6).
 ```
 
