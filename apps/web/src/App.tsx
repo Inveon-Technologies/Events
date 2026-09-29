@@ -20,6 +20,7 @@ import { ContactPage, TermsPage, PrivacyPage, RefundPolicyPage } from './pages/L
 import { OrganizerApp } from './organizer/OrganizerApp';
 import { getCustomerSession } from './lib/customerSession';
 import { SeoManager } from './lib/seo';
+import { ScrollToTop } from './components/ScrollToTop';
 
 // Inveon's super admin portal: its own bundle, loaded only at /x/<secret>.
 const SuperAdminApp = lazy(() => import('./superadmin/SuperAdminApp'));
@@ -41,6 +42,7 @@ export default function App() {
   return (
     <>
       <SeoManager />
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/events" element={<EventsListPage />} />

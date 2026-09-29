@@ -65,6 +65,25 @@ export default function CheckIn() {
 
   const html5QrCodeRef = useRef(null);
   const lastScannedRef = useRef({ code: null, at: 0 });
+  // The camera keeps decoding while the result popup is up; ignore those
+  // frames so a ticket held in view doesn't replace the popup being read.
+  const resultOpenRef = useRef(false);
+  resultOpenRef.current = scanResult !== null;
+
+  // Admitted popups close themselves so the gate keeps moving; rejections
+  // stay until the staff member dismisses them.
+  useEffect(() => {
+    if (!scanResult) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setScanResult(null);
+    };
+    window.addEventListener('keydown', onKey);
+    const timer = scanResult.success ? setTimeout(() => setScanResult(null), 2500) : null;
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (timer) clearTimeout(timer);
+    };
+  }, [scanResult]);
 
   useEffect(() => {
     if (!selectedEventId && events.length > 0) setSelectedEventId(events[0].id);
@@ -142,6 +161,7 @@ export default function CheckIn() {
           // Debounce: the camera keeps decoding the same code every
           // frame while it's in view — without this, one physical scan
           // would fire dozens of check-in requests.
+          if (resultOpenRef.current) return;
           const now = Date.now();
           if (lastScannedRef.current.code === decodedText && now - lastScannedRef.current.at < 3000) return;
           lastScannedRef.current = { code: decodedText, at: now };
@@ -249,6 +269,25 @@ export default function CheckIn() {
 
           <div className="relative aspect-video bg-navy-950 rounded-xl overflow-hidden">
             <div id={QR_READER_ELEMENT_ID} className="w-full h-full [&_video]:w-full [&_video]:h-full [&_video]:object-cover" />
+            {scanning && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+                <span className="absolute top-3 left-3 w-8 h-8 border-t-4 border-l-4 border-emerald-400 rounded-tl-lg" />
+                <span className="absolute top-3 right-3 w-8 h-8 border-t-4 border-r-4 border-emerald-400 rounded-tr-lg" />
+                <span className="absolute bottom-3 left-3 w-8 h-8 border-b-4 border-l-4 border-emerald-400 rounded-bl-lg" />
+                <span className="absolute bottom-3 right-3 w-8 h-8 border-b-4 border-r-4 border-emerald-400 rounded-br-lg" />
+                {!scanResult && !processing && (
+                  <div className="checkin-scan-line absolute left-0 right-0 -translate-y-1/2">
+                    <div className="h-0.5 bg-emerald-400 shadow-[0_0_12px_4px_rgba(52,211,153,0.75)]" />
+                    <div className="h-10 -mt-10 bg-gradient-to-t from-emerald-400/30 to-transparent" />
+                  </div>
+                )}
+                {processing && (
+                  <div className="absolute inset-x-0 bottom-3 flex justify-center">
+                    <span className="px-3 py-1 rounded-full bg-black/60 text-[11px] font-bold text-white">Verifying ticket…</span>
+                  </div>
+                )}
+              </div>
+            )}
             {!scanning && (
               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
                 <QrCode className="w-16 h-16 text-cyan-400/60 mb-2" />
@@ -278,38 +317,6 @@ export default function CheckIn() {
             </div>
           </form>
 
-          {scanResult && (
-            <div
-              className={`p-5 rounded-2xl border shadow-md space-y-3 ${
-                scanResult.success
-                  ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
-                  : scanResult.reasonCode === 'already_checked_in'
-                  ? 'bg-amber-50 border-amber-300 text-amber-950'
-                  : 'bg-rose-50 border-rose-300 text-rose-950'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  {scanResult.success ? (
-                    <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-rose-600 text-white flex items-center justify-center shrink-0">
-                      <XCircle className="w-5 h-5" />
-                    </div>
-                  )}
-                  <div>
-                    <h4 className="text-sm font-black tracking-tight">{scanResult.title}</h4>
-                    <p className="text-xs mt-1 leading-relaxed">{scanResult.message}</p>
-                  </div>
-                </div>
-                <button onClick={() => setScanResult(null)} className="p-1 hover:bg-black/10 rounded shrink-0">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="space-y-6">
@@ -360,6 +367,82 @@ export default function CheckIn() {
               )}
             </div>
           </div>
+        </div>
+      </div>
+
+      {scanResult && <ScanResultPopup result={scanResult} onClose={() => setScanResult(null)} />}
+    </div>
+  );
+}
+
+// Big, full-screen result so staff at the gate can read it at arm's length
+// on a phone: green for admitted, amber for an already-used pass, red for
+// cancelled or invalid.
+function ScanResultPopup({ result, onClose }) {
+  const tone = result.success
+    ? { band: 'bg-emerald-600', ring: 'ring-emerald-300', icon: CheckCircle2, label: 'Valid ticket', button: 'bg-emerald-600 hover:bg-emerald-700' }
+    : result.reasonCode === 'already_checked_in'
+    ? { band: 'bg-amber-500', ring: 'ring-amber-200', icon: AlertTriangle, label: 'Already used', button: 'bg-amber-600 hover:bg-amber-700' }
+    : result.reasonCode === 'cancelled'
+    ? { band: 'bg-rose-600', ring: 'ring-rose-300', icon: Ban, label: 'Do not admit', button: 'bg-rose-600 hover:bg-rose-700' }
+    : { band: 'bg-rose-600', ring: 'ring-rose-300', icon: XCircle, label: 'Do not admit', button: 'bg-rose-600 hover:bg-rose-700' };
+  const Icon = tone.icon;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="checkin-result-title"
+    >
+      <div
+        className="checkin-result-in w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={`${tone.band} relative px-6 pt-7 pb-6 text-center text-white`}>
+          <button onClick={onClose} className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-white/20" aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
+          <div className={`mx-auto w-20 h-20 rounded-full bg-white/20 ring-4 ${tone.ring} flex items-center justify-center`}>
+            <Icon className="w-11 h-11" />
+          </div>
+          <p className="mt-3 text-[11px] font-black uppercase tracking-[0.2em] text-white/80">{tone.label}</p>
+          <h2 id="checkin-result-title" className="mt-1 text-2xl font-black tracking-tight">
+            {result.title}
+          </h2>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {result.attendee ? (
+            <dl className="space-y-2.5 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Attendee</dt>
+                <dd className="font-bold text-slate-900 text-right break-words">{result.attendee.name}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Ticket</dt>
+                <dd className="font-semibold text-slate-900 text-right">{result.attendee.tierName}</dd>
+              </div>
+              {result.attendee.bookingReference && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Booking</dt>
+                  <dd className="font-mono text-xs font-semibold text-slate-700 text-right">{result.attendee.bookingReference}</dd>
+                </div>
+              )}
+            </dl>
+          ) : (
+            <p className="text-sm text-slate-700 text-center leading-relaxed">{result.message}</p>
+          )}
+
+          <button
+            onClick={onClose}
+            autoFocus
+            className={`w-full py-3 rounded-xl text-sm font-bold text-white shadow-sm ${tone.button}`}
+          >
+            Scan next ticket
+          </button>
+          {result.success && <p className="text-[11px] text-slate-400 text-center">Closes automatically</p>}
         </div>
       </div>
     </div>
