@@ -112,3 +112,22 @@ body {
   .checkout-step-exit-forward,
   .checkout-step-exit-back { display: none; }
 }
+
+/* Check-in scanner: a green laser line sweeps top to bottom over the
+   camera view while it is live, and the scan result pops in. */
+@keyframes checkin-scan-line {
+  0% { top: 0%; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
+}
+.checkin-scan-line { animation: checkin-scan-line 2.2s linear infinite; }
+@keyframes checkin-result-in {
+  from { transform: translateY(24px) scale(0.96); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.checkin-result-in { animation: checkin-result-in 0.22s cubic-bezier(0.22, 0.8, 0.26, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .checkin-scan-line { animation: none; top: 50%; }
+  .checkin-result-in { animation: none; }
+}
