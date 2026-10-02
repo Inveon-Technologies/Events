@@ -6,6 +6,7 @@ import {
   NotFoundError,
   OrganizerNotVerifiedError,
   BookingValidationError,
+  type BookingItem,
 } from '../services/bookingCreation';
 import { createCashfreeOrderForBooking, NotFoundError as OrderNotFoundError } from '../services/cashfreeOrders';
 import { CashfreeNotConfiguredError } from '../services/cashfreeClient';
@@ -159,6 +160,7 @@ publicBookingsRouter.get('/events/:eventId/availability', asyncHandler(async (re
 publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, asyncHandler(async (req, res) => {
   const { eventId } = req.params;
   const {
+    items,
     ticketCategoryId,
     quantity,
     primaryContactName,
@@ -170,9 +172,19 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
     attendeeGenders,
   } = req.body as Record<string, unknown>;
 
+  // Several ticket types per order: items: [{ ticketCategoryId, quantity }].
+  // A single ticketCategoryId + quantity is still accepted (older clients).
+  const bookingItems: BookingItem[] | null = Array.isArray(items)
+    ? items.every((i) => i && typeof i.ticketCategoryId === 'string' && typeof i.quantity === 'number')
+      ? items.map((i) => ({ ticketCategoryId: i.ticketCategoryId as string, quantity: i.quantity as number }))
+      : null
+    : typeof ticketCategoryId === 'string' && typeof quantity === 'number'
+      ? [{ ticketCategoryId, quantity }]
+      : null;
+
   if (
-    typeof ticketCategoryId !== 'string' ||
-    typeof quantity !== 'number' ||
+    !bookingItems ||
+    bookingItems.length === 0 ||
     typeof primaryContactName !== 'string' ||
     typeof primaryContactWhatsapp !== 'string' ||
     typeof primaryContactEmail !== 'string' ||
@@ -192,8 +204,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
   try {
     const result = await createBooking({
       eventId,
-      ticketCategoryId,
-      quantity,
+      items: bookingItems,
       primaryContactName,
       primaryContactWhatsapp,
       primaryContactEmail,

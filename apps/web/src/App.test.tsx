@@ -707,7 +707,7 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
-  it('checkout books the ticket type the customer chose, with blank attendee forms and the real event details', async () => {
+  it('checkout books several ticket types in one order, with blank attendee forms and the real event details', async () => {
     const user = userEvent.setup();
     const bookingBodies: Record<string, unknown>[] = [];
     const fetchMock = vi.fn().mockImplementation((url, init) => {
@@ -742,25 +742,34 @@ describe('App routing', () => {
     expect(screen.getAllByText(/Real Venue, Nashik/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Rajgad|20 September 2026|₹499/)).not.toBeInTheDocument();
 
-    // Switch from the default (1 General) to 2 Backstage.
+    // Add 2 Backstage on top of the default 1 General — the General
+    // ticket stays selected.
     await user.click(screen.getByLabelText('Add one Backstage ticket'));
     await user.click(screen.getByLabelText('Add one Backstage ticket'));
     // Backstage allows at most 2 per booking.
     await user.click(screen.getByLabelText('Add one Backstage ticket'));
+    expect(screen.getAllByText('SELECTED')).toHaveLength(2);
 
     await user.click(screen.getAllByText('CONTINUE TO PARTICIPANTS')[0]);
     const nameInputs = await screen.findAllByPlaceholderText('e.g. Rahul Sharma');
-    expect(nameInputs).toHaveLength(2);
+    expect(nameInputs).toHaveLength(3);
     nameInputs.forEach((input) => expect(input).toHaveValue(''));
 
     await user.type(nameInputs[0], 'Asha');
     await user.type(nameInputs[1], 'Ravi');
+    await user.type(nameInputs[2], 'Mira');
     await user.type(screen.getAllByPlaceholderText('name@example.com')[0], 'asha@example.com');
     await user.type(screen.getAllByPlaceholderText('9876543210')[0], '9000000001');
     await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
 
     await waitFor(() => expect(bookingBodies).toHaveLength(1));
-    expect(bookingBodies[0]).toMatchObject({ ticketCategoryId: 'tier-vip', quantity: 2, attendeeNames: ['Asha', 'Ravi'] });
+    expect(bookingBodies[0]).toMatchObject({
+      items: [
+        { ticketCategoryId: 'tier-general', quantity: 1 },
+        { ticketCategoryId: 'tier-vip', quantity: 2 },
+      ],
+      attendeeNames: ['Asha', 'Ravi', 'Mira'],
+    });
     // Lands on the real confirmation page, which reads the server's status.
     await waitFor(() => expect(screen.getByText('INV-BKG-2026-ABCD2345')).toBeInTheDocument());
 

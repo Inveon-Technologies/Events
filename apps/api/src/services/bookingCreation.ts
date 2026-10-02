@@ -5,16 +5,23 @@ import { randomUUID, randomInt } from 'crypto';
 import { isCustomerBlocked } from './accountBlocks';
 import { collectionModeFor } from './organizerSettlements';
 
-export interface CreateBookingParams {
-  eventId: string;
+export interface BookingItem {
   ticketCategoryId: string;
   quantity: number;
+}
+
+export interface CreateBookingParams {
+  eventId: string;
+  // One entry per ticket type in the order. Tickets (and attendeeNames /
+  // attendeeGenders) follow this order: all of the first item's tickets,
+  // then the second's, and so on.
+  items: BookingItem[];
   primaryContactName: string;
   primaryContactWhatsapp: string;
   primaryContactEmail: string;
   primaryContactCity?: string;
   paymentMethod: 'online' | 'cash';
-  attendeeNames?: string[]; // one per ticket; falls back to the contact name
+  attendeeNames?: string[]; // one per ticket, in items order; falls back to the contact name
   attendeeGenders?: string[]; // one per ticket; required to match the event's real genderRestriction when one is set, otherwise unused
 }
 
@@ -101,6 +108,8 @@ export interface CreateBookingResult {
     organizerName: string;
     customerName: string;
     customerEmail: string;
+    // Ticket types joined ("General, VIP") when the order has several;
+    // unitPricePaise is then the first type's price.
     tierName: string;
     unitPricePaise: number;
     quantity: number;
@@ -110,23 +119,39 @@ export interface CreateBookingResult {
 }
 
 export async function createBooking(params: CreateBookingParams): Promise<CreateBookingResult> {
+  if (!Array.isArray(params.items) || params.items.length === 0) {
+    throw new BookingValidationError('Choose at least one ticket');
+  }
   // Must be a whole number: a fractional quantity (e.g. 1.4) would
   // otherwise issue 2 tickets from the ticket loop below, charge 1.4x
   // the price, and — because Postgres rounds `quota_remaining - 1.4`
   // back to an integer on assignment — decrement quota by only 1.
-  if (!Number.isInteger(params.quantity) || params.quantity < 1) {
-    throw new BookingValidationError('Quantity must be a whole number of at least 1');
+  for (const item of params.items) {
+    if (typeof item?.ticketCategoryId !== 'string' || !Number.isInteger(item.quantity) || item.quantity < 1) {
+      throw new BookingValidationError('Quantity must be a whole number of at least 1');
+    }
   }
+  // Each ticket type at most once, so maxPerBooking can't be dodged by
+  // splitting one type across several items.
+  if (new Set(params.items.map((i) => i.ticketCategoryId)).size !== params.items.length) {
+    throw new BookingValidationError('Each ticket type can only appear once in a booking');
+  }
+  const totalQuantity = params.items.reduce((sum, i) => sum + i.quantity, 0);
 
   return sequelize.transaction(async (t) => {
     const event = await Event.findByPk(params.eventId, { transaction: t });
     if (!event) throw new NotFoundError('Event not found');
 
-    const ticketCategory = await TicketCategory.findOne({
-      where: { id: params.ticketCategoryId, eventId: params.eventId },
+    const categories = await TicketCategory.findAll({
+      where: { id: params.items.map((i) => i.ticketCategoryId), eventId: params.eventId },
       transaction: t,
     });
-    if (!ticketCategory) throw new NotFoundError('Ticket category not found for this event');
+    const categoryById = new Map(categories.map((c) => [c.id, c]));
+    const lines = params.items.map((item) => {
+      const ticketCategory = categoryById.get(item.ticketCategoryId);
+      if (!ticketCategory) throw new NotFoundError('Ticket category not found for this event');
+      return { ticketCategory, quantity: item.quantity };
+    });
 
     // The public site only ever links to published, upcoming events —
     // but this endpoint is callable directly, so the same rule has to
@@ -144,8 +169,14 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     if (event.eventDate.getTime() <= Date.now()) {
       throw new BookingValidationError('This event has already started — booking is closed');
     }
-    if (params.quantity > ticketCategory.maxPerBooking) {
-      throw new BookingValidationError(`You can book at most ${ticketCategory.maxPerBooking} ticket(s) of this type in one booking`);
+    for (const { ticketCategory, quantity } of lines) {
+      if (quantity > ticketCategory.maxPerBooking) {
+        throw new BookingValidationError(
+          lines.length > 1
+            ? `You can book at most ${ticketCategory.maxPerBooking} ${ticketCategory.name} ticket(s) in one booking`
+            : `You can book at most ${ticketCategory.maxPerBooking} ticket(s) of this type in one booking`,
+        );
+      }
     }
 
     // Checked before any quota is reserved — a doomed booking (wrong or
@@ -154,7 +185,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     // no restriction set (the default) skips this entirely, so nothing
     // here ever runs, let alone asks, for the unrestricted case.
     if (event.genderRestriction) {
-      for (let i = 0; i < params.quantity; i += 1) {
+      for (let i = 0; i < totalQuantity; i += 1) {
         const gender = params.attendeeGenders?.[i];
         if (gender !== event.genderRestriction) {
           throw new GenderRestrictionError(
@@ -164,7 +195,9 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
       }
     }
 
-    if (params.paymentMethod === 'online' && ticketCategory.pricePaise > 0) {
+    const totalAmountPaise = lines.reduce((sum, l) => sum + l.ticketCategory.pricePaise * l.quantity, 0);
+
+    if (params.paymentMethod === 'online' && totalAmountPaise > 0) {
       const organizer = await Organizer.findByPk(event.organizerId, { transaction: t });
       // Verified organizers are paid by vendor split; unverified ones are
       // collected into the platform account and settled later (see
@@ -175,25 +208,29 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
       }
     }
 
-    const updateResult = await sequelize.query<{ quota_remaining: number }>(
-      `UPDATE ticket_categories
-       SET quota_remaining = quota_remaining - :qty, updated_at = NOW()
-       WHERE id = :id AND quota_remaining >= :qty
-       RETURNING quota_remaining`,
-      {
-        replacements: { qty: params.quantity, id: ticketCategory.id },
-        type: QueryTypes.SELECT,
-        transaction: t,
-      },
-    );
+    // One reservation per ticket type, taken in a fixed (id) order so two
+    // mixed orders over the same types can't deadlock each other. If any
+    // type is short, throwing rolls back the ones already taken.
+    for (const { ticketCategory, quantity } of [...lines].sort((a, b) => a.ticketCategory.id.localeCompare(b.ticketCategory.id))) {
+      // eslint-disable-next-line no-await-in-loop
+      const updateResult = await sequelize.query<{ quota_remaining: number }>(
+        `UPDATE ticket_categories
+         SET quota_remaining = quota_remaining - :qty, updated_at = NOW()
+         WHERE id = :id AND quota_remaining >= :qty
+         RETURNING quota_remaining`,
+        {
+          replacements: { qty: quantity, id: ticketCategory.id },
+          type: QueryTypes.SELECT,
+          transaction: t,
+        },
+      );
 
-    if (updateResult.length === 0) {
-      // Either sold out, or someone else's concurrent transaction won the
-      // race and took the remaining stock first. Same user-facing outcome.
-      throw new SoldOutError();
+      if (updateResult.length === 0) {
+        // Either sold out, or someone else's concurrent transaction won the
+        // race and took the remaining stock first. Same user-facing outcome.
+        throw new SoldOutError();
+      }
     }
-
-    const totalAmountPaise = ticketCategory.pricePaise * params.quantity;
 
     const booking = await Booking.create(
       {
@@ -232,19 +269,23 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     );
 
     const tickets: Ticket[] = [];
-    for (let i = 0; i < params.quantity; i += 1) {
-      const ticket = await Ticket.create(
-        {
-          bookingId: booking.id,
-          ticketCategoryId: ticketCategory.id,
-          attendeeName: params.attendeeNames?.[i] ?? params.primaryContactName,
-          attendeeGender: params.attendeeGenders?.[i] ?? null,
-          qrToken: randomUUID(),
-          status: 'valid',
-        },
-        { transaction: t },
-      );
-      tickets.push(ticket);
+    for (const { ticketCategory, quantity } of lines) {
+      for (let n = 0; n < quantity; n += 1) {
+        const i = tickets.length;
+        // eslint-disable-next-line no-await-in-loop
+        const ticket = await Ticket.create(
+          {
+            bookingId: booking.id,
+            ticketCategoryId: ticketCategory.id,
+            attendeeName: params.attendeeNames?.[i] ?? params.primaryContactName,
+            attendeeGender: params.attendeeGenders?.[i] ?? null,
+            qrToken: randomUUID(),
+            status: 'valid',
+          },
+          { transaction: t },
+        );
+        tickets.push(ticket);
+      }
     }
 
     const organizer = await Organizer.findByPk(event.organizerId, { transaction: t });
@@ -262,9 +303,9 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         organizerName: organizer?.name ?? 'Event Organizer',
         customerName: params.primaryContactName,
         customerEmail: params.primaryContactEmail.trim().toLowerCase(),
-        tierName: ticketCategory.name,
-        unitPricePaise: ticketCategory.pricePaise,
-        quantity: params.quantity,
+        tierName: lines.map((l) => l.ticketCategory.name).join(', '),
+        unitPricePaise: lines[0].ticketCategory.pricePaise,
+        quantity: totalQuantity,
         totalAmountPaise,
         ticketQrTokens: tickets.map((tk) => tk.qrToken),
       },

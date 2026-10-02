@@ -15,11 +15,9 @@ import { logger } from '../logger';
 // one case that doesn't have it in hand already: the Cashfree webhook
 // arrives as a separate, later HTTP request (payment confirmation is
 // asynchronous), with no way to carry the original in-memory result
-// across that gap — so it re-queries what it needs instead. All tickets
-// in a booking currently share one ticket category (the booking model
-// doesn't yet support mixed-tier bookings), so reading category/pricing
-// off the first ticket found is safe, not an arbitrary choice among
-// several.
+// across that gap — so it re-queries what it needs instead. A booking
+// can mix ticket types, so the tier name lists each type once, in the
+// order its tickets were issued (same as createBooking()).
 export async function buildBookingEmailPayload(bookingId: string): Promise<CreateBookingResult | null> {
   const booking = await Booking.findByPk(bookingId);
   if (!booking) return null;
@@ -29,11 +27,14 @@ export async function buildBookingEmailPayload(bookingId: string): Promise<Creat
 
   const organizer = await Organizer.findByPk(event.organizerId);
 
-  const tickets = await Ticket.findAll({ where: { bookingId: booking.id } });
+  const tickets = await Ticket.findAll({ where: { bookingId: booking.id }, order: [['createdAt', 'ASC'], ['id', 'ASC']] });
   if (tickets.length === 0) return null;
 
-  const ticketCategory = await TicketCategory.findByPk(tickets[0].ticketCategoryId);
-  if (!ticketCategory) return null;
+  const categoryIds = [...new Set(tickets.map((tk) => tk.ticketCategoryId))];
+  const categories = await TicketCategory.findAll({ where: { id: categoryIds } });
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  const ordered = categoryIds.map((id) => categoryById.get(id)).filter((c): c is TicketCategory => !!c);
+  if (ordered.length === 0) return null;
 
   return {
     bookingId: booking.id,
@@ -48,8 +49,8 @@ export async function buildBookingEmailPayload(bookingId: string): Promise<Creat
       organizerName: organizer?.name ?? 'Event Organizer',
       customerName: booking.primaryContactName,
       customerEmail: booking.primaryContactEmail,
-      tierName: ticketCategory.name,
-      unitPricePaise: ticketCategory.pricePaise,
+      tierName: ordered.map((c) => c.name).join(', '),
+      unitPricePaise: ordered[0].pricePaise,
       quantity: tickets.length,
       totalAmountPaise: booking.totalAmountPaise,
       ticketQrTokens: tickets.map((tk) => tk.qrToken),
