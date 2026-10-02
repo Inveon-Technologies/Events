@@ -1,6 +1,7 @@
 import { isEmailConfigured, sendEmail } from '../src/services/email';
 import { otpEmail, registrationSuccessEmail } from '../src/emails/templates';
 import { ticketConfirmationEmail } from '../src/emails/ticketConfirmation';
+import { htmlToText } from '../src/emails/htmlToText';
 
 describe('email service configuration', () => {
   const originalUser = process.env.SMTP_USER;
@@ -22,9 +23,7 @@ describe('email service configuration', () => {
   it('sendEmail throws a clear, specific error rather than a raw SMTP failure when unconfigured', async () => {
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASS;
-    await expect(sendEmail({ to: 'a@example.com', subject: 'x', html: '<p>x</p>' })).rejects.toThrow(
-      /SMTP_USER.*SMTP_PASS.*not set/,
-    );
+    await expect(sendEmail({ to: 'a@example.com', subject: 'x', html: '<p>x</p>' })).rejects.toThrow(/SMTP_USER.*SMTP_PASS.*not set/);
   });
 });
 
@@ -64,8 +63,20 @@ describe('email templates', () => {
       organizerLogoCid: null,
       inviteNote: null,
       tickets: [
-        { attendeeName: 'Rahul Sharma', tierName: 'General Entry', ticketId: 'INV-TKT-2026-42738-01', statusText: 'CONFIRMED', qrCid: 'ticket-qr-1' },
-        { attendeeName: 'Priya Sharma', tierName: 'General Entry', ticketId: 'INV-TKT-2026-42738-02', statusText: 'CONFIRMED', qrCid: 'ticket-qr-2' },
+        {
+          attendeeName: 'Rahul Sharma',
+          tierName: 'General Entry',
+          ticketId: 'INV-TKT-2026-42738-01',
+          statusText: 'CONFIRMED',
+          qrCid: 'ticket-qr-1',
+        },
+        {
+          attendeeName: 'Priya Sharma',
+          tierName: 'General Entry',
+          ticketId: 'INV-TKT-2026-42738-02',
+          statusText: 'CONFIRMED',
+          qrCid: 'ticket-qr-2',
+        },
       ],
       ticketPageUrl: 'https://events.example/t/abc',
       ticketPdfUrl: 'https://events.example/api/ticket-pdf/abc',
@@ -88,11 +99,49 @@ describe('email templates', () => {
 
   it('ticketConfirmationEmail leaves out the partners section when the organizer has none', () => {
     const html = ticketConfirmationEmail({
-      headerCid: null, eventName: 'Trek', customerName: 'A', bookingReference: 'R', statusLine: 's', dateLabel: 'd', weekday: 'w',
-      reportingTime: null, eventTime: 't', venue: 'v', city: '', organizerName: 'O', organizerPhone: null, organizerLogoCid: null,
-      inviteNote: null, tickets: [], ticketPageUrl: null, ticketPdfUrl: null, partners: [], amountLine: null, supportEmail: 'x@y.z',
+      headerCid: null,
+      eventName: 'Trek',
+      customerName: 'A',
+      bookingReference: 'R',
+      statusLine: 's',
+      dateLabel: 'd',
+      weekday: 'w',
+      reportingTime: null,
+      eventTime: 't',
+      venue: 'v',
+      city: '',
+      organizerName: 'O',
+      organizerPhone: null,
+      organizerLogoCid: null,
+      inviteNote: null,
+      tickets: [],
+      ticketPageUrl: null,
+      ticketPdfUrl: null,
+      partners: [],
+      amountLine: null,
+      supportEmail: 'x@y.z',
     });
     expect(html).not.toContain('OUR EVENT PARTNERS');
     expect(html).not.toContain('Your Logo Here');
+  });
+});
+
+describe('htmlToText', () => {
+  it('keeps text and link targets, drops markup and the hidden preheader', () => {
+    const html = registrationSuccessEmail({
+      recipientName: 'Priya',
+      orgName: 'Eco Pandhari Club',
+      dashboardUrl: 'https://events.inveontechnologies.in/organizer/dashboard',
+    });
+    const text = htmlToText(html);
+    expect(text).toContain('Welcome to Inveon Events, Priya!');
+    expect(text).toContain('Go to your dashboard (https://events.inveontechnologies.in/organizer/dashboard)');
+    expect(text).not.toMatch(/<[a-z]/i);
+    expect(text).not.toContain('&middot;');
+  });
+
+  it('does not repeat the preheader before the body', () => {
+    const text = htmlToText(otpEmail({ recipientName: 'Priya', otpCode: '482913', expiresInMinutes: 10 }));
+    expect(text.match(/482913/g)).toHaveLength(1);
   });
 });

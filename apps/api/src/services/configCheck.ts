@@ -103,7 +103,7 @@ async function emailCheck(): Promise<ConfigCheckItem> {
     return { ...base, status: 'fail', detail: 'SMTP_USER / SMTP_PASS not set', fix: 'Settings → Integrations → Email' };
   const problem = await within(10000, verifyEmailLogin()).catch((e: Error) => e.message);
   return problem
-    ? { ...base, status: 'fail', detail: problem, fix: 'Use a Gmail app password (Google Account → Security → App passwords)' }
+    ? { ...base, status: 'fail', detail: problem, fix: 'Check SMTP_HOST, SMTP_USER and SMTP_PASS (for Gmail, an app password)' }
     : { ...base, status: 'ok', detail: `Logged in as ${integrationValue('SMTP_USER')}` };
 }
 

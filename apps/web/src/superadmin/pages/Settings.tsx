@@ -246,13 +246,17 @@ export function InvoicePage() {
 }
 
 const GROUP_TITLES: Record<string, string> = {
-  email: 'Email (Gmail SMTP)',
+  email: 'Email (SMTP)',
   cashfree: 'Cashfree payments',
   whatsapp: 'WhatsApp (AiSensy or Meta)',
 };
 
 const FIELD_HINTS: Record<string, string> = {
-  SMTP_PASS: 'A Gmail app password (16 letters), not the account password.',
+  SMTP_HOST: 'e.g. smtp.zeptomail.in or smtp-relay.brevo.com. Empty means Gmail.',
+  SMTP_PORT: '465 (SSL) or 587 (STARTTLS). Empty means 465.',
+  SMTP_USER: "The provider's SMTP login, or the Gmail address",
+  SMTP_PASS: "The provider's SMTP password or API key, or a Gmail app password.",
+  SMTP_FROM_EMAIL: 'Address emails come from, on your own domain, e.g. tickets@inveontechnologies.in. Empty means SMTP_USER.',
   CASHFREE_ENV: 'production or sandbox',
   PLATFORM_FEE_PERCENT: "Inveon's cut of each online payment, 0–50 (e.g. 5)",
   WHATSAPP_PROVIDER: 'aisensy or meta',
