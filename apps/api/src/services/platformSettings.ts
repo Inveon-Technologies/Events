@@ -72,7 +72,7 @@ export const DEFAULT_CERTIFICATE_FOOTER: CertificateFooterSettings = {
 // Credentials the portal may set. Anything set here wins over the
 // same-named environment variable; clearing it falls back to the env.
 export const INTEGRATION_KEYS = {
-  email: ['SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_NAME'],
+  email: ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_EMAIL', 'SMTP_FROM_NAME'],
   cashfree: ['CASHFREE_APP_ID', 'CASHFREE_SECRET_KEY', 'CASHFREE_ENV', 'PLATFORM_FEE_PERCENT'],
   whatsapp: [
     'WHATSAPP_PROVIDER',
@@ -87,7 +87,10 @@ export type IntegrationKey = (typeof INTEGRATION_KEYS)[keyof typeof INTEGRATION_
 const ALL_INTEGRATION_KEYS = new Set<string>(Object.values(INTEGRATION_KEYS).flat());
 // Shown in full in the portal (not secret).
 const PLAIN_INTEGRATION_KEYS = new Set<string>([
+  'SMTP_HOST',
+  'SMTP_PORT',
   'SMTP_USER',
+  'SMTP_FROM_EMAIL',
   'SMTP_FROM_NAME',
   'CASHFREE_ENV',
   'PLATFORM_FEE_PERCENT',

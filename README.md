@@ -42,7 +42,7 @@ Not built yet: WhatsApp delivery, organizer approval of cash payments, post-even
 | Containers | Docker, Docker Compose |
 | CI/CD | GitHub Actions → GHCR → SSH deploy with health-check rollback |
 | Payments | Cashfree (Payment Gateway + Easy Split) |
-| Email | SMTP via nodemailer (Gmail app password) |
+| Email | SMTP via nodemailer (any provider; see [docs/email-deliverability.md](docs/email-deliverability.md)) |
 
 ---
 
