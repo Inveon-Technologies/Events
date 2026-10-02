@@ -232,8 +232,10 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
     }
 
     function mixedBody(items: { ticketCategoryId: string; quantity: number }[], overrides: Record<string, unknown> = {}) {
-      const { ticketCategoryId: _t, quantity: _q, ...rest } = bookingBody('');
-      return { ...rest, items, ...overrides };
+      const body: Record<string, unknown> = bookingBody('');
+      delete body.ticketCategoryId;
+      delete body.quantity;
+      return { ...body, items, ...overrides };
     }
 
     it('books each type with its own quantity, price and quota, and releases all of them on a failed payment', async () => {
