@@ -20,4 +20,15 @@ describe('POST /events/:eventId/bookings — input validation', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('rejects malformed ticket items', async () => {
+    const res = await request(app).post('/api/events/some-event-id/bookings').send({
+      items: [{ ticketCategoryId: 'cat-1' }],
+      primaryContactName: 'Test',
+      primaryContactWhatsapp: '+911234567890',
+      primaryContactEmail: 'test@example.com',
+      paymentMethod: 'online',
+    });
+    expect(res.status).toBe(400);
+  });
 });

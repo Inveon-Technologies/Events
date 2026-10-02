@@ -219,6 +219,94 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
     });
   });
 
+  describe('several ticket types in one booking', () => {
+    async function addTier(eventId: string, name: string, opts: { price?: number; quota?: number; maxPerBooking?: number } = {}) {
+      return TicketCategory.create({
+        eventId,
+        name,
+        pricePaise: opts.price ?? 150000,
+        quotaTotal: opts.quota ?? 10,
+        quotaRemaining: opts.quota ?? 10,
+        ...(opts.maxPerBooking !== undefined ? { maxPerBooking: opts.maxPerBooking } : {}),
+      });
+    }
+
+    function mixedBody(items: { ticketCategoryId: string; quantity: number }[], overrides: Record<string, unknown> = {}) {
+      const body: Record<string, unknown> = bookingBody('');
+      delete body.ticketCategoryId;
+      delete body.quantity;
+      return { ...body, items, ...overrides };
+    }
+
+    it('books each type with its own quantity, price and quota, and releases all of them on a failed payment', async () => {
+      const { event, tier: general } = await createEvent();
+      const vip = await addTier(event.id, 'VIP');
+      mockCreateOrder.mockClear();
+
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(mixedBody(
+          [{ ticketCategoryId: general.id, quantity: 1 }, { ticketCategoryId: vip.id, quantity: 2 }],
+          { attendeeNames: ['Asha', 'Ravi', 'Mira'] },
+        ));
+      expect(res.status).toBe(201);
+
+      const booking = (await Booking.findByPk(res.body.bookingId))!;
+      expect(booking.totalAmountPaise).toBe(50000 + 2 * 150000);
+      expect(mockCreateOrder.mock.calls[0][0].orderAmountRupees).toBe((50000 + 2 * 150000) / 100);
+      const tickets = await Ticket.findAll({ where: { bookingId: booking.id } });
+      const byName = new Map(tickets.map((t) => [t.attendeeName, t.ticketCategoryId]));
+      expect(byName.get('Asha')).toBe(general.id);
+      expect(byName.get('Ravi')).toBe(vip.id);
+      expect(byName.get('Mira')).toBe(vip.id);
+      expect(await quotaRemaining(general.id)).toBe(9);
+      expect(await quotaRemaining(vip.id)).toBe(8);
+
+      await signedWebhook({ type: 'PAYMENT_FAILED_WEBHOOK', data: { order: { order_id: booking.bookingReference } } });
+      expect(await quotaRemaining(general.id)).toBe(10);
+      expect(await quotaRemaining(vip.id)).toBe(10);
+    });
+
+    it('reserves nothing when one of the types is short', async () => {
+      const { event, tier: general } = await createEvent();
+      const vip = await addTier(event.id, 'VIP', { quota: 1 });
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(mixedBody([{ ticketCategoryId: general.id, quantity: 2 }, { ticketCategoryId: vip.id, quantity: 2 }]));
+      expect(res.status).toBe(409);
+      expect(await quotaRemaining(general.id)).toBe(10);
+      expect(await quotaRemaining(vip.id)).toBe(1);
+      expect(await Booking.count({ where: { eventId: event.id } })).toBe(0);
+    });
+
+    it("enforces each type's own max_per_booking and refuses the same type twice", async () => {
+      const { event, tier: general } = await createEvent();
+      const vip = await addTier(event.id, 'VIP', { maxPerBooking: 1 });
+
+      const tooMany = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(mixedBody([{ ticketCategoryId: general.id, quantity: 1 }, { ticketCategoryId: vip.id, quantity: 2 }]));
+      expect(tooMany.status).toBe(400);
+      expect(tooMany.body.error).toMatch(/at most 1 VIP/);
+
+      const repeated = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(mixedBody([{ ticketCategoryId: vip.id, quantity: 1 }, { ticketCategoryId: vip.id, quantity: 1 }]));
+      expect(repeated.status).toBe(400);
+      expect(await quotaRemaining(vip.id)).toBe(10);
+    });
+
+    it('refuses a ticket type from another event', async () => {
+      const { event, tier: general } = await createEvent();
+      const { tier: otherTier } = await createEvent();
+      const res = await request(app)
+        .post(`/api/events/${event.id}/bookings`)
+        .send(mixedBody([{ ticketCategoryId: general.id, quantity: 1 }, { ticketCategoryId: otherTier.id, quantity: 1 }]));
+      expect(res.status).toBe(404);
+      expect(await quotaRemaining(general.id)).toBe(10);
+    });
+  });
+
   it('generates unguessable, unambiguous booking references', () => {
     const refs = new Set(Array.from({ length: 2000 }, () => generateBookingReference()));
     expect(refs.size).toBe(2000);

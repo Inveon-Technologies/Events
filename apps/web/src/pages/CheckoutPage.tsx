@@ -43,36 +43,43 @@ export function CheckoutPage() {
   }, [eventId]);
   useLiveAvailability(event?.id, setEvent);
 
-  // One ticket type per booking — that's what the backend books (a
-  // booking belongs to exactly one ticket category). Quantities are
-  // keyed by the event's real tier ids, starting from whatever the
-  // event page passed in (clamped to what that tier actually allows),
-  // or 1 of the first tier with seats left.
+  // A booking can mix ticket types, each with its own quantity.
+  // Quantities are keyed by the event's real tier ids, starting from
+  // whatever the event page passed in (each clamped to what that tier
+  // actually allows), or 1 of the first tier with seats left.
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const quantitiesRef = useRef(quantities);
   quantitiesRef.current = quantities;
   useEffect(() => {
     if (!event) return;
+    const clamp = (tier: EventDetails['ticketCategories'][number], qty: number) =>
+      Math.max(0, Math.min(qty, tier.maxPerBooking, tier.available));
     // A live seat-count refresh keeps what the customer already picked,
-    // only trimming it if fewer seats are left now.
+    // only trimming a type if fewer seats are left now.
     const prev = quantitiesRef.current;
-    const pickedId = Object.keys(prev).find((id) => prev[id] > 0);
-    const picked = pickedId ? event.ticketCategories.find((t) => t.id === pickedId) : undefined;
-    if (picked) {
-      const qty = Math.min(prev[picked.id], picked.maxPerBooking, picked.available);
-      if (qty !== prev[picked.id]) setQuantities({ [picked.id]: qty });
+    if (Object.values(prev).some((q) => q > 0)) {
+      const next: Record<string, number> = {};
+      let changed = false;
+      for (const tier of event.ticketCategories) {
+        const qty = clamp(tier, prev[tier.id] ?? 0);
+        if (qty > 0) next[tier.id] = qty;
+        if (qty !== (prev[tier.id] ?? 0)) changed = true;
+      }
+      if (changed) setQuantities(next);
       return;
     }
     const passed = (location.state as { quantities?: Record<string, number> } | null)?.quantities ?? {};
-    const requested = event.ticketCategories.find((t) => (passed[t.id] ?? 0) > 0);
-    const tier = requested ?? event.ticketCategories.find((t) => t.available > 0);
-    if (!tier) {
-      setQuantities({});
+    const requested: Record<string, number> = {};
+    for (const tier of event.ticketCategories) {
+      const qty = clamp(tier, passed[tier.id] ?? 0);
+      if (qty > 0) requested[tier.id] = qty;
+    }
+    if (Object.keys(requested).length > 0) {
+      setQuantities(requested);
       return;
     }
-    const limit = Math.min(tier.maxPerBooking, tier.available);
-    const qty = Math.max(0, Math.min(requested ? passed[tier.id] : 1, limit));
-    setQuantities({ [tier.id]: qty });
+    const tier = event.ticketCategories.find((t) => t.available > 0);
+    setQuantities(tier ? { [tier.id]: clamp(tier, 1) } : {});
   }, [event, location.state]);
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
@@ -87,23 +94,31 @@ export function CheckoutPage() {
   const [isEventInfoOpen, setIsEventInfoOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Sync attendee list with the selected ticket quantity — existing
-  // entries are kept as the count changes, new rows start empty.
+  // Sync attendee list with the selected ticket quantities: one row per
+  // ticket, grouped by type in the event's tier order (the order the
+  // booking sends them in). Existing entries stay with their ticket type
+  // as counts change; new rows start empty.
   useEffect(() => {
-    const tier = event?.ticketCategories.find((t) => (quantities[t.id] ?? 0) > 0);
-    const count = tier ? quantities[tier.id] : 0;
-    setAttendees((prev) =>
-      Array.from({ length: count }, (_, i) => ({
-        name: prev[i]?.name ?? '',
-        email: prev[i]?.email ?? '',
-        phone: prev[i]?.phone ?? '',
-        gender: prev[i]?.gender ?? '',
-        emergencyName: prev[i]?.emergencyName ?? '',
-        emergencyPhone: prev[i]?.emergencyPhone ?? '',
-        tier: tier?.name ?? '',
-        tierId: tier?.id ?? '',
-      })),
-    );
+    setAttendees((prev) => {
+      const rows: Attendee[] = [];
+      for (const tier of event?.ticketCategories ?? []) {
+        const prevOfTier = prev.filter((a) => a.tierId === tier.id);
+        for (let i = 0; i < (quantities[tier.id] ?? 0); i += 1) {
+          const p = prevOfTier[i];
+          rows.push({
+            name: p?.name ?? '',
+            email: p?.email ?? '',
+            phone: p?.phone ?? '',
+            gender: p?.gender ?? '',
+            emergencyName: p?.emergencyName ?? '',
+            emergencyPhone: p?.emergencyPhone ?? '',
+            tier: tier.name,
+            tierId: tier.id,
+          });
+        }
+      }
+      return rows;
+    });
   }, [quantities, event]);
 
   const totalTickets = Object.values(quantities).reduce((a, b) => a + b, 0);
@@ -116,7 +131,7 @@ export function CheckoutPage() {
     );
   }, [quantities, event]);
 
-  const selectedTier = event?.ticketCategories.find((t) => (quantities[t.id] ?? 0) > 0) ?? null;
+  const selectedTiers = event?.ticketCategories.filter((t) => (quantities[t.id] ?? 0) > 0) ?? [];
   const [isSubmittingBooking, setIsSubmittingBooking] = useState(false);
   const [bookingError, setBookingError] = useState<string | null>(null);
   // Gender-restricted events: one confirmation dialog before payment
@@ -168,8 +183,7 @@ export function CheckoutPage() {
       return;
     }
     const newQty = Math.max(0, currentQty + delta);
-    // Choosing a different ticket type replaces the current selection.
-    setQuantities({ [tierId]: newQty });
+    setQuantities((prev) => ({ ...prev, [tierId]: newQty }));
   }
 
   function updateAttendeeField(index: number, field: keyof Attendee, val: string) {
@@ -218,7 +232,7 @@ export function CheckoutPage() {
       return;
     }
 
-    if (!selectedTier) {
+    if (selectedTiers.length === 0) {
       showToast('Please select at least 1 ticket.');
       return;
     }
@@ -238,8 +252,7 @@ export function CheckoutPage() {
         {
           method: 'POST',
           body: {
-            ticketCategoryId: selectedTier.id,
-            quantity: totalTickets,
+            items: selectedTiers.map((t) => ({ ticketCategoryId: t.id, quantity: quantities[t.id] })),
             primaryContactName: lead.name,
             primaryContactWhatsapp: lead.phone,
             primaryContactEmail: lead.email,
@@ -291,9 +304,11 @@ export function CheckoutPage() {
   }
 
   const heroImage = event.galleryImages[0];
-  const maxPerBooking = selectedTier
-    ? selectedTier.maxPerBooking
-    : Math.max(0, ...event.ticketCategories.map((t) => t.maxPerBooking));
+  // The per-booking cap is per ticket type; only shown when every type
+  // shares the same one.
+  const tierLimits = new Set(event.ticketCategories.map((t) => t.maxPerBooking));
+  const maxPerBooking = tierLimits.size === 1 ? event.ticketCategories[0].maxPerBooking : 0;
+  const maxPerBookingLabel = event.ticketCategories.length > 1 ? 'per ticket type' : 'per booking';
   const eventDay = (() => {
     const parsed = new Date(event.date);
     return Number.isNaN(parsed.getTime())
@@ -324,7 +339,7 @@ export function CheckoutPage() {
             <h2 id="checkout-tickets-title" className="text-[26px] sm:text-[32px] font-extrabold tracking-tight text-[#101f49] leading-tight">
               Choose Your Tickets
             </h2>
-            <p className="mt-1.5 text-sm text-[#7887a0]">Select your ticket type and number of attendees.</p>
+            <p className="mt-1.5 text-sm text-[#7887a0]">Select your ticket types and number of attendees.</p>
           </div>
           {maxPerBooking > 0 && (
             <div className="flex items-center gap-2.5 text-[11px] font-semibold text-[#44536d] shrink-0">
@@ -334,7 +349,7 @@ export function CheckoutPage() {
               <span className="leading-tight">
                 Max {maxPerBooking} ticket{maxPerBooking === 1 ? '' : 's'}
                 <br />
-                per booking
+                {maxPerBookingLabel}
               </span>
             </div>
           )}
@@ -417,11 +432,6 @@ export function CheckoutPage() {
             );
           })}
         </div>
-        {event.ticketCategories.length > 1 && (
-          <p className="mt-3 text-xs text-[#71809b]">
-            One ticket type per booking. Choosing another type replaces your current selection.
-          </p>
-        )}
       </section>
     );
   };
@@ -754,15 +764,17 @@ export function CheckoutPage() {
               </div>
 
               <div className="py-4 border-b border-dashed border-[#dbe2ec] space-y-2.5 text-[12px] text-[#68778e]">
-                {selectedTier ? (
-                  <div className="flex justify-between gap-3">
-                    <span>
-                      {selectedTier.name}
-                      <br />
-                      {formatINR(selectedTier.price)} × {quantities[selectedTier.id]}
-                    </span>
-                    <strong className="text-[#253553]">{formatINR(selectedTier.price * (quantities[selectedTier.id] ?? 0))}</strong>
-                  </div>
+                {selectedTiers.length > 0 ? (
+                  selectedTiers.map((tier) => (
+                    <div key={tier.id} className="flex justify-between gap-3">
+                      <span>
+                        {tier.name}
+                        <br />
+                        {formatINR(tier.price)} × {quantities[tier.id]}
+                      </span>
+                      <strong className="text-[#253553]">{formatINR(tier.price * (quantities[tier.id] ?? 0))}</strong>
+                    </div>
+                  ))
                 ) : (
                   <p className="text-center py-1">No tickets selected yet.</p>
                 )}
