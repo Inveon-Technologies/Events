@@ -164,7 +164,8 @@ deploy after this change. Until then, pass the tag to `rollback.sh`.
 
 The **Security scan** workflow runs on every PR, on main, and every Monday:
 
-- `npm audit`, failing on high or critical;
+- `npm audit`, failing on high or critical in shipped dependencies (dev
+  and build tooling is reported in the log but does not block);
 - Trivy on both built images and on the Dockerfiles/compose files;
 - a scan for committed secrets.
 
