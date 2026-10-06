@@ -13,7 +13,7 @@ import { getEventTicketDesign } from './ticketDesign';
 import { ticketDisplayReference } from './ticketLinks';
 
 // The ticket as a picture and as a PDF, from the same data:
-//   - renderTicketCardPng: a 16:9 card (event photo, details, QR) used as
+//   - renderTicketCardPng: a 16:9 card (landscape event banner, details, QR) used as
 //     the WhatsApp confirmation's header image and on the ticket page;
 //   - renderTicketPdf: one A4 page per participant, each with its QR.
 
@@ -142,10 +142,12 @@ export async function renderTicketCardPng(data: TicketArtworkData): Promise<Buff
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
-  // Left: event photo with the name over it
-  const photo = { x: 40, y: 40, w: 560, h: H - 80 };
+  // Top-left: the event photo as a wide landscape banner (event banners and
+  // posters are landscape, so a tall strip cropped them badly), with the
+  // organizer and event name over its lower edge.
+  const photo = { x: 70, y: 70, w: 1100, h: 400 };
   ctx.save();
-  roundRect(ctx, photo.x, photo.y, photo.w, photo.h, 36);
+  roundRect(ctx, photo.x, photo.y, photo.w, photo.h, 28);
   ctx.clip();
   let drewBanner = false;
   if (data.banner) {
@@ -163,29 +165,25 @@ export async function renderTicketCardPng(data: TicketArtworkData): Promise<Buff
     ctx.fillStyle = g;
     ctx.fillRect(photo.x, photo.y, photo.w, photo.h);
   }
-  const shade = ctx.createLinearGradient(0, photo.y + photo.h * 0.35, 0, photo.y + photo.h);
+  const shade = ctx.createLinearGradient(0, photo.y + photo.h * 0.4, 0, photo.y + photo.h);
   shade.addColorStop(0, 'rgba(15,23,42,0)');
   shade.addColorStop(1, 'rgba(15,23,42,0.88)');
   ctx.fillStyle = shade;
   ctx.fillRect(photo.x, photo.y, photo.w, photo.h);
+  const photoTitle = fitText(ctx, data.eventName, 'Inter Bold', 56, 32, photo.w - 80, 2);
+  const titleBottom = photo.y + photo.h - 40;
+  const titleTop = titleBottom - (photoTitle.lines.length - 1) * (photoTitle.size + 8);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.font = '26px "Inter"';
-  ctx.fillText(data.organizerName, photo.x + 40, photo.y + photo.h - 190, photo.w - 80);
-  const photoTitle = fitText(ctx, data.eventName, 'Inter Bold', 46, 30, photo.w - 80, 2);
+  ctx.fillText(data.organizerName, photo.x + 40, titleTop - photoTitle.size - 4, photo.w - 80);
   ctx.fillStyle = '#ffffff';
-  photoTitle.lines.forEach((l, i) => ctx.fillText(l, photo.x + 40, photo.y + photo.h - 140 + i * (photoTitle.size + 8)));
+  ctx.font = `${photoTitle.size}px "Inter Bold"`;
+  photoTitle.lines.forEach((l, i) => ctx.fillText(l, photo.x + 40, titleTop + i * (photoTitle.size + 8)));
   ctx.restore();
 
-  // Middle: details
-  const mx = 650;
-  const mw = 520;
-  ctx.fillStyle = '#475569';
-  ctx.font = '26px "Inter"';
-  ctx.fillText(data.organizerName, mx, 120, mw);
-  const title = fitText(ctx, data.eventName, 'Inter Bold', 50, 32, mw, 2);
-  ctx.fillStyle = '#0f172a';
-  title.lines.forEach((l, i) => ctx.fillText(l, mx, 180 + i * (title.size + 10)));
-  let y = 180 + title.lines.length * (title.size + 10) + 30;
+  // Below the banner: details in two rows of three
+  const mx = photo.x;
+  const mw = photo.w;
 
   const field = (label: string, value: string, x: number, fy: number, width: number) => {
     ctx.fillStyle = '#64748b';
@@ -195,26 +193,27 @@ export async function renderTicketCardPng(data: TicketArtworkData): Promise<Buff
     const v = fitText(ctx, value, 'Inter SemiBold', 30, 20, width, 1);
     ctx.fillText(v.lines[0], x, fy + 38);
   };
-  field('Date', data.dateLabel, mx, y, mw);
-  y += 92;
-  field(data.timeCaption, data.timeLabel, mx, y, 240);
-  field('Location', data.locationLabel, mx + 260, y, mw - 260);
-  y += 92;
+  const cols = [mx, mx + 440, mx + 720];
+  const colW = [400, 240, mw - 720];
+  let y = photo.y + photo.h + 60;
+  field('Date', data.dateLabel, cols[0], y, colW[0]);
+  field(data.timeCaption, data.timeLabel, cols[1], y, colW[1]);
+  field('Location', data.locationLabel, cols[2], y, colW[2]);
+  y += 76;
 
   ctx.strokeStyle = '#e2e8f0';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(mx, y - 10);
-  ctx.lineTo(mx + mw, y - 10);
+  ctx.moveTo(mx, y);
+  ctx.lineTo(mx + mw, y);
   ctx.stroke();
-  y += 30;
+  y += 50;
 
   const lead = data.tickets[0];
   const more = data.tickets.length - 1;
-  field('Participant', lead ? `${lead.attendeeName}${more > 0 ? ` +${more} more` : ''}` : '-', mx, y, mw);
-  y += 92;
-  field('Ticket type', lead?.tierName ?? '-', mx, y, 170);
-  field('Ticket ID', lead?.reference ?? '-', mx + 190, y, mw - 190);
+  field('Participant', lead ? `${lead.attendeeName}${more > 0 ? ` +${more} more` : ''}` : '-', cols[0], y, colW[0]);
+  field('Ticket type', lead?.tierName ?? '-', cols[1], y, colW[1]);
+  field('Ticket ID', lead?.reference ?? '-', cols[2], y, colW[2]);
 
   // Right: QR panel with a dashed "tear" line
   const px = 1210;
@@ -270,10 +269,10 @@ export async function renderTicketCardPng(data: TicketArtworkData): Promise<Buff
   // Footer brand
   ctx.fillStyle = '#1d4ed8';
   ctx.font = '24px "Inter Bold"';
-  ctx.fillText('INVEON EVENTS', mx, H - 90);
+  ctx.fillText('INVEON EVENTS', mx, H - 76);
   ctx.fillStyle = '#94a3b8';
   ctx.font = '20px "Inter"';
-  ctx.fillText('Official booking & ticketing', mx + 210, H - 90);
+  ctx.fillText('Official booking & ticketing', mx + 210, H - 76);
 
   return canvas.encode('png');
 }
