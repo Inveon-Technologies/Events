@@ -27,6 +27,7 @@ const event: PublicEventDetail = {
   media: [{ id: 'm1', mediaType: 'photo', url: 'https://cdn.example.com/p1.jpg' }],
   organizerName: 'Sahyadri Trekkers',
   organizerSlug: 'sahyadri-trekkers',
+  organizerLogoUrl: null,
   ticketCategories: [
     { id: 't1', name: 'General', description: null, pricePaise: 149900, maxPerBooking: 10, available: 12 },
     { id: 't2', name: 'With transport', description: null, pricePaise: 249900, maxPerBooking: 4, available: 0 },
