@@ -59,6 +59,7 @@ export interface PublicEventDetail {
   media: PublicEventMedia[];
   organizerName: string;
   organizerSlug: string;
+  organizerLogoUrl: string | null;
   ticketCategories: PublicTicketCategory[];
   ratingSummary: RatingSummary;
 }
@@ -125,7 +126,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
 
   const event = await Event.findOne({
     where,
-    include: [{ model: Organizer, attributes: ['name', 'slug'], where: { blockedAt: null }, required: true }],
+    include: [{ model: Organizer, attributes: ['name', 'slug', 'logoUrl'], where: { blockedAt: null }, required: true }],
   });
   if (!event) return null;
 
@@ -167,6 +168,7 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     media: media.map((m) => ({ id: m.id, mediaType: m.mediaType, url: m.url })),
     organizerName: organizer.name,
     organizerSlug: organizer.slug,
+    organizerLogoUrl: organizer.logoUrl ?? null,
     ticketCategories: categories.map((c) => ({
       id: c.id,
       name: c.name,

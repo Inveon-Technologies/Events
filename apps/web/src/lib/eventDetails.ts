@@ -33,6 +33,8 @@ export interface EventDetails {
     slug: string;
     name: string;
     tagline: string;
+    // The organizer's uploaded logo, or null to show their initials.
+    logoUrl: string | null;
     eventsHosted?: number;
     rating?: string;
   };
@@ -147,6 +149,7 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
       slug: real.organizerSlug,
       name: real.organizerName,
       tagline: '',
+      logoUrl: real.organizerLogoUrl || null,
     },
     galleryImages,
     videoUrl: realVideo ? realVideo.url : null,

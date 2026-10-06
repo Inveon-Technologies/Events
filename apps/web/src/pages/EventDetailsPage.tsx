@@ -6,6 +6,36 @@ import { EventUnavailablePage } from './EventUnavailablePage';
 import { EventLocationMap } from '../components/map/EventLocationMap';
 import { formatINR } from '../lib/format';
 
+function organizerInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase())
+    .join('');
+}
+
+// The organizer's real logo when they've uploaded one (falling back to
+// their initials if it is missing or fails to load), never a stand-in icon.
+function OrganizerAvatar({ name, logoUrl, className }: { name: string; logoUrl: string | null; className: string }) {
+  const [failed, setFailed] = useState(false);
+  if (logoUrl && !failed) {
+    return (
+      <img
+        src={logoUrl}
+        alt={`${name} logo`}
+        className={`${className} object-cover bg-white border border-slate-200`}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  return (
+    <div className={`${className} bg-primary text-white flex items-center justify-center font-bold text-sm`}>
+      {organizerInitials(name)}
+    </div>
+  );
+}
+
 export function EventDetailsPage() {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -296,9 +326,11 @@ export function EventDetailsPage() {
               {/* Verified Organizer Pill */}
               <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200/80 shadow-sm">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 text-primary flex items-center justify-center font-bold text-sm shrink-0">
-                    <span className="material-symbols-outlined text-[20px]">explore</span>
-                  </div>
+                  <OrganizerAvatar
+                    name={event.organizer.name}
+                    logoUrl={event.organizer.logoUrl}
+                    className="w-10 h-10 rounded-lg shrink-0"
+                  />
                   <div>
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-slate-900 text-sm">{event.organizer.name}</span>
@@ -812,14 +844,11 @@ export function EventDetailsPage() {
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="w-11 h-11 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-sm">
-                    {event.organizer.name
-                      .split(/\s+/)
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .map((w) => w[0]?.toUpperCase())
-                      .join('')}
-                  </div>
+                  <OrganizerAvatar
+                    name={event.organizer.name}
+                    logoUrl={event.organizer.logoUrl}
+                    className="w-11 h-11 rounded-xl shrink-0 shadow-sm"
+                  />
                   <div>
                     <div className="flex items-center gap-1">
                       <span className="font-bold text-slate-900 text-sm">{event.organizer.name}</span>
