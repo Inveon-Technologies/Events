@@ -1,8 +1,16 @@
 User-agent: *
 Allow: /
-Disallow: /api/
+# Google renders the site with JavaScript, and a page's events, organizer
+# and search tags come from these read-only APIs. Blocking them (the old
+# "Disallow: /api/" alone) left Google with empty event pages. The API's
+# JSON itself carries "X-Robots-Tag: noindex", so it never shows up in
+# results on its own.
+Allow: /api/events
+Allow: /api/organizers
+Allow: /api/platform/branding
+Allow: /api/seo/
 Allow: /api/uploads/
-Allow: /api/seo/sitemap.xml
+Disallow: /api/
 Disallow: /organizer/
 Disallow: /x/
 Disallow: /bookings/

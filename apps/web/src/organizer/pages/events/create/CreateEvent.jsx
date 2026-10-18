@@ -79,6 +79,9 @@ export default function CreateEvent() {
     startTime: '',
     endDate: '',
     endTime: '',
+    // "Booking open until" (IST). Blank = booking closes when the event starts.
+    bookingClosesDate: '',
+    bookingClosesTime: '',
     timezone: 'IST (UTC+5:30)',
     venueType: 'physical',
     venueName: '',
@@ -147,6 +150,8 @@ export default function CreateEvent() {
           description: data.description || '',
           startDate: istParts(data.eventDate).date,
           startTime: istParts(data.eventDate).time,
+          bookingClosesDate: data.bookingClosesAt ? istParts(data.bookingClosesAt).date : '',
+          bookingClosesTime: data.bookingClosesAt ? istParts(data.bookingClosesAt).time : '',
           venueName: data.venueAddress || '',
           bannerImage: data.bannerImage || '',
           ticketBackgroundUrl: data.ticketBackgroundUrl || null,
@@ -903,6 +908,33 @@ export default function CreateEvent() {
                   />
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="booking-closes-date" className="block text-xs font-bold text-slate-700 mb-1">Booking Open Until (Date)</label>
+                  <input
+                    id="booking-closes-date"
+                    type="date"
+                    value={formData.bookingClosesDate}
+                    onChange={(e) => setFormData({ ...formData, bookingClosesDate: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="booking-closes-time" className="block text-xs font-bold text-slate-700 mb-1">Booking Open Until (Time)</label>
+                  <input
+                    id="booking-closes-time"
+                    type="time"
+                    value={formData.bookingClosesTime}
+                    onChange={(e) => setFormData({ ...formData, bookingClosesTime: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                For events that run over several days: customers can keep booking until this date and time, even after the event has started.
+                Leave it blank to close booking when the event starts. No time means the end of that day.
+              </p>
             </div>
 
             {/* Real map: venue or group pickup points (OpenStreetMap, free) */}
@@ -1281,6 +1313,10 @@ export default function CreateEvent() {
 
                 <div className="pt-3 border-t border-slate-100 flex flex-wrap gap-4 text-xs text-slate-600">
                   <span><strong>Date:</strong> {formData.startDate} ({formData.startTime})</span>
+                  <span>
+                    <strong>Booking open until:</strong>{' '}
+                    {formData.bookingClosesDate ? `${formData.bookingClosesDate} (${formData.bookingClosesTime || '23:59'})` : 'event start'}
+                  </span>
                   <span><strong>Venue:</strong> {formData.venueName}, {formData.city}</span>
                   <span><strong>Tiers:</strong> {formData.ticketTiers.length} tier(s) starting from ₹{Math.min(...formData.ticketTiers.map(t => t.price))}</span>
                 </div>

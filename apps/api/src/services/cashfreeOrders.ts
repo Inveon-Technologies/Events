@@ -8,6 +8,7 @@ import { enqueueWhatsApp } from './whatsapp/messages';
 import { enqueueAttendeeTickets } from './attendeeTickets';
 import { logger } from '../logger';
 import { collectionModeFor } from './organizerSettlements';
+import { isBookingOpen } from './bookingWindow';
 
 
 // How long a customer has to finish paying once checkout starts. The
@@ -202,7 +203,7 @@ export async function handleLateOnlinePayment(paymentId: string): Promise<LatePa
       if (!booking || booking.status !== 'cancelled') return 'not_applicable';
       const event = await Event.findByPk(booking.eventId, { transaction: t });
 
-      const eventStillOn = !!event && event.status === 'published' && event.eventDate.getTime() > Date.now();
+      const eventStillOn = !!event && event.status === 'published' && isBookingOpen(event);
       if (!eventStillOn) return 'refund';
       if (!(await reserveBookingTickets(booking.id, t))) {
         // reserveBookingTickets may have decremented part of the stock

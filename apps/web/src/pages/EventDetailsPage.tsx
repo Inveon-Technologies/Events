@@ -157,6 +157,10 @@ export function EventDetailsPage() {
   );
 
   function handleBookNow() {
+    if (!event!.bookingOpen) {
+      showToast('Booking for this event has closed');
+      return;
+    }
     if (totalTickets === 0) {
       showToast('Please select at least 1 ticket to proceed');
       return;
@@ -810,15 +814,18 @@ export function EventDetailsPage() {
 
                 {/* Primary Book CTA */}
                 <div className="space-y-2 pt-1">
+                  <p className="text-center text-[11px] font-semibold text-slate-500">
+                    {event.bookingOpen ? `Booking open until ${event.bookingClosesLabel}` : 'Booking for this event has closed'}
+                  </p>
                   <button
                     type="button"
                     onClick={handleBookNow}
-                    disabled={totalTickets === 0}
+                    disabled={totalTickets === 0 || !event.bookingOpen}
                     className={`w-full py-3 px-4 bg-primary hover:bg-primary-container text-white font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 group active:scale-98 ${
-                      totalTickets === 0 ? 'opacity-50 cursor-not-allowed' : ''
+                      totalTickets === 0 || !event.bookingOpen ? 'opacity-50 cursor-not-allowed' : ''
                     }`}
                   >
-                    <span>BOOK NOW</span>
+                    <span>{event.bookingOpen ? 'BOOK NOW' : 'BOOKING CLOSED'}</span>
                     <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">arrow_forward</span>
                   </button>
 

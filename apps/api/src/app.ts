@@ -49,6 +49,15 @@ export function createApp(): Express {
   // under /api/, so external monitoring needs it there too.
   app.get('/api/health', healthHandler);
 
+  // robots.txt lets Google fetch the public read APIs, because it renders
+  // the SPA with them. The JSON itself must never be a search result.
+  // Uploads (event photos for Google Images) and the server-rendered
+  // pages and sitemap under /api/seo are meant to be indexed.
+  app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+    if (!/^\/(?:uploads\/|seo\/(?:page|sitemap\.xml)$)/.test(req.path)) res.set('X-Robots-Tag', 'noindex');
+    next();
+  });
+
   // Under /api/uploads, not a bare /uploads — the shared front-door nginx
   // only proxies /api/* to this container (see the /api/health comment
   // above), so anything outside that prefix would never actually be

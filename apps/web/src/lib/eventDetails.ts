@@ -81,6 +81,10 @@ export interface EventDetails {
   faqItems?: { question: string; answer: string }[] | null;
   ratingSummary?: { averageRating: number | null; reviewCount: number };
   isPast?: boolean;
+  // Whether tickets can still be bought, and until when (IST label). A
+  // multi-day event stays open after its start until "booking open until".
+  bookingOpen: boolean;
+  bookingClosesLabel: string;
   ticketCategories: TicketCategory[];
   // Venue / pickup / drop pins, in the organizer's order. Falls back to a
   // single venue pin when only venue coordinates exist.
@@ -181,6 +185,16 @@ export async function fetchEventData(eventId?: string): Promise<EventDetails> {
     faqItems: Array.isArray(real.faqItems) && real.faqItems.length > 0 ? real.faqItems : null,
     ratingSummary: real.ratingSummary,
     isPast: eventDate.getTime() < Date.now(),
+    bookingOpen: real.bookingOpen !== false,
+    bookingClosesLabel: new Date(real.bookingClosesAt ?? real.eventDate).toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'Asia/Kolkata',
+    }),
     ticketCategories,
     locationPoints: Array.isArray(real.locationPoints) && real.locationPoints.length > 0
       ? real.locationPoints

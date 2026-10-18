@@ -86,6 +86,15 @@ describe('search engine pages (real DB)', () => {
     expect(eventLd.location.address.addressLocality).toBe('Pune');
     expect(eventLd.offers[0]).toMatchObject({ price: '1499.00', priceCurrency: 'INR', availability: 'https://schema.org/InStock' });
     expect(res.text).toContain(`<h1>Rajgad Sunrise Trek ${suffix}</h1>`);
+    expect(res.text).toMatch(/<meta name="description" content="[^"]*by SEO Test Org/);
+    expect(res.headers['x-robots-tag']).toBeUndefined();
+  });
+
+  it('marks the public JSON APIs noindex, so Google can render with them without listing them', async () => {
+    const res = await request(app).get(`/api/events/${slug}`);
+    expect(res.headers['x-robots-tag']).toBe('noindex');
+    const sitemap = await request(app).get('/api/seo/sitemap.xml');
+    expect(sitemap.headers['x-robots-tag']).toBeUndefined();
   });
 
   it('keeps the organizer-set max tickets per booking', async () => {

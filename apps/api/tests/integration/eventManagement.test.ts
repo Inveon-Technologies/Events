@@ -115,6 +115,35 @@ describe('organizer event management: get/edit/delete (real DB)', () => {
     expect(getRes.body.venueAddress).toContain('Mumbai');
   });
 
+  it('saves, edits and clears "booking open until" (India time)', async () => {
+    const created = await createTestEvent({ bookingClosesDate: '2026-12-18', bookingClosesTime: '18:00' });
+    const get = () => request(app).get(`/api/organizer/events/${created.id}`).set('Authorization', `Bearer ${token}`);
+    expect((await get()).body.bookingClosesAt).toBe('2026-12-18T12:30:00.000Z');
+
+    // A date with no time means the end of that day.
+    await request(app)
+      .patch(`/api/organizer/events/${created.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ bookingClosesDate: '2026-12-19', bookingClosesTime: '' });
+    expect((await get()).body.bookingClosesAt).toBe('2026-12-19T18:29:00.000Z');
+
+    // An edit that doesn't send it leaves it alone.
+    await request(app).patch(`/api/organizer/events/${created.id}`).set('Authorization', `Bearer ${token}`).send({ title: 'Renamed' });
+    expect((await get()).body.bookingClosesAt).toBe('2026-12-19T18:29:00.000Z');
+
+    await request(app)
+      .patch(`/api/organizer/events/${created.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ bookingClosesDate: '', bookingClosesTime: '' });
+    expect((await get()).body.bookingClosesAt).toBeNull();
+
+    const bad = await request(app)
+      .patch(`/api/organizer/events/${created.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ bookingClosesDate: '18-12-2026', bookingClosesTime: '10:00' });
+    expect(bad.status).toBe(400);
+  });
+
   it('PATCH refuses to edit another organizer\'s event', async () => {
     const created = await createTestEvent();
     const res = await request(app)
