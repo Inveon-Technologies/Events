@@ -204,6 +204,9 @@ export function eventJsonLd(e: PublicEventDetail, now: Date = new Date()) {
       name: e.organizerName,
       url: `${siteUrl()}/organizers/${encodeURIComponent(e.organizerSlug)}`,
     },
+    // Google's Event report flags a missing performer; for treks, trips and
+    // workshops the organizer is the one hosting it.
+    performer: { '@type': 'PerformingGroup', name: e.organizerName },
     ...(e.ticketCategories.length
       ? {
           isAccessibleForFree: e.ticketCategories.every((t) => t.pricePaise === 0),
@@ -289,7 +292,12 @@ function eventMetaDescription(e: PublicEventDetail): string {
   const prices = e.ticketCategories.map((t) => t.pricePaise);
   const from = prices.length ? priceLabel(Math.min(...prices)) : null;
   const lead = plainText(e.tagline) || plainText(e.description);
-  const facts = [istLabel(e.eventDate), place, from ? (from === 'Free' ? 'Free entry' : `Tickets from ${from}`) : null]
+  const facts = [
+    istLabel(e.eventDate),
+    place,
+    `by ${e.organizerName}`,
+    from ? (from === 'Free' ? 'Free entry' : `Tickets from ${from}`) : null,
+  ]
     .filter(Boolean)
     .join(' · ');
   return truncate(`${facts}. ${lead}`.trim(), 160);
@@ -302,7 +310,10 @@ async function eventPage(idOrSlug: string): Promise<PageSeo | null> {
   const url = eventUrl(e);
   const image = absoluteUrl(e.bannerUrl) ?? absoluteUrl(e.media.find((m) => m.mediaType === 'photo')?.url);
   const cityPart = addr.locality ? ` in ${addr.locality}` : '';
-  const title = `${e.name}${cityPart} – ${IST_DATE.format(new Date(e.eventDate))} | Book Tickets | ${platformName()}`;
+  // Name, city, date and organizer: what people type to find an event.
+  // Google shows the site name from the home page's WebSite data, so the
+  // title spends its ~60 visible characters on the event instead.
+  const title = `${e.name}${cityPart} – ${IST_DATE.format(new Date(e.eventDate))} | ${e.organizerName} | Book Tickets`;
   const description = eventMetaDescription(e);
   const faq = faqJsonLd(e);
 

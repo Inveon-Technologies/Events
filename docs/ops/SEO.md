@@ -28,6 +28,15 @@ venue, price, image), and what the production server needs.
 - **robots.txt** — a static file in the web build
   (`apps/web/public/robots.txt`), pointing at the sitemap and keeping
   the organizer portal, bookings, tickets and checkout out of the index.
+  It must keep allowing the public read APIs (`/api/events`,
+  `/api/organizers`, `/api/platform/branding`, `/api/seo/`): Google
+  renders the SPA with them, and blocking `/api/` as a whole left it
+  with empty event pages. Those JSON responses carry
+  `X-Robots-Tag: noindex` so they never appear as results themselves.
+- **Favicon** — `apps/web/public/favicon.ico` (16/32/48 px),
+  `favicon.svg`, `favicon-96x96.png`, `apple-touch-icon.png` and
+  `site.webmanifest`, linked from `apps/web/index.html`. Google shows it
+  next to the site in results once it recrawls the home page.
 
 ## Production setup (the VPS)
 
