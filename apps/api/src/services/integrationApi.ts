@@ -105,7 +105,7 @@ function summarize(event: Event, tiers: TicketCategory[], coverUrl: string | nul
     slug,
     name: event.name,
     tagline: event.tagline,
-    status: deriveEventStatus(event.status, event.eventDate, now),
+    status: deriveEventStatus(event.status, event.eventDate, now, event.bookingClosesAt),
     eventDate: event.eventDate.toISOString(),
     venueAddress: event.venueAddress,
     coverImageUrl: absoluteUrl(coverUrl),

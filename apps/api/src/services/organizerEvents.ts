@@ -33,11 +33,14 @@ export interface OrganizerEventsParams {
 // draft/cancelled are stored as-is. 'completed' is never stored — it's a
 // published event whose date has passed. Mirrors the bookings service's
 // partially_cancelled derivation for the same reason: this can never drift
-// out of sync with reality the way a manually-set status could.
-export function deriveEventStatus(status: string, eventDate: Date, now: Date): DisplayEventStatus {
+// out of sync with reality the way a manually-set status could. A
+// multi-day event whose "booking open until" is still ahead stays
+// 'published' after its start, since it's still selling.
+export function deriveEventStatus(status: string, eventDate: Date, now: Date, bookingClosesAt?: Date | null): DisplayEventStatus {
   if (status === 'draft') return 'draft';
   if (status === 'cancelled') return 'cancelled';
   // status === 'published' or legacy 'closed'
+  if (bookingClosesAt && bookingClosesAt >= now) return 'published';
   return eventDate < now ? 'completed' : 'published';
 }
 
@@ -150,7 +153,7 @@ export async function getOrganizerEvents(params: OrganizerEventsParams): Promise
         ticketsSold,
         checkedInCount,
         revenuePaise: Number((revenueRow as unknown as { total: string } | null)?.total ?? 0),
-        displayStatus: deriveEventStatus(event.status, event.eventDate, now),
+        displayStatus: deriveEventStatus(event.status, event.eventDate, now, event.bookingClosesAt),
       };
     }),
   );

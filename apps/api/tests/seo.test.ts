@@ -8,6 +8,8 @@ const event: PublicEventDetail = {
   tagline: 'Watch the sunrise from Balekilla',
   description: 'A guided night trek to Rajgad fort.',
   eventDate: '2026-11-14T18:30:00.000Z',
+  bookingClosesAt: '2026-11-14T18:30:00.000Z',
+  bookingOpen: true,
   gateOpenTime: null,
   venueAddress: 'Gunjavane Village, Velhe, Pune, Maharashtra, 412213',
   venueLatitude: 18.246,
@@ -67,6 +69,14 @@ describe('seo', () => {
     expect(ld.offers).toHaveLength(2);
     expect(ld.offers[0]).toMatchObject({ price: '1499.00', priceCurrency: 'INR', availability: 'https://schema.org/InStock' });
     expect(ld.offers[1].availability).toBe('https://schema.org/SoldOut');
+  });
+
+  it('keeps offers in stock until "booking open until" on a multi-day event', () => {
+    const multiDay = { ...event, bookingClosesAt: '2026-11-17T12:30:00.000Z' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ld = eventJsonLd(multiDay, new Date('2026-11-15T06:00:00Z')) as Record<string, any>;
+    expect(ld.offers[0].availability).toBe('https://schema.org/InStock');
+    expect(ld.offers[0].validThrough).toBe('2026-11-17T18:00:00+05:30');
   });
 
   it('keeps JSON-LD from closing its script tag', () => {

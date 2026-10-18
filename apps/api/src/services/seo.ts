@@ -6,6 +6,7 @@ import { getPublicEvent, listPublicEvents, type PublicEventDetail, type PublicEv
 import { getPublicOrganizer, listPublicOrganizers } from './publicOrganizers';
 import { getBranding } from './platformSettings';
 import { logger } from '../logger';
+import { isBookingOpen } from './bookingWindow';
 
 // Search engine support for the public site.
 //
@@ -169,7 +170,7 @@ export function eventJsonLd(e: PublicEventDetail, now: Date = new Date()) {
     .filter((u, i, all): u is string => Boolean(u) && all.indexOf(u) === i)
     .slice(0, 10);
   const description = plainText(e.description) || plainText(e.tagline) || `${e.name} — book tickets on ${platformName()}.`;
-  const upcoming = new Date(e.eventDate).getTime() > now.getTime();
+  const upcoming = new Date(e.bookingClosesAt).getTime() > now.getTime();
 
   return {
     '@context': 'https://schema.org',
@@ -222,7 +223,7 @@ export function eventJsonLd(e: PublicEventDetail, now: Date = new Date()) {
                 ? 'https://schema.org/InStock'
                 : 'https://schema.org/SoldOut',
             url,
-            validThrough: istIso(e.eventDate),
+            validThrough: istIso(e.bookingClosesAt),
           })),
         }
       : {}),
@@ -667,7 +668,7 @@ export async function buildSitemap(): Promise<string> {
   const base = siteUrl();
   const events = await Event.findAll({
     where: { status: 'published' },
-    attributes: ['id', 'slug', 'name', 'bannerUrl', 'eventDate', 'updatedAt'],
+    attributes: ['id', 'slug', 'name', 'bannerUrl', 'eventDate', 'bookingClosesAt', 'updatedAt'],
     include: [{ model: Organizer, attributes: ['slug'], where: { blockedAt: null }, required: true }],
     order: [['eventDate', 'DESC']],
     limit: 5000,
@@ -702,7 +703,7 @@ export async function buildSitemap(): Promise<string> {
   add(`${base}/events`, { changefreq: 'daily', priority: '0.9' });
   add(`${base}/organizers`, { changefreq: 'weekly', priority: '0.6' });
   for (const e of events) {
-    const upcoming = e.eventDate.getTime() > now;
+    const upcoming = isBookingOpen(e, new Date(now));
     const images = [e.bannerUrl, ...(photosByEvent.get(e.id) ?? [])]
       .map(absoluteUrl)
       .filter((u, i, all): u is string => Boolean(u) && all.indexOf(u) === i)

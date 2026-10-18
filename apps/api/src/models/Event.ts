@@ -55,6 +55,8 @@ export class Event extends Model<InferAttributes<Event>, InferCreationAttributes
   declare venueLongitude: number | null;
   declare eventDate: Date;
   declare gateOpenTime: Date | null;
+  // "Booking open until" — null means booking closes at eventDate.
+  declare bookingClosesAt: CreationOptional<Date | null>;
   declare bannerUrl: string | null;
   declare ticketBackgroundUrl: CreationOptional<string | null>;
   declare partners: CreationOptional<EventPartner[] | null>;
@@ -96,6 +98,7 @@ Event.init(
     venueLongitude: { type: DataTypes.DECIMAL(9, 6), allowNull: true },
     eventDate: { type: DataTypes.DATE, allowNull: false },
     gateOpenTime: { type: DataTypes.DATE, allowNull: true },
+    bookingClosesAt: { type: DataTypes.DATE, allowNull: true },
     bannerUrl: { type: DataTypes.STRING, allowNull: true },
     ticketBackgroundUrl: { type: DataTypes.STRING(2048), allowNull: true },
     partners: { type: DataTypes.JSONB, allowNull: true },

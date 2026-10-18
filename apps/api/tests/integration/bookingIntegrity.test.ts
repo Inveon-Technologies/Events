@@ -60,12 +60,22 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
   }
 
   async function createEvent(
-    opts: { quota?: number; price?: number; status?: 'draft' | 'published' | 'cancelled'; daysAhead?: number; maxPerBooking?: number } = {},
+    opts: {
+      quota?: number;
+      price?: number;
+      status?: 'draft' | 'published' | 'cancelled';
+      daysAhead?: number;
+      bookingClosesDaysAhead?: number;
+      maxPerBooking?: number;
+    } = {},
   ) {
     const event = await Event.create({
       organizerId,
       name: `Integrity Event ${suffix}-${Math.random()}`,
       eventDate: new Date(Date.now() + (opts.daysAhead ?? 30) * 86400000),
+      ...(opts.bookingClosesDaysAhead !== undefined
+        ? { bookingClosesAt: new Date(Date.now() + opts.bookingClosesDaysAhead * 86400000) }
+        : {}),
       capacity: opts.quota ?? 10,
       status: opts.status ?? 'published',
     });
@@ -195,6 +205,19 @@ describe('booking integrity (real DB, Cashfree API mocked)', () => {
       const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id));
       expect(res.status).toBe(400);
       expect(res.body.error).toMatch(/already started/i);
+    });
+
+    it('keeps a started multi-day event bookable until its "booking open until"', async () => {
+      const { event, tier } = await createEvent({ daysAhead: -1, bookingClosesDaysAhead: 2 });
+      const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id));
+      expect(res.status).toBe(201);
+    });
+
+    it('refuses bookings once "booking open until" has passed, even before the start', async () => {
+      const { event, tier } = await createEvent({ daysAhead: 5, bookingClosesDaysAhead: -1 });
+      const res = await request(app).post(`/api/events/${event.id}/bookings`).send(bookingBody(tier.id));
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/booking for this event has closed/i);
     });
 
     it('stores the contact email lowercased', async () => {

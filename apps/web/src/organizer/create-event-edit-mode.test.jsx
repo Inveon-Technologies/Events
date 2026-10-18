@@ -99,4 +99,33 @@ describe('CreateEvent in edit mode: fetches and actually saves real changes to a
     expect(body.title).toBe('Original Event Title');
     expect(body.ticketTiers[0].id).toBe('real-tier-uuid-1');
   });
+
+  it('loads "booking open until" in India time and PATCHes the new value', async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn().mockImplementation((url, opts) => {
+      if (opts?.method === 'PATCH') {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ id: 'evt-edit-1', slug: 'edit-test-event' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...realExistingEvent, bookingClosesAt: '2026-11-18T12:30:00.000Z' }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderAt('/organizer/events/evt-edit-1/edit/date-location');
+    const closesDate = await screen.findByLabelText(/booking open until \(date\)/i);
+    await waitFor(() => expect(closesDate).toHaveValue('2026-11-18'));
+    expect(screen.getByLabelText(/booking open until \(time\)/i)).toHaveValue('18:00');
+
+    await user.clear(closesDate);
+    await user.type(closesDate, '2026-11-19');
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.find(([, o]) => o?.method === 'PATCH')).toBeTruthy());
+    const body = JSON.parse(fetchMock.mock.calls.find(([, o]) => o?.method === 'PATCH')[1].body);
+    expect(body.bookingClosesDate).toBe('2026-11-19');
+    expect(body.bookingClosesTime).toBe('18:00');
+  });
 });

@@ -4,6 +4,7 @@ import { Event, TicketCategory, Booking, Ticket, Payment, Organizer } from '../m
 import { randomUUID, randomInt } from 'crypto';
 import { isCustomerBlocked } from './accountBlocks';
 import { collectionModeFor } from './organizerSettlements';
+import { isBookingOpen } from './bookingWindow';
 
 export interface BookingItem {
   ticketCategoryId: string;
@@ -166,8 +167,10 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     if (await isCustomerBlocked(params.primaryContactEmail)) {
       throw new BookingValidationError('Bookings from this email address are not allowed. Please contact support.');
     }
-    if (event.eventDate.getTime() <= Date.now()) {
-      throw new BookingValidationError('This event has already started — booking is closed');
+    if (!isBookingOpen(event)) {
+      throw new BookingValidationError(
+        event.bookingClosesAt ? 'Booking for this event has closed' : 'This event has already started — booking is closed',
+      );
     }
     for (const { ticketCategory, quantity } of lines) {
       if (quantity > ticketCategory.maxPerBooking) {
