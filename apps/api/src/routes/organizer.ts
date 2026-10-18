@@ -338,6 +338,8 @@ organizerRouter.post('/events', asyncHandler(async (req, res) => {
       description: typeof body.description === 'string' ? body.description : undefined,
       startDate: typeof body.startDate === 'string' ? body.startDate : '',
       startTime: typeof body.startTime === 'string' ? body.startTime : '',
+      bookingClosesDate: typeof body.bookingClosesDate === 'string' ? body.bookingClosesDate : undefined,
+      bookingClosesTime: typeof body.bookingClosesTime === 'string' ? body.bookingClosesTime : undefined,
       venueName: typeof body.venueName === 'string' ? body.venueName : undefined,
       address: typeof body.address === 'string' ? body.address : undefined,
       city: typeof body.city === 'string' ? body.city : undefined,
@@ -412,6 +414,10 @@ organizerRouter.patch('/events/:eventId', asyncHandler(async (req, res) => {
       description: typeof body.description === 'string' ? body.description : undefined,
       startDate: typeof body.startDate === 'string' ? body.startDate : undefined,
       startTime: typeof body.startTime === 'string' ? body.startTime : undefined,
+      bookingClosesDate:
+        typeof body.bookingClosesDate === 'string' || body.bookingClosesDate === null ? (body.bookingClosesDate as string | null) : undefined,
+      bookingClosesTime:
+        typeof body.bookingClosesTime === 'string' || body.bookingClosesTime === null ? (body.bookingClosesTime as string | null) : undefined,
       venueName: typeof body.venueName === 'string' ? body.venueName : undefined,
       address: typeof body.address === 'string' ? body.address : undefined,
       city: typeof body.city === 'string' ? body.city : undefined,

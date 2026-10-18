@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import { Organizer, Event, TicketCategory, EventMedia, EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint } from '../models';
 import { getEventRatingSummary, RatingSummary } from './eventReviews';
 import { buildVenueMapUrl } from './mapsUrl';
+import { bookingClosesAt, isBookingOpen } from './bookingWindow';
 
 export interface PublicEventSummary {
   id: string;
@@ -39,6 +40,9 @@ export interface PublicEventDetail {
   tagline: string | null;
   description: string | null;
   eventDate: string;
+  // When booking stops: the organizer's "booking open until", else the start.
+  bookingClosesAt: string;
+  bookingOpen: boolean;
   // When the gate / reporting opens, if the organizer set one.
   gateOpenTime: string | null;
   venueAddress: string | null;
@@ -69,7 +73,12 @@ export interface PublicEventDetail {
 // (404) so this can't be used to enumerate an organizer's unpublished work.
 export async function listPublicEvents(): Promise<PublicEventSummary[]> {
   const events = await Event.findAll({
-    where: { status: 'published', eventDate: { [Op.gte]: new Date() } },
+    // Still listed while it's bookable, so a multi-day event with a later
+    // "booking open until" doesn't drop off the site on its first day.
+    where: {
+      status: 'published',
+      [Op.or]: [{ eventDate: { [Op.gte]: new Date() } }, { bookingClosesAt: { [Op.gte]: new Date() } }],
+    },
     include: [{ model: Organizer, attributes: ['name', 'slug'], where: { blockedAt: null }, required: true }],
     order: [['eventDate', 'ASC']],
   });
@@ -149,6 +158,8 @@ export async function getPublicEvent(idOrSlug: string): Promise<PublicEventDetai
     tagline: event.tagline,
     description: event.description,
     eventDate: event.eventDate.toISOString(),
+    bookingClosesAt: bookingClosesAt(event).toISOString(),
+    bookingOpen: isBookingOpen(event),
     gateOpenTime: event.gateOpenTime?.toISOString() ?? null,
     venueAddress: event.venueAddress,
     venueLatitude: event.venueLatitude !== null ? Number(event.venueLatitude) : null,

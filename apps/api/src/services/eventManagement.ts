@@ -20,6 +20,7 @@ import {
   sanitizeLocationPoints,
   sanitizePartners,
   sanitizeTicketBackgroundUrl,
+  validateBookingClosesAt,
 } from './eventCreation';
 
 export class NotFoundError extends Error {}
@@ -39,6 +40,7 @@ export interface OrganizerEventDetail {
   shortDescription: string | null;
   description: string | null;
   eventDate: string;
+  bookingClosesAt: string | null;
   venueAddress: string | null;
   venueLatitude: number | null;
   venueLongitude: number | null;
@@ -86,6 +88,7 @@ export async function getOrganizerEvent(eventId: string, organizerId: string): P
     shortDescription: event.tagline,
     description: event.description,
     eventDate: event.eventDate.toISOString(),
+    bookingClosesAt: event.bookingClosesAt?.toISOString() ?? null,
     venueAddress: event.venueAddress,
     venueLatitude: event.venueLatitude,
     venueLongitude: event.venueLongitude,
@@ -130,6 +133,9 @@ export interface UpdateEventParams {
   description?: string;
   startDate?: string;
   startTime?: string;
+  // Both '' / null clears "booking open until"; undefined leaves it as is.
+  bookingClosesDate?: string | null;
+  bookingClosesTime?: string | null;
   venueName?: string;
   address?: string;
   city?: string;
@@ -169,6 +175,8 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
       if (Number.isNaN(parsed.getTime())) throw new ValidationError('Invalid start date/time');
       eventDate = parsed;
     }
+    const parsedBookingClosesAt = validateBookingClosesAt(params.bookingClosesDate, params.bookingClosesTime);
+    const bookingClosesAt = parsedBookingClosesAt === undefined ? event.bookingClosesAt : parsedBookingClosesAt;
 
     const venueAddress =
       params.venueName !== undefined ||
@@ -319,6 +327,7 @@ export async function updateOrganizerEvent(params: UpdateEventParams): Promise<{
         venueLatitude: params.venueLatitude !== undefined ? params.venueLatitude : event.venueLatitude,
         venueLongitude: params.venueLongitude !== undefined ? params.venueLongitude : event.venueLongitude,
         eventDate,
+        bookingClosesAt,
         bannerUrl: params.bannerImage !== undefined ? params.bannerImage.trim() || null : event.bannerUrl,
         scheduleItems: params.scheduleItems !== undefined ? sanitizeScheduleItems(params.scheduleItems) : event.scheduleItems,
         packingChecklist: params.packingChecklist !== undefined ? sanitizePackingChecklist(params.packingChecklist) : event.packingChecklist,

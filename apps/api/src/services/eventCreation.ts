@@ -4,6 +4,7 @@ import { parseIstDateTime } from './istTime';
 import type { EventLocationPoint, EventLocationPointType, EventPartner } from '../models/Event';
 import { isAcceptableImageUrl } from './designAssets';
 import { collectionModeFor } from './organizerSettlements';
+import { BookingWindowError, parseBookingClosesAt } from './bookingWindow';
 
 function slugify(input: string): string {
   return input
@@ -71,6 +72,9 @@ export interface CreateEventParams {
   description?: string;
   startDate: string; // 'YYYY-MM-DD'
   startTime: string; // 'HH:MM'
+  // "Booking open until" (IST). Empty keeps booking open until the start.
+  bookingClosesDate?: string | null; // 'YYYY-MM-DD'
+  bookingClosesTime?: string | null; // 'HH:MM'
   venueName?: string;
   address?: string;
   city?: string;
@@ -98,6 +102,15 @@ export interface CreateEventParams {
 export class ValidationError extends Error {}
 export class NotFoundError extends Error {}
 export class ForbiddenError extends Error {}
+
+export function validateBookingClosesAt(date?: string | null, time?: string | null): Date | null | undefined {
+  try {
+    return parseBookingClosesAt(date, time);
+  } catch (err) {
+    if (err instanceof BookingWindowError) throw new ValidationError(err.message);
+    throw err;
+  }
+}
 
 // Each of these is optional content — an event doesn't need a schedule,
 // packing list, or FAQ — so rather than hard-reject a malformed entry,
@@ -261,6 +274,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
   if (Number.isNaN(eventDate.getTime())) {
     throw new ValidationError('Invalid start date/time');
   }
+  const bookingClosesAt = validateBookingClosesAt(params.bookingClosesDate, params.bookingClosesTime) ?? null;
 
   if (params.allowSelfServiceCancellation) {
     if (!(Number.isInteger(params.refundCutoffDays) && params.refundCutoffDays! >= 0)) {
@@ -291,6 +305,7 @@ export async function createOrganizerEvent(params: CreateEventParams): Promise<{
         venueLatitude: params.venueLatitude ?? null,
         venueLongitude: params.venueLongitude ?? null,
         eventDate,
+        bookingClosesAt,
         bannerUrl: params.bannerImage?.trim() || null,
         cancellationPolicy: params.cancellationPolicyDescription?.trim() || null,
         allowSelfServiceCancellation: params.allowSelfServiceCancellation ?? false,
@@ -365,6 +380,7 @@ export async function duplicateEvent(eventId: string, organizerId: string): Prom
         venueLongitude: source.venueLongitude,
         eventDate: source.eventDate,
         gateOpenTime: source.gateOpenTime,
+        bookingClosesAt: source.bookingClosesAt ?? null,
         bannerUrl: source.bannerUrl,
         termsAndConditions: source.termsAndConditions,
         cancellationPolicy: source.cancellationPolicy,
