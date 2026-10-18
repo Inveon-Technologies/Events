@@ -91,9 +91,13 @@ function formatInr(paise: number): string {
   return `\u20b9${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// The email HTML plus the inline images it references by cid.
+// The email HTML plus the inline images it references by cid. With
+// bookedBy it is one attendee's own copy in a group booking (d already
+// narrowed to their ticket): it says who booked it and leaves out the
+// amount, which is the buyer's business.
 export async function buildConfirmationEmail(
   d: BookingDocumentData,
+  options: { bookedBy?: string } = {},
 ): Promise<{ html: string; subject: string; attachments: EmailAttachment[] }> {
   const attachments: EmailAttachment[] = [];
   const inline = (cid: string, filename: string, content: Buffer, contentType = 'image/png') => {
@@ -142,11 +146,13 @@ export async function buildConfirmationEmail(
   const free = d.totalPaise === 0;
   const cashDue = !free && d.payment.method === 'cash' && d.payment.status !== 'paid';
   const generated = active.length > 1 ? 'your entry tickets have been generated' : 'your entry ticket has been generated';
-  const statusLine = free
-    ? `your free registration is confirmed and ${generated}`
-    : cashDue
-      ? `your booking is confirmed and ${generated} — please pay at the venue`
-      : `your payment has been successfully verified and ${generated}`;
+  const statusLine = options.bookedBy
+    ? `${options.bookedBy} booked this ticket for you and ${generated}`
+    : free
+      ? `your free registration is confirmed and ${generated}`
+      : cashDue
+        ? `your booking is confirmed and ${generated} — please pay at the venue`
+        : `your payment has been successfully verified and ${generated}`;
 
   const view = {
     headerCid,
@@ -168,7 +174,7 @@ export async function buildConfirmationEmail(
     ticketPageUrl: d.links.ticketPage,
     ticketPdfUrl: d.links.ticketPdf,
     partners,
-    amountLine: free ? null : cashDue ? `Amount due at the venue: ${formatInr(d.totalPaise)}` : `Amount paid: ${formatInr(d.totalPaise)} · Invoice attached`,
+    amountLine: free || options.bookedBy ? null : cashDue ? `Amount due at the venue: ${formatInr(d.totalPaise)}` : `Amount paid: ${formatInr(d.totalPaise)} · Invoice attached`,
     supportEmail: getBranding().supportEmail,
   };
   // The super admin portal's custom template, when switched on — the
@@ -187,7 +193,7 @@ export async function buildConfirmationEmail(
       organizerPhone: d.organizer.contactPhone ?? '',
       bookingReference: d.bookingReference,
       ticketCount: String(active.length),
-      amount: free ? 'Free' : formatInr(d.totalPaise),
+      amount: free ? 'Free' : options.bookedBy ? `Booked by ${options.bookedBy}` : formatInr(d.totalPaise),
       ticketPageUrl: d.links.ticketPage ?? '',
       platformName: getBranding().platformName,
       supportEmail: getBranding().supportEmail,
@@ -196,7 +202,11 @@ export async function buildConfirmationEmail(
   );
   return {
     html: custom?.html ?? ticketConfirmationEmail(view),
-    subject: custom?.subject ?? `Booking confirmed: ${d.event.name} (${d.bookingReference})`,
+    subject:
+      custom?.subject ??
+      (options.bookedBy
+        ? `Your ticket: ${d.event.name} (${active[0]?.displayReference ?? d.bookingReference})`
+        : `Booking confirmed: ${d.event.name} (${d.bookingReference})`),
     attachments,
   };
 }

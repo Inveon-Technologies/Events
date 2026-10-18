@@ -63,7 +63,9 @@ function locationLabel(event: Event): string {
   return venue || shortPlace(pickup?.label) || 'See event page';
 }
 
-export async function loadTicketArtworkData(booking: Booking): Promise<TicketArtworkData> {
+// onlyTicketId: just that ticket (a one-ticket link), still numbered by
+// its place in the whole booking.
+export async function loadTicketArtworkData(booking: Booking, onlyTicketId: string | null = null): Promise<TicketArtworkData> {
   const event = await Event.findByPk(booking.eventId);
   if (!event) throw new Error('Event not found for booking');
   const organizer = await Organizer.findByPk(event.organizerId, { attributes: ['name', 'contactPhone', 'logoUrl'] });
@@ -75,7 +77,7 @@ export async function loadTicketArtworkData(booking: Booking): Promise<TicketArt
   const reporting = event.gateOpenTime ?? event.eventDate;
   const tickets: TicketArtworkTicket[] = [];
   for (const [i, t] of allTickets.entries()) {
-    if (t.status === 'cancelled') continue;
+    if (t.status === 'cancelled' || (onlyTicketId && t.id !== onlyTicketId)) continue;
     // eslint-disable-next-line no-await-in-loop
     const qrPng = await generateTicketQrPng(t.qrToken);
     tickets.push({

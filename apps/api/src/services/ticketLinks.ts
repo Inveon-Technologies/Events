@@ -13,23 +13,42 @@ function secret(): string {
   return value;
 }
 
-function signature(bookingReference: string): string {
-  return createHmac('sha256', secret()).update(`ticket-link:${bookingReference}`).digest('base64url').slice(0, 22);
+// A link can also be for one ticket only — the one sent to that ticket's
+// own attendee in a group booking (see attendeeTickets.ts). Its signed
+// part is "<reference>~<ticket id>", so it opens that ticket and nothing
+// else on the booking, and a booking-wide token can't be cut down into
+// one (or the reverse) without the secret.
+const TICKET_SEPARATOR = '~';
+
+function signature(payload: string): string {
+  return createHmac('sha256', secret()).update(`ticket-link:${payload}`).digest('base64url').slice(0, 22);
 }
 
-export function ticketLinkToken(bookingReference: string): string {
-  return `${bookingReference}.${signature(bookingReference)}`;
+export function ticketLinkToken(bookingReference: string, ticketId?: string): string {
+  const payload = ticketId ? `${bookingReference}${TICKET_SEPARATOR}${ticketId}` : bookingReference;
+  return `${payload}.${signature(payload)}`;
 }
 
-// The booking reference the token is for, or null if it isn't genuine.
-export function verifyTicketLinkToken(token: string): string | null {
+// What a genuine token opens: the whole booking (ticketId null) or just
+// one of its tickets. Null if the token isn't genuine.
+export function parseTicketLinkToken(token: string): { bookingReference: string; ticketId: string | null } | null {
   const dot = token.lastIndexOf('.');
   if (dot <= 0) return null;
-  const reference = token.slice(0, dot);
+  const payload = token.slice(0, dot);
   const given = Buffer.from(token.slice(dot + 1));
-  const expected = Buffer.from(signature(reference));
+  const expected = Buffer.from(signature(payload));
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
-  return reference;
+  const sep = payload.indexOf(TICKET_SEPARATOR);
+  if (sep < 0) return { bookingReference: payload, ticketId: null };
+  const ticketId = payload.slice(sep + 1);
+  return sep > 0 && ticketId ? { bookingReference: payload.slice(0, sep), ticketId } : null;
+}
+
+// The booking reference a booking-wide token is for, or null if it isn't
+// genuine (or only opens one ticket).
+export function verifyTicketLinkToken(token: string): string | null {
+  const parsed = parseTicketLinkToken(token);
+  return parsed && !parsed.ticketId ? parsed.bookingReference : null;
 }
 
 function publicBase(): string {
@@ -37,18 +56,18 @@ function publicBase(): string {
 }
 
 // Customer-facing ticket page (the web app's /t/:token route).
-export function ticketPageUrl(bookingReference: string): string {
-  return `${publicBase()}/t/${ticketLinkToken(bookingReference)}`;
+export function ticketPageUrl(bookingReference: string, ticketId?: string): string {
+  return `${publicBase()}/t/${ticketLinkToken(bookingReference, ticketId)}`;
 }
 
-// The same booking's ticket PDF (served by the API).
-export function ticketPdfUrl(bookingReference: string): string {
-  return `${publicBase()}/api/t/${ticketLinkToken(bookingReference)}/tickets.pdf`;
+// The same booking's (or ticket's) PDF (served by the API).
+export function ticketPdfUrl(bookingReference: string, ticketId?: string): string {
+  return `${publicBase()}/api/t/${ticketLinkToken(bookingReference, ticketId)}/tickets.pdf`;
 }
 
 // PNG ticket card, used as the WhatsApp message's header image.
-export function ticketCardUrl(bookingReference: string): string {
-  return `${publicBase()}/api/t/${ticketLinkToken(bookingReference)}/card.png`;
+export function ticketCardUrl(bookingReference: string, ticketId?: string): string {
+  return `${publicBase()}/api/t/${ticketLinkToken(bookingReference, ticketId)}/card.png`;
 }
 
 // Ticket number shown to people: INV-BKG-2026-8F3K2Q + #1 → INV-TKT-2026-8F3K2Q-01.

@@ -5,6 +5,7 @@ import { checkAndSendEventReminders } from '../services/eventReminders';
 import { expireStalePendingOnlineBookings } from '../services/pendingBookingExpiry';
 import { checkAndSendPostEventBroadcasts } from '../services/postEventBroadcast';
 import { deliverWhatsApp } from '../services/whatsapp/messages';
+import { deliverAttendeeTicketEmail } from '../services/attendeeTickets';
 import { WHATSAPP_MESSAGES, WhatsAppMessage } from '../services/whatsapp/client';
 import { isEmailConfigured } from '../services/email';
 import { Booking } from '../models';
@@ -46,7 +47,13 @@ registerJobHandler('booking-cancelled', async (data) => {
 registerJobHandler('whatsapp', async (data) => {
   const message = requireString(data, 'message');
   if (!(message in WHATSAPP_MESSAGES)) throw new Error(`Unknown WhatsApp message "${message}"`);
-  await deliverWhatsApp(message as WhatsAppMessage, requireString(data, 'bookingId'));
+  const ticketId = typeof data.ticketId === 'string' && data.ticketId ? data.ticketId : undefined;
+  await deliverWhatsApp(message as WhatsAppMessage, requireString(data, 'bookingId'), ticketId);
+});
+
+// One attendee's own ticket email in a group booking sent separately.
+registerJobHandler('attendee-ticket-email', async (data) => {
+  await deliverAttendeeTicketEmail(requireString(data, 'bookingId'), requireString(data, 'ticketId'));
 });
 
 // ---- scheduled (one run per tick across all API processes) ----

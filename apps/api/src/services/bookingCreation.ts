@@ -4,6 +4,8 @@ import { Event, TicketCategory, Booking, Ticket, Payment, Organizer } from '../m
 import { randomUUID, randomInt } from 'crypto';
 import { isCustomerBlocked } from './accountBlocks';
 import { collectionModeFor } from './organizerSettlements';
+import { normalizeWhatsAppNumber } from './whatsapp/client';
+import type { TicketDelivery } from '../models/Booking';
 
 export interface BookingItem {
   ticketCategoryId: string;
@@ -23,6 +25,39 @@ export interface CreateBookingParams {
   paymentMethod: 'online' | 'cash';
   attendeeNames?: string[]; // one per ticket, in items order; falls back to the contact name
   attendeeGenders?: string[]; // one per ticket; required to match the event's real genderRestriction when one is set, otherwise unused
+  // 'individual': each ticket is also sent to its own attendee, whose
+  // WhatsApp and email come from attendeeContacts (one per ticket, in
+  // items order). The first ticket is the buyer's own, so its entry is
+  // ignored. Only meaningful for orders of more than one ticket.
+  ticketDelivery?: TicketDelivery;
+  attendeeContacts?: ({ whatsapp?: string; email?: string } | null)[];
+}
+
+// Loose on purpose (typos are the buyer's to fix): something@something.tld.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// The WhatsApp number and email for each ticket when they're sent to
+// their own attendees; null entries for tickets that go to the buyer.
+function attendeeContactsFor(params: CreateBookingParams, totalQuantity: number): { whatsapp: string; email: string }[] | null {
+  if (params.ticketDelivery !== 'individual' || totalQuantity < 2) return null;
+  const contacts = [{ whatsapp: params.primaryContactWhatsapp.trim(), email: params.primaryContactEmail.trim().toLowerCase() }];
+  for (let i = 1; i < totalQuantity; i += 1) {
+    const c = params.attendeeContacts?.[i];
+    const whatsapp = typeof c?.whatsapp === 'string' ? c.whatsapp.trim() : '';
+    const email = typeof c?.email === 'string' ? c.email.trim().toLowerCase() : '';
+    const label = params.attendeeNames?.[i]?.trim() || `participant ${i + 1}`;
+    let validNumber = false;
+    try {
+      normalizeWhatsAppNumber(whatsapp);
+      validNumber = true;
+    } catch {
+      validNumber = false;
+    }
+    if (!validNumber) throw new BookingValidationError(`Enter a valid WhatsApp number for ${label}`);
+    if (!EMAIL_PATTERN.test(email)) throw new BookingValidationError(`Enter a valid email address for ${label}`);
+    contacts.push({ whatsapp, email });
+  }
+  return contacts;
 }
 
 export class SoldOutError extends Error {
@@ -137,6 +172,9 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
     throw new BookingValidationError('Each ticket type can only appear once in a booking');
   }
   const totalQuantity = params.items.reduce((sum, i) => sum + i.quantity, 0);
+  // Checked before the transaction: a missing friend's number should
+  // never hold seats.
+  const attendeeContacts = attendeeContactsFor(params, totalQuantity);
 
   return sequelize.transaction(async (t) => {
     const event = await Event.findByPk(params.eventId, { transaction: t });
@@ -254,6 +292,7 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
         status: totalAmountPaise === 0 ? 'confirmed' : 'pending',
         paymentMethod: params.paymentMethod,
         totalAmountPaise,
+        ticketDelivery: attendeeContacts ? 'individual' : 'buyer',
       },
       { transaction: t },
     );
@@ -279,6 +318,8 @@ export async function createBooking(params: CreateBookingParams): Promise<Create
             ticketCategoryId: ticketCategory.id,
             attendeeName: params.attendeeNames?.[i] ?? params.primaryContactName,
             attendeeGender: params.attendeeGenders?.[i] ?? null,
+            attendeeWhatsapp: attendeeContacts?.[i].whatsapp ?? null,
+            attendeeEmail: attendeeContacts?.[i].email ?? null,
             qrToken: randomUUID(),
             status: 'valid',
           },

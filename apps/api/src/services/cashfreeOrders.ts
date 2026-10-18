@@ -5,6 +5,7 @@ import { cashfreeCreateOrder, cashfreeCreateRefund } from './cashfreeClient';
 import { releaseBookingTickets, reserveBookingTickets } from './bookingTickets';
 import { enqueueNotification } from '../queue';
 import { enqueueWhatsApp } from './whatsapp/messages';
+import { enqueueAttendeeTickets } from './attendeeTickets';
 import { logger } from '../logger';
 import { collectionModeFor } from './organizerSettlements';
 
@@ -154,6 +155,7 @@ export async function confirmPendingOnlineBooking(payment: Payment): Promise<boo
       { jobId: `booking-confirmation-${payment.bookingId}` },
     );
     void enqueueWhatsApp('bookingConfirmation', payment.bookingId);
+    void enqueueAttendeeTickets(payment.bookingId);
   }
   return confirmed;
 }
@@ -230,6 +232,7 @@ export async function handleLateOnlinePayment(paymentId: string): Promise<LatePa
         { jobId: `booking-confirmation-${payment.bookingId}-reinstated` },
       );
       void enqueueWhatsApp('bookingConfirmation', payment.bookingId, '-reinstated');
+      void enqueueAttendeeTickets(payment.bookingId, '-reinstated');
     }
     return 'reinstated';
   }

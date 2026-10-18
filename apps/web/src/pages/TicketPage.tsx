@@ -39,6 +39,10 @@ interface TicketDetail {
   totalAmountPaise: number;
   ticketPageUrl: string;
   delivery: { email: string | null; whatsapp: string | null };
+  // 'ticket': a link sent to one participant of a group booking, showing
+  // only their ticket; bookedBy is who booked it.
+  scope?: 'booking' | 'ticket';
+  bookedBy?: string | null;
   tickets: TicketRow[];
 }
 
@@ -314,7 +318,7 @@ export function TicketPage() {
             {copied && <p className="lg:hidden text-center text-[11px] text-emerald-700 mt-1.5">Ticket link copied</p>}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4">
+          <div className={`grid grid-cols-1 gap-4 ${detail.scope === 'ticket' ? '' : 'lg:grid-cols-[1.6fr_1fr]'}`}>
             <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <h3 className="flex items-center gap-2 font-bold text-ink mb-4">
                 <Icon name="description" className="text-brand-600" /> Event Information
@@ -325,7 +329,9 @@ export function TicketPage() {
                   ['schedule', timeCaption, timeText],
                   ['location_on', 'Location', place],
                   ['person', 'Organizer', detail.organizerName],
-                  ['credit_card', 'Payment', paymentText(detail)],
+                  detail.scope === 'ticket'
+                    ? ['person_add', 'Booked by', detail.bookedBy ?? '-']
+                    : ['credit_card', 'Payment', paymentText(detail)],
                 ].map(([icon, label, value]) => (
                   <div key={label} className="flex items-center gap-2">
                     <Icon name={icon} className="text-[18px] text-ink-muted" />
@@ -363,29 +369,31 @@ export function TicketPage() {
               </dl>
             </section>
 
-            <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <h3 className="flex items-center gap-2 font-bold text-ink mb-3">
-                <Icon name="send" className="text-brand-600" /> Ticket Delivered To
-              </h3>
-              <div className="divide-y divide-slate-100">
-                <DeliveryRow
-                  icon="mail"
-                  iconClass="bg-emerald-50 text-emerald-600"
-                  title="Email"
-                  detail="Ticket sent to the registered email address."
-                  status={detail.delivery.email}
-                  bookedAt={detail.bookedAt}
-                />
-                <DeliveryRow
-                  icon="chat"
-                  iconClass="bg-green-50 text-green-600"
-                  title="WhatsApp"
-                  detail="Ticket link sent to the registered WhatsApp number."
-                  status={detail.delivery.whatsapp}
-                  bookedAt={detail.bookedAt}
-                />
-              </div>
-            </section>
+            {detail.scope !== 'ticket' && (
+              <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h3 className="flex items-center gap-2 font-bold text-ink mb-3">
+                  <Icon name="send" className="text-brand-600" /> Ticket Delivered To
+                </h3>
+                <div className="divide-y divide-slate-100">
+                  <DeliveryRow
+                    icon="mail"
+                    iconClass="bg-emerald-50 text-emerald-600"
+                    title="Email"
+                    detail="Ticket sent to the registered email address."
+                    status={detail.delivery.email}
+                    bookedAt={detail.bookedAt}
+                  />
+                  <DeliveryRow
+                    icon="chat"
+                    iconClass="bg-green-50 text-green-600"
+                    title="WhatsApp"
+                    detail="Ticket link sent to the registered WhatsApp number."
+                    status={detail.delivery.whatsapp}
+                    bookedAt={detail.bookedAt}
+                  />
+                </div>
+              </section>
+            )}
           </div>
 
           <div className="bg-brand-50/60 border border-brand-100 rounded-2xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
@@ -398,20 +406,32 @@ export function TicketPage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-start gap-3">
-              <Icon name="edit_document" className="text-[24px] text-brand-600" />
-              <div className="flex-1">
-                <p className="font-bold text-ink">Need to make a change?</p>
-                <p className="text-ink-muted">Contact the organizer, or cancel or manage your booking with your booking ID and email.</p>
+            {detail.scope === 'ticket' ? (
+              <div className="flex items-start gap-3">
+                <Icon name="edit_document" className="text-[24px] text-brand-600" />
+                <div className="flex-1">
+                  <p className="font-bold text-ink">Need to make a change?</p>
+                  <p className="text-ink-muted">
+                    This ticket was booked for you by {detail.bookedBy}. Ask them or the organizer for any change.
+                  </p>
+                </div>
               </div>
-              <Link
-                to={`/bookings/${encodeURIComponent(detail.bookingReference)}/manage`}
-                state={{ bookingReference: detail.bookingReference }}
-                className="px-3 py-2 rounded-lg border border-brand-200 bg-white text-brand-600 font-semibold whitespace-nowrap"
-              >
-                Manage Booking →
-              </Link>
-            </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                <Icon name="edit_document" className="text-[24px] text-brand-600" />
+                <div className="flex-1">
+                  <p className="font-bold text-ink">Need to make a change?</p>
+                  <p className="text-ink-muted">Contact the organizer, or cancel or manage your booking with your booking ID and email.</p>
+                </div>
+                <Link
+                  to={`/bookings/${encodeURIComponent(detail.bookingReference)}/manage`}
+                  state={{ bookingReference: detail.bookingReference }}
+                  className="px-3 py-2 rounded-lg border border-brand-200 bg-white text-brand-600 font-semibold whitespace-nowrap"
+                >
+                  Manage Booking →
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

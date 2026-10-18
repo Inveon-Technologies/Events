@@ -34,8 +34,8 @@ export interface OrganizerTicketsParams {
 // EventsContext) had no backend at all behind it. attendeeName comes
 // from the ticket itself (one name per ticket, since a single booking
 // can cover several attendees); contact info comes from the booking
-// that ticket belongs to, since only the booking's primary contact
-// has an email/phone on file.
+// that ticket belongs to, unless the ticket was sent to its own
+// attendee (group bookings sent separately), whose contact it carries.
 export async function getOrganizerTickets(params: OrganizerTicketsParams): Promise<OrganizerTicketsResult> {
   const { organizerId } = params;
 
@@ -69,8 +69,9 @@ export async function getOrganizerTickets(params: OrganizerTicketsParams): Promi
     return {
       id: ticket.id,
       attendeeName: ticket.attendeeName,
-      customerEmail: booking.primaryContactEmail,
-      customerPhone: booking.primaryContactWhatsapp,
+      // A ticket sent to its own attendee carries their contact.
+      customerEmail: ticket.attendeeEmail || booking.primaryContactEmail,
+      customerPhone: ticket.attendeeWhatsapp || booking.primaryContactWhatsapp,
       eventId: booking.eventId,
       eventName: booking.Event?.name ?? 'Unknown event',
       tierName: tier?.name ?? 'General',
