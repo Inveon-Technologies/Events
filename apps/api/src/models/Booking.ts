@@ -4,6 +4,9 @@ import { sequelize } from '../db/connection';
 export type BookingStatus = 'pending' | 'confirmed' | 'cancelled';
 export type PaymentMethod = 'online' | 'cash';
 export type CancelledBy = 'customer' | 'organizer';
+// buyer: every ticket goes to the booking's contact. individual: each
+// ticket also goes to its own attendee's WhatsApp and email.
+export type TicketDelivery = 'buyer' | 'individual';
 
 export class Booking extends Model<InferAttributes<Booking>, InferCreationAttributes<Booking>> {
   declare id: CreationOptional<string>;
@@ -22,6 +25,7 @@ export class Booking extends Model<InferAttributes<Booking>, InferCreationAttrib
   declare refundStatus: string | null;
   declare confirmationEmailStatus: CreationOptional<string | null>;
   declare confirmationWhatsappStatus: CreationOptional<string | null>;
+  declare ticketDelivery: CreationOptional<TicketDelivery>;
   declare readonly createdAt: CreationOptional<Date>;
   declare readonly updatedAt: CreationOptional<Date>;
 }
@@ -44,6 +48,7 @@ Booking.init(
     refundStatus: { type: DataTypes.STRING, allowNull: true },
     confirmationEmailStatus: { type: DataTypes.STRING(16), allowNull: true },
     confirmationWhatsappStatus: { type: DataTypes.STRING(16), allowNull: true },
+    ticketDelivery: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'buyer' },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

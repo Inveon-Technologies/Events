@@ -21,13 +21,14 @@ import {
 import { enqueueNotification } from '../queue';
 import { releaseCustomersOwnHolds, SEAT_HOLD_MS } from '../services/pendingBookingExpiry';
 import { enqueueWhatsApp } from '../services/whatsapp/messages';
+import { enqueueAttendeeTickets } from '../services/attendeeTickets';
 import {
   customerCancelBooking,
   ValidationError as CancellationValidationError,
   NotFoundError as CancellationNotFoundError,
 } from '../services/bookingCancellation';
 import {
-  findBookingByToken,
+  resolveTicketLink,
   getBookingDetail,
   getBookingDetailByToken,
   getTicketQrImage,
@@ -170,6 +171,8 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
     paymentMethod,
     attendeeNames,
     attendeeGenders,
+    ticketDelivery,
+    attendeeContacts,
   } = req.body as Record<string, unknown>;
 
   // Several ticket types per order: items: [{ ticketCategoryId, quantity }].
@@ -212,6 +215,16 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
       paymentMethod,
       attendeeNames: Array.isArray(attendeeNames) ? attendeeNames.filter((n): n is string => typeof n === 'string') : undefined,
       attendeeGenders: Array.isArray(attendeeGenders) ? attendeeGenders.filter((g): g is string => typeof g === 'string') : undefined,
+      // Group orders: all tickets to the buyer (default), or each one also
+      // to its own attendee (validated in createBooking).
+      ticketDelivery: ticketDelivery === 'individual' ? 'individual' : 'buyer',
+      attendeeContacts: Array.isArray(attendeeContacts)
+        ? attendeeContacts.map((c) =>
+            c && typeof c === 'object'
+              ? { whatsapp: typeof c.whatsapp === 'string' ? c.whatsapp : undefined, email: typeof c.email === 'string' ? c.email : undefined }
+              : null,
+          )
+        : undefined,
     });
 
     // Online paid bookings start 'pending' — no confirmation email yet,
@@ -256,6 +269,7 @@ publicBookingsRouter.post('/events/:eventId/bookings', bookingCreateLimit, async
       { jobId: `booking-confirmation-${result.bookingId}` },
     );
     void enqueueWhatsApp('bookingConfirmation', result.bookingId);
+    void enqueueAttendeeTickets(result.bookingId);
 
     res.status(201).json({ bookingId: result.bookingId, bookingReference: result.bookingReference });
   } catch (err) {
@@ -415,8 +429,8 @@ publicBookingsRouter.get('/t/:token/tickets/:ticketId/qr', bookingLookupLimit, a
 
 publicBookingsRouter.get('/t/:token/tickets.pdf', bookingLookupLimit, asyncHandler(async (req, res) => {
   await withTicketToken(res, async () => {
-    const booking = await findBookingByToken(req.params.token);
-    const pdf = await renderTicketPdf(await loadTicketArtworkData(booking));
+    const { booking, ticketId } = await resolveTicketLink(req.params.token);
+    const pdf = await renderTicketPdf(await loadTicketArtworkData(booking, ticketId));
     res
       .set('Cache-Control', 'private, no-store')
       .set('Content-Disposition', `inline; filename="Tickets-${booking.bookingReference}.pdf"`)
@@ -433,12 +447,15 @@ publicBookingsRouter.get('/ticket-pdf/:token', bookingLookupLimit, asyncHandler(
 
 // Participation certificates (checked-in attendees of events that issue
 // them): one ticket's, or the whole booking's in one PDF. The second URL
-// ends in the token for the WhatsApp certificate button.
+// ends in the token for the WhatsApp certificate button. A one-ticket
+// link only ever gets that ticket's.
 async function sendCertificates(res: Response, token: string, ticketId?: string): Promise<void> {
   await withTicketToken(res, async () => {
-    const booking = await findBookingByToken(token);
+    const link = await resolveTicketLink(token);
+    const booking = link.booking;
+    if (link.ticketId && ticketId && ticketId !== link.ticketId) throw new TicketsNotFoundError('Ticket not found');
     try {
-      const { pdf } = await renderBookingCertificatesPdf(booking, ticketId);
+      const { pdf } = await renderBookingCertificatesPdf(booking, link.ticketId ?? ticketId);
       res
         .set('Cache-Control', 'private, no-store')
         .set('Content-Disposition', `inline; filename="Certificate-${booking.bookingReference}.pdf"`)
@@ -472,12 +489,12 @@ const cardCache = new Map<string, { png: Buffer; expires: number }>();
 
 publicBookingsRouter.get('/t/:token/card.png', asyncHandler(async (req, res) => {
   await withTicketToken(res, async () => {
-    const booking = await findBookingByToken(req.params.token);
-    const key = `${booking.id}:${booking.status}:${booking.updatedAt.getTime()}`;
+    const { booking, ticketId } = await resolveTicketLink(req.params.token);
+    const key = `${booking.id}:${ticketId ?? 'all'}:${booking.status}:${booking.updatedAt.getTime()}`;
     const now = Date.now();
     let cached = cardCache.get(key);
     if (!cached || cached.expires < now) {
-      cached = { png: await renderTicketCardPng(await loadTicketArtworkData(booking)), expires: now + CARD_CACHE_TTL_MS };
+      cached = { png: await renderTicketCardPng(await loadTicketArtworkData(booking, ticketId)), expires: now + CARD_CACHE_TTL_MS };
       if (cardCache.size >= 200) {
         for (const [k, v] of cardCache) if (v.expires < now || cardCache.size >= 200) cardCache.delete(k);
       }

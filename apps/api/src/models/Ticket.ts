@@ -10,6 +10,9 @@ export class Ticket extends Model<InferAttributes<Ticket>, InferCreationAttribut
   declare attendeeName: string;
   declare attendeeAge: number | null;
   declare attendeeGender: string | null;
+  // Only on tickets sent to their own attendee (booking.ticketDelivery = individual).
+  declare attendeeWhatsapp: CreationOptional<string | null>;
+  declare attendeeEmail: CreationOptional<string | null>;
   declare qrToken: string;
   declare status: CreationOptional<TicketStatus>;
   declare checkedInAt: Date | null;
@@ -26,6 +29,8 @@ Ticket.init(
     attendeeName: { type: DataTypes.STRING, allowNull: false },
     attendeeAge: { type: DataTypes.INTEGER, allowNull: true },
     attendeeGender: { type: DataTypes.STRING, allowNull: true },
+    attendeeWhatsapp: { type: DataTypes.STRING, allowNull: true },
+    attendeeEmail: { type: DataTypes.STRING, allowNull: true },
     qrToken: { type: DataTypes.STRING, allowNull: false, unique: true },
     status: { type: DataTypes.ENUM('valid', 'checked_in', 'cancelled'), allowNull: false, defaultValue: 'valid' },
     checkedInAt: { type: DataTypes.DATE, allowNull: true },

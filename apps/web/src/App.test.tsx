@@ -776,6 +776,70 @@ describe('App routing', () => {
     vi.unstubAllGlobals();
   });
 
+  it('checkout can send each ticket of a group order to its own participant', async () => {
+    const user = userEvent.setup();
+    const bookingBodies: Record<string, unknown>[] = [];
+    const fetchMock = vi.fn().mockImplementation((url, init) => {
+      const urlStr = String(url);
+      if (urlStr.endsWith('/bookings')) {
+        bookingBodies.push(JSON.parse(String(init?.body)));
+        return Promise.resolve({ ok: true, status: 201, json: async () => ({ bookingId: 'booking-group-1', bookingReference: 'INV-BKG-2026-GRP23456' }) });
+      }
+      if (urlStr.includes('/status')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ status: 'confirmed', bookingReference: 'INV-BKG-2026-GRP23456', eventName: 'Group Event' }) });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          id: 'evt-group', slug: 'group', name: 'Group Event', tagline: null, description: null,
+          eventDate: '2027-02-14T04:30:00.000Z', venueAddress: 'Real Venue, Nashik', venueMapUrl: null, bannerUrl: null,
+          media: [], organizerName: 'Group Org', organizerSlug: 'group-org', scheduleItems: null, packingChecklist: null,
+          faqItems: null, allowSelfServiceCancellation: false, refundCutoffDays: null, refundPercentage: null,
+          ticketCategories: [{ id: 'tier-general', name: 'General', description: null, pricePaise: 0, maxPerBooking: 4, available: 50 }],
+          ratingSummary: { averageRating: null, reviewCount: 0 },
+        }),
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderApp('/events/evt-group/checkout');
+    await waitFor(() => expect(screen.getAllByText('Group Event').length).toBeGreaterThan(0));
+    await user.click(screen.getByLabelText('Add one General ticket'));
+    await user.click(screen.getAllByText('CONTINUE TO PARTICIPANTS')[0]);
+    const nameInputs = await screen.findAllByPlaceholderText('e.g. Rahul Sharma');
+    expect(nameInputs).toHaveLength(2);
+
+    // "All tickets to me" is the default: only the lead is asked for contact details.
+    expect(screen.getByLabelText(/All tickets to me/)).toBeChecked();
+    expect(screen.getAllByPlaceholderText('name@example.com')).toHaveLength(1);
+
+    await user.click(screen.getByLabelText(/Send each ticket separately/));
+    expect(screen.getAllByPlaceholderText('name@example.com')).toHaveLength(2);
+    await user.type(nameInputs[0], 'Asha');
+    await user.type(nameInputs[1], 'Ravi');
+    await user.type(screen.getAllByPlaceholderText('name@example.com')[0], 'asha@example.com');
+    await user.type(screen.getAllByPlaceholderText('9876543210')[0], '9000000001');
+
+    // The friend's WhatsApp and email are needed before booking.
+    await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+    expect(await screen.findByText(/participant 2.s name, email, and WhatsApp number/)).toBeInTheDocument();
+    expect(bookingBodies).toHaveLength(0);
+
+    await user.type(screen.getAllByPlaceholderText('name@example.com')[1], 'ravi@example.com');
+    await user.type(screen.getAllByPlaceholderText('9876543210')[1], '9000000002');
+    await user.click(screen.getAllByText('PROCEED TO SECURE PAYMENT')[0]);
+
+    await waitFor(() => expect(bookingBodies).toHaveLength(1));
+    expect(bookingBodies[0]).toMatchObject({
+      attendeeNames: ['Asha', 'Ravi'],
+      ticketDelivery: 'individual',
+      attendeeContacts: [null, { whatsapp: '9000000002', email: 'ravi@example.com' }],
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   it('checkout shows a real, accurate refund policy trust line — "No Refund" for a non-cancellable event, never the old fake "Free cancellation up to 48 hours"', async () => {
     const fetchMock = vi.fn().mockImplementation((url) => {
       const urlStr = String(url);

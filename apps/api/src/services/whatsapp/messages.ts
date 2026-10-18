@@ -47,8 +47,11 @@ function locationLine(event: Event): string {
   return venue || shortPlace(pickup?.label) || 'See your ticket page';
 }
 
-// Exported for the send-test script (scripts/whatsappTest.ts).
-export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Booking, event: Event): Promise<Built> {
+// Exported for the send-test script (scripts/whatsappTest.ts). With a
+// ticketId, the confirmation goes to that ticket's own attendee instead
+// of the buyer (group bookings sent separately, see attendeeTickets.ts).
+export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Booking, event: Event, ticketId?: string): Promise<Built> {
+  if (ticketId) return message === 'bookingConfirmation' ? buildAttendeeConfirmation(booking, event, ticketId) : null;
   const name = booking.primaryContactName;
   const base = { recipientName: name, to: booking.primaryContactWhatsapp };
 
@@ -75,12 +78,6 @@ export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Bo
           : booking.status === 'pending' && payment?.method === 'cash'
             ? `Please pay ${rupees(booking.totalAmountPaise)} at the venue; your ticket is ready.`
             : 'Your payment has been verified and your ticket is ready.';
-      const reporting = event.gateOpenTime ?? event.eventDate;
-      const time = `${event.gateOpenTime ? 'Reporting time' : 'Starts at'}: ${reporting.toLocaleTimeString('en-IN', { ...IST, hour: 'numeric', minute: '2-digit' }).toUpperCase()}`;
-      const organizer = await Organizer.findByPk(event.organizerId, { attributes: ['name', 'contactPhone'] });
-      const help = organizer?.contactPhone
-        ? `${organizer.name}, ${organizer.contactPhone}`
-        : `${organizer?.name ?? 'Event organizer'} (contact details on your ticket page)`;
       const token = ticketLinkToken(booking.bookingReference);
       // 🎟️ *Booking Confirmed!* Hi {{1}}, your booking for *{{2}}* is confirmed. {{3}}
       // 📅 {{4}}  ⏰ {{5}}  📍 {{6}}  🎫 Ticket ID: {{7}}  🧾 Booking ID: {{8}}  📞 Organizer: {{9}}
@@ -92,12 +89,10 @@ export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Bo
           name,
           event.name,
           status,
-          event.eventDate.toLocaleDateString('en-IN', { ...IST, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
-          time,
-          locationLine(event),
+          ...(await confirmationDetails(event)),
           tickets,
           booking.bookingReference,
-          help,
+          await organizerHelp(event),
         ],
         headerImage: { url: ticketCardUrl(booking.bookingReference), filename: `Ticket-${booking.bookingReference}.png` },
         urlButtons: [token, token],
@@ -149,23 +144,82 @@ export async function buildWhatsAppMessage(message: WhatsAppMessage, booking: Bo
   }
 }
 
+// {{4}} date and {{5}} time, then {{6}} place, of the confirmation.
+function confirmationDetails(event: Event): [string, string, string] {
+  const reporting = event.gateOpenTime ?? event.eventDate;
+  return [
+    event.eventDate.toLocaleDateString('en-IN', { ...IST, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+    `${event.gateOpenTime ? 'Reporting time' : 'Starts at'}: ${reporting.toLocaleTimeString('en-IN', { ...IST, hour: 'numeric', minute: '2-digit' }).toUpperCase()}`,
+    locationLine(event),
+  ];
+}
+
+// {{9}} of the confirmation.
+async function organizerHelp(event: Event): Promise<string> {
+  const organizer = await Organizer.findByPk(event.organizerId, { attributes: ['name', 'contactPhone'] });
+  return organizer?.contactPhone
+    ? `${organizer.name}, ${organizer.contactPhone}`
+    : `${organizer?.name ?? 'Event organizer'} (contact details on your ticket page)`;
+}
+
+// The same booking_confirmation template, for one attendee of a group
+// booking: their name, their one ticket, and a link that opens only that
+// ticket (so they never see the others' QR codes or the buyer's details).
+async function buildAttendeeConfirmation(booking: Booking, event: Event, ticketId: string): Promise<Built> {
+  if (booking.status === 'cancelled') return null;
+  if (!publicBaseUrl()) throw new Error('WEB_PUBLIC_URL must be set to send the WhatsApp ticket (its image and buttons are links)');
+  const all = await Ticket.findAll({ where: { bookingId: booking.id }, order: [['createdAt', 'ASC']] });
+  const index = all.findIndex((t) => t.id === ticketId);
+  const ticket = all[index];
+  if (!ticket || ticket.status === 'cancelled' || !ticket.attendeeWhatsapp) return null;
+  const payment = await Payment.findOne({ where: { bookingId: booking.id }, order: [['createdAt', 'DESC']], attributes: ['method'] });
+  const bookedBy = `${booking.primaryContactName} booked this ticket for you`;
+  const status =
+    booking.status === 'pending' && booking.totalAmountPaise > 0 && payment?.method === 'cash'
+      ? `${bookedBy}; payment is due at the venue. Your ticket is ready.`
+      : `${bookedBy}. Your ticket is ready.`;
+  const token = ticketLinkToken(booking.bookingReference, ticket.id);
+  return {
+    recipientName: ticket.attendeeName,
+    to: ticket.attendeeWhatsapp,
+    params: [
+      ticket.attendeeName,
+      event.name,
+      status,
+      ...confirmationDetails(event),
+      ticketDisplayReference(booking.bookingReference, index),
+      booking.bookingReference,
+      await organizerHelp(event),
+    ],
+    headerImage: {
+      url: ticketCardUrl(booking.bookingReference, ticket.id),
+      filename: `Ticket-${ticketDisplayReference(booking.bookingReference, index)}.png`,
+    },
+    urlButtons: [token, token],
+  };
+}
+
 // Job handler for "whatsapp" (queue/jobs.ts). Throws on a provider error so
 // the queue retries; a number that can never work is logged and dropped.
-export async function deliverWhatsApp(message: WhatsAppMessage, bookingId: string): Promise<void> {
+// With a ticketId it is that attendee's own copy (no booking status is
+// recorded for it: the ticket page's "Ticket delivered to" is the buyer's).
+export async function deliverWhatsApp(message: WhatsAppMessage, bookingId: string, ticketId?: string): Promise<void> {
   if (!isWhatsAppConfigured()) return;
   const booking = await Booking.findByPk(bookingId);
   if (!booking) return;
   const event = await Event.findByPk(booking.eventId);
   if (!event) return;
 
-  const built = await buildWhatsAppMessage(message, booking, event);
+  const built = await buildWhatsAppMessage(message, booking, event, ticketId);
   if (!built) return;
 
   // The confirmation's outcome is shown on the ticket page ("Ticket
   // delivered to"). A failed attempt is recorded straight away and
   // overwritten if a retry succeeds.
   const record = (status: 'sent' | 'failed') =>
-    message === 'bookingConfirmation' ? Booking.update({ confirmationWhatsappStatus: status }, { where: { id: bookingId } }) : null;
+    message === 'bookingConfirmation' && !ticketId
+      ? Booking.update({ confirmationWhatsappStatus: status }, { where: { id: bookingId } })
+      : null;
 
   try {
     await sendWhatsAppTemplate({ message, ...built });
@@ -173,7 +227,7 @@ export async function deliverWhatsApp(message: WhatsAppMessage, bookingId: strin
   } catch (err) {
     await record('failed');
     if (err instanceof WhatsAppInvalidNumberError) {
-      logger.warn({ bookingId, message }, err.message);
+      logger.warn({ bookingId, ticketId, message }, err.message);
       return;
     }
     throw err;
@@ -183,12 +237,14 @@ export async function deliverWhatsApp(message: WhatsAppMessage, bookingId: strin
 // Fire-and-forget from request code and scheduled jobs; a no-op unless
 // WhatsApp is configured. One job per booking and message, so a repeated
 // webhook or reminder run can't send it twice.
-export async function enqueueWhatsApp(message: WhatsAppMessage, bookingId: string, jobSuffix = ''): Promise<void> {
+export async function enqueueWhatsApp(message: WhatsAppMessage, bookingId: string, jobSuffix = '', ticketId?: string): Promise<void> {
   if (!isWhatsAppConfigured()) {
-    if (message === 'bookingConfirmation') {
+    if (message === 'bookingConfirmation' && !ticketId) {
       await Booking.update({ confirmationWhatsappStatus: 'skipped' }, { where: { id: bookingId } });
     }
     return;
   }
-  await enqueueNotification('whatsapp', { message, bookingId }, { jobId: `whatsapp-${message}-${bookingId}${jobSuffix}` });
+  await enqueueNotification('whatsapp', ticketId ? { message, bookingId, ticketId } : { message, bookingId }, {
+    jobId: `whatsapp-${message}-${bookingId}${ticketId ? `-${ticketId}` : ''}${jobSuffix}`,
+  });
 }

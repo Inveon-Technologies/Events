@@ -91,6 +91,9 @@ export function CheckoutPage() {
   useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
   const stepsTopRef = useRef<HTMLDivElement>(null);
   const [attendees, setAttendees] = useState<Attendee[]>([]);
+  // Group orders: every ticket to the lead contact (default), or each
+  // ticket also to its own participant's WhatsApp and email.
+  const [ticketDelivery, setTicketDelivery] = useState<'buyer' | 'individual'>('buyer');
   const [isEventInfoOpen, setIsEventInfoOpen] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -231,6 +234,14 @@ export function CheckoutPage() {
       showToast('Please fill in the lead attendee\u2019s name, email, and phone.');
       return;
     }
+    const sendSeparately = ticketDelivery === 'individual' && attendees.length > 1;
+    if (sendSeparately) {
+      const missing = attendees.findIndex((a, i) => i > 0 && (!a.name.trim() || !a.email.trim() || !a.phone.trim()));
+      if (missing > 0) {
+        showToast(`Please fill in participant ${missing + 1}\u2019s name, email, and WhatsApp number to send their ticket.`);
+        return;
+      }
+    }
 
     if (selectedTiers.length === 0) {
       showToast('Please select at least 1 ticket.');
@@ -259,6 +270,10 @@ export function CheckoutPage() {
             paymentMethod: 'online',
             attendeeNames: attendees.map((a) => a.name || lead.name),
             attendeeGenders: event?.genderRestriction ? attendees.map(() => event.genderRestriction!) : undefined,
+            ticketDelivery: sendSeparately ? 'individual' : 'buyer',
+            attendeeContacts: sendSeparately
+              ? attendees.map((a, i) => (i === 0 ? null : { whatsapp: a.phone.trim(), email: a.email.trim() }))
+              : undefined,
           },
         },
       );
@@ -459,102 +474,167 @@ export function CheckoutPage() {
           </button>
         </div>
 
-        <div className="mt-5 space-y-4">
-          {attendees.map((attendee, index) => (
-            <div key={index} className="rounded-xl border border-[#e8edf5] bg-[#f7faff] p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-[#e8edf5]">
-                <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full bg-[#1260e8] text-white flex items-center justify-center text-xs font-bold">
-                    {index + 1}
-                  </span>
-                  <h3 className="text-[15px] font-bold text-[#101f49]">Participant {index + 1}</h3>
-                  <span className="text-[10px] font-bold uppercase tracking-wide bg-white border border-[#dce3ee] px-2 py-0.5 rounded-full text-[#1260e8]">
-                    {attendee.tier}
-                  </span>
-                </div>
-                {index === 0 && (
-                  <span className="text-[11px] text-[#71809b] flex items-center gap-1">
-                    <span className="material-symbols-outlined text-sm">person</span> Lead contact
-                  </span>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    value={attendee.name}
-                    onChange={(e) => updateAttendeeField(index, 'name', e.target.value)}
-                    placeholder="e.g. Rahul Sharma"
-                    autoComplete={index === 0 ? 'name' : 'off'}
-                    className={inputClass}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Email Address *</label>
-                  <input
-                    type="email"
-                    value={attendee.email}
-                    onChange={(e) => updateAttendeeField(index, 'email', e.target.value)}
-                    placeholder="name@example.com"
-                    autoComplete={index === 0 ? 'email' : 'off'}
-                    inputMode="email"
-                    className={inputClass}
-                    required
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Phone Number *</label>
-                  <div className="flex">
-                    <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-[#dce3ee] bg-[#eef2f8] text-[#63708a] text-sm font-medium">
-                      +91
-                    </span>
+        {attendees.length > 1 && (
+          <fieldset className="mt-5 rounded-xl border border-[#e8edf5] p-4 sm:p-5">
+            <legend className="px-1 text-[13px] font-bold text-[#101f49]">How should we send the tickets?</legend>
+            <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(
+                [
+                  {
+                    value: 'buyer',
+                    icon: 'family_restroom',
+                    title: 'All tickets to me',
+                    text: 'Every ticket goes to the lead contact\u2019s WhatsApp and email. Good for family or a group arriving together.',
+                  },
+                  {
+                    value: 'individual',
+                    icon: 'groups',
+                    title: 'Send each ticket separately',
+                    text: 'Each participant gets only their own ticket on their WhatsApp and email. Good for friends arriving at different times.',
+                  },
+                ] as const
+              ).map((option) => {
+                const selected = ticketDelivery === option.value;
+                return (
+                  <label
+                    key={option.value}
+                    className={`flex gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                      selected ? 'border-[#1260e8] bg-[#f0f7ff] ring-2 ring-[#1260e8]/15' : 'border-[#dce3ee] bg-white hover:bg-[#f7faff]'
+                    }`}
+                  >
                     <input
-                      type="tel"
-                      value={attendee.phone}
-                      onChange={(e) => updateAttendeeField(index, 'phone', e.target.value)}
-                      placeholder="9876543210"
-                      autoComplete={index === 0 ? 'tel-national' : 'off'}
-                      inputMode="numeric"
-                      className={`${inputClass} rounded-l-none`}
+                      type="radio"
+                      name="ticket-delivery"
+                      value={option.value}
+                      checked={selected}
+                      onChange={() => setTicketDelivery(option.value)}
+                      className="mt-1 accent-[#1260e8]"
+                    />
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-1.5 text-[14px] font-bold text-[#101f49]">
+                        <span className="material-symbols-outlined text-lg text-[#1260e8]" aria-hidden="true">
+                          {option.icon}
+                        </span>
+                        {option.title}
+                      </span>
+                      <span className="mt-0.5 block text-[12px] text-[#71809b]">{option.text}</span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+        )}
+
+        <div className="mt-5 space-y-4">
+          {attendees.map((attendee, index) => {
+            // Only the lead's contact is needed unless each ticket is sent
+            // to its own participant.
+            const showContact = index === 0 || ticketDelivery === 'individual';
+            return (
+              <div key={index} className="rounded-xl border border-[#e8edf5] bg-[#f7faff] p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-[#e8edf5]">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-[#1260e8] text-white flex items-center justify-center text-xs font-bold">
+                      {index + 1}
+                    </span>
+                    <h3 className="text-[15px] font-bold text-[#101f49]">Participant {index + 1}</h3>
+                    <span className="text-[10px] font-bold uppercase tracking-wide bg-white border border-[#dce3ee] px-2 py-0.5 rounded-full text-[#1260e8]">
+                      {attendee.tier}
+                    </span>
+                  </div>
+                  {index === 0 && (
+                    <span className="text-[11px] text-[#71809b] flex items-center gap-1">
+                      <span className="material-symbols-outlined text-sm">person</span> Lead contact
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className={showContact ? undefined : 'sm:col-span-2'}>
+                    <label className="block text-xs font-semibold text-[#44536d] mb-1">Full Name *</label>
+                    <input
+                      type="text"
+                      value={attendee.name}
+                      onChange={(e) => updateAttendeeField(index, 'name', e.target.value)}
+                      placeholder="e.g. Rahul Sharma"
+                      autoComplete={index === 0 ? 'name' : 'off'}
+                      className={inputClass}
                       required
                     />
                   </div>
-                  {index === 0 && (
-                    <p className="mt-1 text-[11px] text-[#71809b]">
-                      We&apos;ll send your tickets and event updates to this number on WhatsApp.
-                    </p>
+                  {showContact && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#44536d] mb-1">Email Address *</label>
+                      <input
+                        type="email"
+                        value={attendee.email}
+                        onChange={(e) => updateAttendeeField(index, 'email', e.target.value)}
+                        placeholder="name@example.com"
+                        autoComplete={index === 0 ? 'email' : 'off'}
+                        inputMode="email"
+                        className={inputClass}
+                        required
+                      />
+                    </div>
+                  )}
+                  {showContact && (
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-[#44536d] mb-1">
+                        {index === 0 ? 'Phone Number *' : 'WhatsApp Number *'}
+                      </label>
+                      <div className="flex">
+                        <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-[#dce3ee] bg-[#eef2f8] text-[#63708a] text-sm font-medium">
+                          +91
+                        </span>
+                        <input
+                          type="tel"
+                          value={attendee.phone}
+                          onChange={(e) => updateAttendeeField(index, 'phone', e.target.value)}
+                          placeholder="9876543210"
+                          autoComplete={index === 0 ? 'tel-national' : 'off'}
+                          inputMode="numeric"
+                          className={`${inputClass} rounded-l-none`}
+                          required
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-[#71809b]">
+                        {index === 0
+                          ? ticketDelivery === 'individual' && attendees.length > 1
+                            ? 'We\u2019ll send your ticket, the booking details and event updates to this number on WhatsApp.'
+                            : 'We\u2019ll send your tickets and event updates to this number on WhatsApp.'
+                          : 'We\u2019ll send this participant\u2019s ticket to this number on WhatsApp and to the email above.'}
+                      </p>
+                    </div>
                   )}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                <div>
-                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Emergency Contact Person</label>
-                  <input
-                    type="text"
-                    value={attendee.emergencyName}
-                    onChange={(e) => updateAttendeeField(index, 'emergencyName', e.target.value)}
-                    placeholder="Parent / Spouse / Friend"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#44536d] mb-1">Emergency SOS Contact Number</label>
-                  <input
-                    type="tel"
-                    value={attendee.emergencyPhone}
-                    onChange={(e) => updateAttendeeField(index, 'emergencyPhone', e.target.value)}
-                    placeholder="Mobile number"
-                    inputMode="numeric"
-                    className={inputClass}
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#44536d] mb-1">Emergency Contact Person</label>
+                    <input
+                      type="text"
+                      value={attendee.emergencyName}
+                      onChange={(e) => updateAttendeeField(index, 'emergencyName', e.target.value)}
+                      placeholder="Parent / Spouse / Friend"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#44536d] mb-1">Emergency SOS Contact Number</label>
+                    <input
+                      type="tel"
+                      value={attendee.emergencyPhone}
+                      onChange={(e) => updateAttendeeField(index, 'emergencyPhone', e.target.value)}
+                      placeholder="Mobile number"
+                      inputMode="numeric"
+                      className={inputClass}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <p className="text-[13px] text-[#71809b] mt-4 flex items-start gap-1.5">
