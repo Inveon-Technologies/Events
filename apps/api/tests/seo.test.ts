@@ -63,6 +63,7 @@ describe('seo', () => {
     expect(ld.location.address.addressLocality).toBe('Pune');
     expect(ld.location.geo).toEqual({ '@type': 'GeoCoordinates', latitude: 18.246, longitude: 73.682 });
     expect(ld.organizer.url).toBe('https://events.example.in/organizers/sahyadri-trekkers');
+    expect(ld.performer).toEqual({ '@type': 'PerformingGroup', name: 'Sahyadri Trekkers' });
     expect(ld.offers).toHaveLength(2);
     expect(ld.offers[0]).toMatchObject({ price: '1499.00', priceCurrency: 'INR', availability: 'https://schema.org/InStock' });
     expect(ld.offers[1].availability).toBe('https://schema.org/SoldOut');
