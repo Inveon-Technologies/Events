@@ -21,6 +21,8 @@ export const WHATSAPP_MESSAGES = {
   bookingCancelled: 'booking_cancelled_v3',
   postEventThanks: 'post_event_thanks_v3',
   certificateReady: 'certificate_ready_v3',
+  // Authentication template with a copy-code button (customer login OTP).
+  loginCode: 'login_code_v3',
 } as const;
 export type WhatsAppMessage = keyof typeof WHATSAPP_MESSAGES;
 

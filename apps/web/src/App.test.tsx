@@ -810,11 +810,14 @@ describe('App routing', () => {
     const nameInputs = await screen.findAllByPlaceholderText('e.g. Rahul Sharma');
     expect(nameInputs).toHaveLength(2);
 
-    // "All tickets to me" is the default: only the lead is asked for contact details.
-    expect(screen.getByLabelText(/All tickets to me/)).toBeChecked();
+    // "Send all tickets to this account" (on participant 1) is on by
+    // default: only the lead is asked for contact details.
+    const allToLead = screen.getByRole('switch', { name: /Send all tickets to this account/ });
+    expect(allToLead).toBeChecked();
     expect(screen.getAllByPlaceholderText('name@example.com')).toHaveLength(1);
 
-    await user.click(screen.getByLabelText(/Send each ticket separately/));
+    await user.click(allToLead);
+    expect(allToLead).not.toBeChecked();
     expect(screen.getAllByPlaceholderText('name@example.com')).toHaveLength(2);
     await user.type(nameInputs[0], 'Asha');
     await user.type(nameInputs[1], 'Ravi');
@@ -1401,8 +1404,7 @@ describe('App routing', () => {
     localStorage.removeItem('inveon_customer_session');
 
     renderApp('/bookings/lookup');
-    await user.type(screen.getByPlaceholderText('INV-BKG-2026-AB12CD'), 'INV-BKG-2026-11111');
-    await user.type(screen.getByPlaceholderText(/you@example.com/), 'real-customer@example.com');
+    await user.type(screen.getByLabelText(/Mobile number, email or Booking ID/), 'real-customer@example.com');
     await user.click(screen.getByRole('button', { name: /send login code/i }));
 
     await waitFor(() => {
@@ -1410,7 +1412,7 @@ describe('App routing', () => {
       expect(call).toBeTruthy();
     });
     const [, initiateOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/initiate'))!;
-    expect(JSON.parse(initiateOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', contact: 'real-customer@example.com' });
+    expect(JSON.parse(initiateOpts.body)).toEqual({ identifier: 'real-customer@example.com' });
 
     // Real 6-box OTP entry — pasted as one atomic clipboard event
     // (matching the real paste handler this page supports for OTP
@@ -1419,7 +1421,7 @@ describe('App routing', () => {
     // effect; asserting on the fully-settled code this way avoids a
     // real race between those six updates and the click below.
     await waitFor(() => expect(screen.getByText(/Verify Your Identity/i)).toBeInTheDocument());
-    const otpInputs = screen.getAllByRole('textbox').filter((el) => el.getAttribute('maxlength') === '1');
+    const otpInputs = screen.getAllByLabelText(/^Digit [1-6]$/);
     expect(otpInputs).toHaveLength(6);
     fireEvent.paste(otpInputs[0], { clipboardData: { getData: () => '123456' } });
     await user.click(screen.getByRole('button', { name: /verify.*continue/i }));
@@ -1429,7 +1431,7 @@ describe('App routing', () => {
       expect(call).toBeTruthy();
     });
     const [, verifyOpts] = fetchMock.mock.calls.find(([u]) => String(u).includes('/login/verify'))!;
-    expect(JSON.parse(verifyOpts.body)).toEqual({ bookingReference: 'INV-BKG-2026-11111', code: '123456' });
+    expect(JSON.parse(verifyOpts.body)).toEqual({ identifier: 'real-customer@example.com', code: '123456' });
 
     // Real navigation to the real hub, real session stored, real bookings shown.
     await waitFor(() => expect(screen.getByText('Real Hub Event One')).toBeInTheDocument());

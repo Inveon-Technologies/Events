@@ -5,26 +5,21 @@ import { Icon } from '../components/Icon';
 import { Button } from '../components/Button';
 import {
   getCustomerSession,
-  normalizeBookingReference,
+  normalizeLoginIdentifier,
   saveCustomerSession,
-  validateBookingReference,
-  validateEmailOrPhone,
+  validateLoginIdentifier,
 } from '../lib/customerSession';
 
 type Step = 'login' | 'otp';
 
-interface FieldErrors {
-  bookingReference?: string;
-  contact?: string;
-}
 
 export function VerificationLookupPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('login');
-  const [bookingReference, setBookingReference] = useState('');
-  const [contact, setContact] = useState('');
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [identifier, setIdentifier] = useState('');
+  const [fieldError, setFieldError] = useState('');
   const [sentTo, setSentTo] = useState('');
+  const [sentToWhatsapp, setSentToWhatsapp] = useState('');
   const [expiresInMinutes, setExpiresInMinutes] = useState(10);
   const [resendIn, setResendIn] = useState(0);
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
@@ -45,13 +40,9 @@ export function VerificationLookupPage() {
   }, [resendIn]);
 
   function validate(): boolean {
-    const next: FieldErrors = {};
-    const refError = validateBookingReference(bookingReference);
-    const contactError = validateEmailOrPhone(contact);
-    if (refError) next.bookingReference = refError;
-    if (contactError) next.contact = contactError;
-    setFieldErrors(next);
-    return !refError && !contactError;
+    const message = validateLoginIdentifier(identifier);
+    setFieldError(message);
+    return !message;
   }
 
   async function requestCode(): Promise<boolean> {
@@ -62,17 +53,17 @@ export function VerificationLookupPage() {
       const res = await fetch('/api/bookings/login/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingReference: normalizeBookingReference(bookingReference), contact: contact.trim() }),
+        body: JSON.stringify({ identifier: normalizeLoginIdentifier(identifier) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 429 && typeof data.retryAfterSeconds === 'number') setResendIn(data.retryAfterSeconds);
-        if (data.code === 'BOOKING_NOT_FOUND') setFieldErrors({ bookingReference: data.error });
-        else if (data.code === 'CONTACT_MISMATCH') setFieldErrors({ contact: data.error });
+        if (data.code === 'BOOKING_NOT_FOUND' || data.code === 'CONTACT_MISMATCH') setFieldError(data.error);
         else setError(data.error || 'Something went wrong. Please try again.');
         return false;
       }
       setSentTo(data.sentTo || '');
+      setSentToWhatsapp(data.sentToWhatsapp || '');
       setExpiresInMinutes(data.expiresInMinutes || 10);
       setResendIn(data.resendAfterSeconds || 30);
       return true;
@@ -103,7 +94,17 @@ export function VerificationLookupPage() {
     }
   }
 
+  function fillOtp(code: string): boolean {
+    const digits = code.replace(/\D/g, '');
+    if (digits.length !== 6) return false;
+    setOtpDigits(digits.split(''));
+    otpInputRefs.current[5]?.focus();
+    return true;
+  }
+
   function handleOtpDigitChange(index: number, value: string) {
+    // Keyboard / SMS autofill can drop the whole code into one box.
+    if (fillOtp(value)) return;
     const digit = value.replace(/\D/g, '').slice(-1);
     setOtpDigits((prev) => {
       const next = [...prev];
@@ -121,12 +122,24 @@ export function VerificationLookupPage() {
     }
   }
 
+  // The code copied from the email or WhatsApp, pasted into any box.
   function handleOtpPaste(e: React.ClipboardEvent<HTMLInputElement>) {
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (pasted.length === 6) {
       e.preventDefault();
-      setOtpDigits(pasted.split(''));
-      otpInputRefs.current[5]?.focus();
+      fillOtp(pasted);
+    }
+  }
+
+  async function handlePasteButton() {
+    setError('');
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!fillOtp(text.replace(/\D/g, '').slice(0, 6))) {
+        setError('No 6-digit code found on your clipboard. Copy the code from the email or WhatsApp first.');
+      }
+    } catch {
+      setError('Your browser blocked pasting. Tap a box and paste the code instead.');
     }
   }
 
@@ -136,7 +149,7 @@ export function VerificationLookupPage() {
     setNotice('');
     const code = otpDigits.join('');
     if (code.length !== 6) {
-      setError('Enter all 6 digits of the code sent to your email.');
+      setError('Enter all 6 digits of the code we sent you.');
       return;
     }
     setLoading(true);
@@ -144,7 +157,7 @@ export function VerificationLookupPage() {
       const res = await fetch('/api/bookings/login/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bookingReference: normalizeBookingReference(bookingReference), code }),
+        body: JSON.stringify({ identifier: normalizeLoginIdentifier(identifier), code }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -170,59 +183,35 @@ export function VerificationLookupPage() {
         </h1>
         <p className="text-sm text-ink-muted text-center mb-8">
           {step === 'login'
-            ? 'Enter your Booking ID and the email address or mobile number you booked with. We\'ll email you a one-time login code.'
-            : `We sent a 6-digit code to ${sentTo || 'your booking email'}. It's valid for ${expiresInMinutes} minutes.`}
+            ? 'Enter your mobile number, email or Booking ID. We\'ll send a one-time login code to your email and WhatsApp.'
+            : `We sent a 6-digit code to ${sentDestination(sentTo, sentToWhatsapp)}. It's valid for ${expiresInMinutes} minutes.`}
         </p>
 
         <div className="bg-white rounded-2xl shadow-card p-6">
           {step === 'login' ? (
             <form onSubmit={handleSendCode} noValidate className="space-y-4">
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-ink-muted">Booking ID</span>
+                <span className="text-xs font-medium text-ink-muted">Mobile number, email or Booking ID</span>
                 <input
-                  value={bookingReference}
+                  value={identifier}
                   onChange={(e) => {
-                    setBookingReference(e.target.value.toUpperCase());
-                    if (fieldErrors.bookingReference) setFieldErrors((f) => ({ ...f, bookingReference: undefined }));
+                    setIdentifier(e.target.value);
+                    if (fieldError) setFieldError('');
                   }}
-                  onBlur={() => bookingReference && setFieldErrors((f) => ({ ...f, bookingReference: validateBookingReference(bookingReference) || undefined }))}
-                  placeholder="INV-BKG-2026-AB12CD"
-                  autoCapitalize="characters"
-                  autoComplete="off"
+                  onBlur={() => identifier && setFieldError(validateLoginIdentifier(identifier))}
+                  placeholder="98765 43210, you@example.com or INV-BKG-…"
+                  autoComplete="username"
+                  autoCapitalize="none"
                   spellCheck={false}
-                  aria-invalid={Boolean(fieldErrors.bookingReference)}
-                  aria-describedby="booking-ref-error"
-                  className={`border rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 ${
-                    fieldErrors.bookingReference ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
-                  }`}
-                />
-                {fieldErrors.bookingReference && (
-                  <span id="booking-ref-error" role="alert" className="text-xs text-danger-600">
-                    {fieldErrors.bookingReference}
-                  </span>
-                )}
-              </label>
-
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-ink-muted">Email or mobile number</span>
-                <input
-                  value={contact}
-                  onChange={(e) => {
-                    setContact(e.target.value);
-                    if (fieldErrors.contact) setFieldErrors((f) => ({ ...f, contact: undefined }));
-                  }}
-                  onBlur={() => contact && setFieldErrors((f) => ({ ...f, contact: validateEmailOrPhone(contact) || undefined }))}
-                  placeholder="you@example.com or 98765 43210"
-                  autoComplete="email"
-                  aria-invalid={Boolean(fieldErrors.contact)}
-                  aria-describedby="contact-error"
+                  aria-invalid={Boolean(fieldError)}
+                  aria-describedby="identifier-error"
                   className={`border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 ${
-                    fieldErrors.contact ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
+                    fieldError ? 'border-danger-500 focus:ring-danger-50' : 'border-slate-200 focus:ring-brand-100'
                   }`}
                 />
-                {fieldErrors.contact && (
-                  <span id="contact-error" role="alert" className="text-xs text-danger-600">
-                    {fieldErrors.contact}
+                {fieldError && (
+                  <span id="identifier-error" role="alert" className="text-xs text-danger-600">
+                    {fieldError}
                   </span>
                 )}
               </label>
@@ -250,14 +239,23 @@ export function VerificationLookupPage() {
                     value={digit}
                     onChange={(e) => handleOtpDigitChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    onPaste={i === 0 ? handleOtpPaste : undefined}
+                    onPaste={handleOtpPaste}
                     inputMode="numeric"
                     autoComplete={i === 0 ? 'one-time-code' : 'off'}
-                    maxLength={1}
+                    maxLength={i === 0 ? 6 : 1}
+                    aria-label={`Digit ${i + 1}`}
                     className="w-11 h-14 sm:w-12 sm:h-16 text-center text-xl sm:text-2xl font-extrabold text-ink bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100 transition-all"
                   />
                 ))}
               </div>
+
+              <button
+                type="button"
+                onClick={handlePasteButton}
+                className="mx-auto flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700"
+              >
+                <Icon name="content_paste" className="text-[16px]" /> Paste code
+              </button>
 
               {error && (
                 <p role="alert" className="text-xs text-danger-600 text-center">
@@ -271,7 +269,7 @@ export function VerificationLookupPage() {
               </Button>
 
               <p className="text-xs text-ink-muted text-center">
-                Didn't get it? Check your spam or promotions folder.{' '}
+                Didn't get it? Check WhatsApp and your spam or promotions folder.{' '}
                 {resendIn > 0 ? (
                   <span>Resend in {resendIn}s</span>
                 ) : (
@@ -291,7 +289,7 @@ export function VerificationLookupPage() {
                 }}
                 className="w-full text-xs text-ink-muted hover:text-ink text-center"
               >
-                ← Use a different Booking ID, email or mobile
+                ← Use a different mobile number, email or Booking ID
               </button>
             </form>
           )}
@@ -303,4 +301,11 @@ export function VerificationLookupPage() {
       </div>
     </Layout>
   );
+}
+
+// "r***l@example.com and WhatsApp ••••3210"
+function sentDestination(email: string, whatsapp: string): string {
+  const whatsappPart = whatsapp ? `WhatsApp ${whatsapp}` : '';
+  if (email && whatsappPart) return `${email} and ${whatsappPart}`;
+  return email || whatsappPart || 'your booking email';
 }

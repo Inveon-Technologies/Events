@@ -74,9 +74,8 @@ export function otpEmail(params: { recipientName: string; otpCode: string; expir
       Hi ${params.recipientName}, use the code below to verify it's really you. This code expires in ${params.expiresInMinutes} minutes.
     </p>
     <div style="text-align:center;margin:0 0 24px;">
-      <span style="display:inline-block;padding:16px 32px;background-color:#eff6ff;border:1px dashed #93c5fd;border-radius:12px;font-size:32px;font-weight:700;letter-spacing:0.3em;color:#1d4ed8;">
-        ${params.otpCode}
-      </span>
+      <span style="display:inline-block;padding:16px 32px;background-color:#eff6ff;border:1px dashed #93c5fd;border-radius:12px;font-size:32px;font-weight:700;letter-spacing:0.3em;color:#1d4ed8;font-family:'Courier New',monospace;-webkit-user-select:all;user-select:all;">${params.otpCode}</span>
+      <p style="margin:8px 0 0;font-size:12px;color:#94a3b8;">Tap and hold (or double-click) the code to copy it, then paste it on the website.</p>
     </div>
     <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.6;">
       If you didn't request this code, you can safely ignore this email — no changes will be made to your account.
