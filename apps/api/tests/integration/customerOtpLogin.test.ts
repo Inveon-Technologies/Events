@@ -6,6 +6,7 @@ import { hashPassword } from '../../src/auth/password';
 import { signAccessToken } from '../../src/auth/jwt';
 import { sendEmail, isEmailConfigured } from '../../src/services/email';
 import { connectRedis, redis } from '../../src/db/redis';
+import { isWhatsAppConfigured, sendWhatsAppTemplate } from '../../src/services/whatsapp/client';
 
 jest.mock('../../src/services/email', () => {
   const actual = jest.requireActual('../../src/services/email');
@@ -19,6 +20,13 @@ jest.mock('../../src/services/bookingEmails', () => {
   return { ...actual, deliverBookingConfirmationEmail: jest.fn().mockResolvedValue(undefined) };
 });
 
+jest.mock('../../src/services/whatsapp/client', () => {
+  const actual = jest.requireActual('../../src/services/whatsapp/client');
+  return { ...actual, sendWhatsAppTemplate: jest.fn().mockResolvedValue(undefined), isWhatsAppConfigured: jest.fn().mockReturnValue(false) };
+});
+
+const mockSendWhatsApp = sendWhatsAppTemplate as jest.MockedFunction<typeof sendWhatsAppTemplate>;
+const mockIsWhatsAppConfigured = isWhatsAppConfigured as jest.MockedFunction<typeof isWhatsAppConfigured>;
 const mockSendEmail = sendEmail as jest.MockedFunction<typeof sendEmail>;
 const mockIsEmailConfigured = isEmailConfigured as jest.MockedFunction<typeof isEmailConfigured>;
 
@@ -278,5 +286,72 @@ describe('real customer OTP login (real DB)', () => {
   it('a real organizer access token is rejected by the customer-only /bookings/my endpoint', async () => {
     const res = await request(app).get('/api/bookings/my').set('Authorization', `Bearer ${organizerToken}`);
     expect(res.status).toBe(401);
+  });
+  describe('one-field login (Booking ID, mobile number or email alone)', () => {
+    // Unique to this run, so other suites' bookings never match it.
+    const phone = `9${String(suffix).slice(-9)}`;
+
+    beforeAll(async () => {
+      await Booking.update({ primaryContactWhatsapp: `+91${phone}` }, { where: { eventId: [eventAId, eventBId] } });
+    });
+    afterAll(async () => {
+      await Booking.update({ primaryContactWhatsapp: '+919000000001' }, { where: { eventId: [eventAId, eventBId] } });
+    });
+    afterEach(() => {
+      mockIsWhatsAppConfigured.mockReturnValue(false);
+      mockSendWhatsApp.mockClear();
+    });
+
+    it('logs in with just the mobile number, verifying with the same number', async () => {
+      const res = await request(app).post('/api/bookings/login/initiate').send({ identifier: `+91 ${phone.slice(0, 5)} ${phone.slice(5)}` });
+      expect(res.status).toBe(200);
+      expect(res.body.sentTo).toMatch(/^o\*+.@example\.com$/);
+
+      const verifyRes = await request(app).post('/api/bookings/login/verify').send({ identifier: phone, code: extractOtpFromEmail() });
+      expect(verifyRes.status).toBe(200);
+      expect(verifyRes.body.email).toBe(customerEmail);
+      const my = await request(app).get('/api/bookings/my').set('Authorization', `Bearer ${verifyRes.body.token}`);
+      expect(my.body.bookings).toHaveLength(2);
+    });
+
+    it('logs in with just the Booking ID or just the email', async () => {
+      const byRef = await request(app).post('/api/bookings/login/initiate').send({ identifier: bookingRefA.toLowerCase() });
+      expect(byRef.status).toBe(200);
+      const verifyRes = await request(app).post('/api/bookings/login/verify').send({ identifier: bookingRefA, code: extractOtpFromEmail() });
+      expect(verifyRes.status).toBe(200);
+
+      await redis.del(`otp-cooldown:customer_login:${customerEmail}`);
+      mockSendEmail.mockClear();
+      const byEmail = await request(app).post('/api/bookings/login/initiate').send({ identifier: customerEmail.toUpperCase() });
+      expect(byEmail.status).toBe(200);
+      const verifyEmail = await request(app).post('/api/bookings/login/verify').send({ identifier: customerEmail, code: extractOtpFromEmail() });
+      expect(verifyEmail.status).toBe(200);
+    });
+
+    it('says when no booking was made with that mobile number', async () => {
+      const res = await request(app).post('/api/bookings/login/initiate').send({ identifier: '8000000009' });
+      expect(res.status).toBe(404);
+      expect(res.body.error).toMatch(/mobile number/);
+      const bad = await request(app).post('/api/bookings/login/initiate').send({ identifier: '12345' });
+      expect(bad.status).toBe(400);
+    });
+
+    it('sends the code on WhatsApp too, with the copy-code button, and WhatsApp alone is enough', async () => {
+      mockIsWhatsAppConfigured.mockReturnValue(true);
+      const res = await request(app).post('/api/bookings/login/initiate').send({ identifier: phone });
+      expect(res.status).toBe(200);
+      expect(res.body.sentToWhatsapp).toBe(`••••${phone.slice(-4)}`);
+      const code = extractOtpFromEmail();
+      expect(mockSendWhatsApp).toHaveBeenCalledWith(expect.objectContaining({ message: 'loginCode', params: [code], urlButtons: [code] }));
+
+      await redis.del(`otp-cooldown:customer_login:${customerEmail}`);
+      mockSendEmail.mockRejectedValueOnce(new Error('SMTP down'));
+      const whatsAppOnly = await request(app).post('/api/bookings/login/initiate').send({ identifier: phone });
+      expect(whatsAppOnly.status).toBe(200);
+      expect(whatsAppOnly.body.sentTo).toBe('');
+      const lastCall = mockSendWhatsApp.mock.calls[mockSendWhatsApp.mock.calls.length - 1][0];
+      const verifyRes = await request(app).post('/api/bookings/login/verify').send({ identifier: phone, code: lastCall.params[0] });
+      expect(verifyRes.status).toBe(200);
+    });
   });
 });

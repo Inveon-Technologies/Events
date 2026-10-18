@@ -10,6 +10,7 @@ import {
   saveCustomerSession,
   validateBookingReference,
   validateEmailOrPhone,
+  validateLoginIdentifier,
 } from '../lib/customerSession';
 import App from '../App';
 
@@ -54,6 +55,13 @@ describe('login form validation helpers', () => {
     expect(validateEmailOrPhone('12345')).toMatch(/10-digit mobile/);
     expect(validateEmailOrPhone('+91 98765 43210')).toBe('');
     expect(validateEmailOrPhone('rahul@example.com')).toBe('');
+
+    expect(validateLoginIdentifier('')).toMatch(/mobile number, email or Booking ID/);
+    expect(validateLoginIdentifier('12345')).toMatch(/10-digit mobile/);
+    expect(validateLoginIdentifier('rahul@')).toBe('Enter a valid email address');
+    expect(validateLoginIdentifier('??')).toMatch(/Booking ID from your confirmation/);
+    expect(validateLoginIdentifier('98765 43210')).toBe('');
+    expect(validateLoginIdentifier('inv-bkg-2026-ab12cd')).toBe('');
   });
 });
 
@@ -62,46 +70,43 @@ describe('VerificationLookupPage', () => {
     const fetchMock = mockFetch();
     renderLogin();
     await userEvent.click(screen.getByRole('button', { name: /Send Login Code/ }));
-    expect(screen.getByText('Enter your Booking ID')).toBeInTheDocument();
-    expect(screen.getByText(/Enter the email address or mobile number/)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Enter your mobile number, email or Booking ID');
 
-    await userEvent.type(screen.getByPlaceholderText(/INV-BKG/), 'INV-BKG-2026-AB12CD');
-    await userEvent.type(screen.getByPlaceholderText(/you@example.com/), 'rahul@');
+    await userEvent.type(screen.getByLabelText(/Mobile number, email or Booking ID/), 'rahul@');
     await userEvent.click(screen.getByRole('button', { name: /Send Login Code/ }));
     expect(screen.getByText('Enter a valid email address')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('shows the server message under the Booking ID when the booking does not exist', async () => {
-    mockFetch({ status: 404, body: { error: "We couldn't find a booking with ID INV-BKG-2026-NOPE00.", code: 'BOOKING_NOT_FOUND' } });
+  it('shows the server message under the field when the booking does not exist', async () => {
+    const fetchMock = mockFetch({ status: 404, body: { error: "We couldn't find a booking with ID INV-BKG-2026-NOPE00.", code: 'BOOKING_NOT_FOUND' } });
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText(/INV-BKG/), 'inv-bkg-2026-nope00');
-    await userEvent.type(screen.getByPlaceholderText(/you@example.com/), 'rahul@example.com');
+    await userEvent.type(screen.getByLabelText(/Mobile number, email or Booking ID/), 'inv-bkg-2026-nope00');
     await userEvent.click(screen.getByRole('button', { name: /Send Login Code/ }));
     expect(await screen.findByText(/couldn't find a booking/)).toBeInTheDocument();
     // Still on the first step — no code screen for a booking that doesn't exist.
     expect(screen.getByRole('button', { name: /Send Login Code/ })).toBeInTheDocument();
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ identifier: 'INV-BKG-2026-NOPE00' });
   });
 
-  it('logs in with a mobile number: masked address, verify by Booking ID, session saved', async () => {
+  it('logs in with just a mobile number: code sent to email and WhatsApp, pasted into any box, session saved', async () => {
     const fetchMock = mockFetch(
-      { status: 200, body: { success: true, sentTo: 'r***l@example.com', expiresInMinutes: 10, resendAfterSeconds: 30 } },
+      { status: 200, body: { success: true, sentTo: 'r***l@example.com', sentToWhatsapp: '••••3210', expiresInMinutes: 10, resendAfterSeconds: 30 } },
       { status: 200, body: { token: 'session-token', email: 'rahul@example.com' } },
     );
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText(/INV-BKG/), 'inv-bkg-2026-ab12cd');
-    await userEvent.type(screen.getByPlaceholderText(/you@example.com/), '98765 43210');
+    await userEvent.type(screen.getByLabelText(/Mobile number, email or Booking ID/), '98765 43210');
     await userEvent.click(screen.getByRole('button', { name: /Send Login Code/ }));
 
-    expect(await screen.findByText(/r\*\*\*l@example.com/)).toBeInTheDocument();
+    expect(await screen.findByText(/r\*\*\*l@example.com and WhatsApp ••••3210/)).toBeInTheDocument();
     expect(screen.getByText(/Resend in 30s/)).toBeInTheDocument();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ bookingReference: 'INV-BKG-2026-AB12CD', contact: '98765 43210' });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ identifier: '98765 43210' });
 
-    fireEvent.paste(screen.getAllByRole('textbox')[0], { clipboardData: { getData: () => '123456' } });
+    fireEvent.paste(screen.getAllByRole('textbox')[3], { clipboardData: { getData: () => '123 456' } });
     await userEvent.click(screen.getByRole('button', { name: /Verify & Continue/ }));
 
     expect(await screen.findByText('My bookings list')).toBeInTheDocument();
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ bookingReference: 'INV-BKG-2026-AB12CD', code: '123456' });
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ identifier: '98765 43210', code: '123456' });
     expect(JSON.parse(localStorage.getItem('inveon_customer_session')!)).toEqual({ token: 'session-token', email: 'rahul@example.com' });
   });
 
@@ -111,13 +116,23 @@ describe('VerificationLookupPage', () => {
       { status: 401, body: { error: 'That code is incorrect. 4 attempts left.' } },
     );
     renderLogin();
-    await userEvent.type(screen.getByPlaceholderText(/INV-BKG/), 'INV-BKG-2026-AB12CD');
-    await userEvent.type(screen.getByPlaceholderText(/you@example.com/), 'rahul@example.com');
+    await userEvent.type(screen.getByLabelText(/Mobile number, email or Booking ID/), 'rahul@example.com');
     await userEvent.click(screen.getByRole('button', { name: /Send Login Code/ }));
     await screen.findByText(/r\*\*\*l@example.com/);
     fireEvent.paste(screen.getAllByRole('textbox')[0], { clipboardData: { getData: () => '999999' } });
     await userEvent.click(screen.getByRole('button', { name: /Verify & Continue/ }));
     expect(await screen.findByText('That code is incorrect. 4 attempts left.')).toBeInTheDocument();
+  });
+
+  it('fills the code from the clipboard with the Paste code button', async () => {
+    mockFetch({ status: 200, body: { success: true, sentTo: 'r***l@example.com', expiresInMinutes: 10, resendAfterSeconds: 30 } });
+    renderLogin();
+    await userEvent.type(screen.getByLabelText(/Mobile number, email or Booking ID/), 'INV-BKG-2026-AB12CD');
+    await userEvent.click(screen.getByRole('button', { name: /Send Login Code/ }));
+    await screen.findByText(/r\*\*\*l@example.com/);
+    Object.defineProperty(navigator, 'clipboard', { value: { readText: vi.fn().mockResolvedValue('Your code: 654321') }, configurable: true });
+    await userEvent.click(screen.getByRole('button', { name: /Paste code/ }));
+    await waitFor(() => expect(screen.getAllByRole('textbox').map((el) => (el as HTMLInputElement).value).join('')).toBe('654321'));
   });
 
   it('goes straight to My Bookings when already logged in', async () => {

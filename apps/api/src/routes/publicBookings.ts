@@ -39,6 +39,7 @@ import { loadTicketArtworkData, renderTicketCardPng, renderTicketPdf } from '../
 import { renderBookingCertificatesPdf, CertificateNotAvailableError } from '../services/certificates';
 import {
   initiateCustomerLogin,
+  initiateCustomerLoginByIdentifier,
   verifyCustomerLoginOtp,
   getCustomerBookings,
   NotFoundError as CustomerAuthNotFoundError,
@@ -507,15 +508,20 @@ publicBookingsRouter.get('/t/:token/card.png', asyncHandler(async (req, res) => 
 publicBookingsRouter.post('/bookings/login/initiate', customerLoginSendLimit, asyncHandler(async (req, res) => {
   const body = req.body as Record<string, unknown>;
   // `contact` is the "email or mobile" field; `email` is what older
-  // clients send.
+  // clients send. `identifier` is the one-field form: a Booking ID,
+  // mobile number or email on its own.
   const contact = typeof body.contact === 'string' ? body.contact : body.email;
-  if (typeof body.bookingReference !== 'string' || typeof contact !== 'string') {
-    res.status(400).json({ error: 'Booking ID and email or mobile number are required' });
+  const identifier = typeof body.identifier === 'string' ? body.identifier : undefined;
+  if (identifier === undefined && (typeof body.bookingReference !== 'string' || typeof contact !== 'string')) {
+    res.status(400).json({ error: 'Enter your Booking ID, mobile number or email' });
     return;
   }
 
   try {
-    const result = await initiateCustomerLogin(body.bookingReference, contact);
+    const result =
+      identifier !== undefined
+        ? await initiateCustomerLoginByIdentifier(identifier)
+        : await initiateCustomerLogin(body.bookingReference as string, contact as string);
     res.status(200).json({ success: true, ...result });
   } catch (err) {
     if (err instanceof LoginValidationError) {
@@ -543,15 +549,19 @@ publicBookingsRouter.post('/bookings/login/initiate', customerLoginSendLimit, as
 }));
 
 publicBookingsRouter.post('/bookings/login/verify', customerLoginVerifyLimit, asyncHandler(async (req, res) => {
-  const { bookingReference, email, code } = req.body as Record<string, unknown>;
-  if (typeof code !== 'string' || (typeof bookingReference !== 'string' && typeof email !== 'string')) {
+  const { bookingReference, email, identifier, code } = req.body as Record<string, unknown>;
+  if (typeof code !== 'string' || (typeof bookingReference !== 'string' && typeof email !== 'string' && typeof identifier !== 'string')) {
     res.status(400).json({ error: 'Booking ID and the 6-digit code are required' });
     return;
   }
 
   try {
     const result = await verifyCustomerLoginOtp(
-      { bookingReference: typeof bookingReference === 'string' ? bookingReference : undefined, email: typeof email === 'string' ? email : undefined },
+      {
+        bookingReference: typeof bookingReference === 'string' ? bookingReference : undefined,
+        email: typeof email === 'string' ? email : undefined,
+        identifier: typeof identifier === 'string' ? identifier : undefined,
+      },
       code,
     );
     res.status(200).json(result);

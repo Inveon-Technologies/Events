@@ -66,6 +66,10 @@ function samples(): Record<WhatsAppMessage, { params: string[]; headerImage?: { 
       params: ['Rahul', 'Rajgad Sunrise Trek'],
       urlButtons: [`${SAMPLE_REF}.sample`],
     },
+    loginCode: {
+      params: ['123456'],
+      urlButtons: ['123456'],
+    },
     postEventThanks: {
       params: [
         'Rahul',

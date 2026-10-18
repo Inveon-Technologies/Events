@@ -96,3 +96,20 @@ export function validateEmailOrPhone(value: string): string {
   }
   return '';
 }
+
+// The login form's one field: a mobile number, an email, or a Booking /
+// Ticket ID. Returns an error message, or '' when the value is fine.
+export function validateLoginIdentifier(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Enter your mobile number, email or Booking ID';
+  if (trimmed.includes('@') || /^[\d\s+()-]+$/.test(trimmed)) return validateEmailOrPhone(trimmed);
+  return validateBookingReference(trimmed)
+    ? 'Enter a 10-digit mobile number, an email address, or the Booking ID from your confirmation (e.g. INV-BKG-2026-AB12CD)'
+    : '';
+}
+
+// Booking IDs are sent upper-case without spaces; numbers and emails as typed.
+export function normalizeLoginIdentifier(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.includes('@') || /^[\d\s+()-]+$/.test(trimmed) ? trimmed : normalizeBookingReference(trimmed);
+}

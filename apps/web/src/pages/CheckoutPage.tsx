@@ -474,58 +474,6 @@ export function CheckoutPage() {
           </button>
         </div>
 
-        {attendees.length > 1 && (
-          <fieldset className="mt-5 rounded-xl border border-[#e8edf5] p-4 sm:p-5">
-            <legend className="px-1 text-[13px] font-bold text-[#101f49]">How should we send the tickets?</legend>
-            <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {(
-                [
-                  {
-                    value: 'buyer',
-                    icon: 'family_restroom',
-                    title: 'All tickets to me',
-                    text: 'Every ticket goes to the lead contact\u2019s WhatsApp and email. Good for family or a group arriving together.',
-                  },
-                  {
-                    value: 'individual',
-                    icon: 'groups',
-                    title: 'Send each ticket separately',
-                    text: 'Each participant gets only their own ticket on their WhatsApp and email. Good for friends arriving at different times.',
-                  },
-                ] as const
-              ).map((option) => {
-                const selected = ticketDelivery === option.value;
-                return (
-                  <label
-                    key={option.value}
-                    className={`flex gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
-                      selected ? 'border-[#1260e8] bg-[#f0f7ff] ring-2 ring-[#1260e8]/15' : 'border-[#dce3ee] bg-white hover:bg-[#f7faff]'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="ticket-delivery"
-                      value={option.value}
-                      checked={selected}
-                      onChange={() => setTicketDelivery(option.value)}
-                      className="mt-1 accent-[#1260e8]"
-                    />
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5 text-[14px] font-bold text-[#101f49]">
-                        <span className="material-symbols-outlined text-lg text-[#1260e8]" aria-hidden="true">
-                          {option.icon}
-                        </span>
-                        {option.title}
-                      </span>
-                      <span className="mt-0.5 block text-[12px] text-[#71809b]">{option.text}</span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
-        )}
-
         <div className="mt-5 space-y-4">
           {attendees.map((attendee, index) => {
             // Only the lead's contact is needed unless each ticket is sent
@@ -608,6 +556,30 @@ export function CheckoutPage() {
                     </div>
                   )}
                 </div>
+
+                {index === 0 && attendees.length > 1 && (
+                  <label className="mt-3 flex items-start gap-3 rounded-lg border border-[#dce3ee] bg-white p-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      checked={ticketDelivery === 'buyer'}
+                      onChange={(e) => setTicketDelivery(e.target.checked ? 'buyer' : 'individual')}
+                      className="peer sr-only"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full bg-[#cfd8e6] transition-colors peer-checked:bg-[#1260e8] peer-focus-visible:ring-2 peer-focus-visible:ring-[#1260e8]/40 after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-[14px] font-bold text-[#101f49]">Send all tickets to this account</span>
+                      <span className="mt-0.5 block text-[12px] text-[#71809b]">
+                        {ticketDelivery === 'buyer'
+                          ? `All ${attendees.length} tickets go to this email and WhatsApp. Turn off to send each participant their own ticket.`
+                          : 'Each participant gets their own ticket on their email and WhatsApp. Fill in their details below.'}
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
                   <div>

@@ -9,6 +9,7 @@ The app sends five WhatsApp messages once this is set up:
 | Booking cancelled | When a customer or the organizer cancels | `booking_cancelled_v3` |
 | Thank-you | 10:00 AM (India time) the day after the event, with photo and rating links | `post_event_thanks_v3` |
 | Certificate ready, with a Download Certificate button | Same time, only for attendees who checked in, on events with certificates switched on | `certificate_ready_v3` |
+| Login code, with a Copy code button | When a customer logs in on Manage Your Booking (sent straight away, alongside the email) | `login_code_v3` |
 
 Messages go through the background queue, like emails: a failed send is
 retried 5 times, and WhatsApp problems never block a booking. Nothing is
@@ -196,6 +197,19 @@ Samples: `Rahul` · `Rajgad Sunrise Trek`
 |---|---|---|---|
 | `Download Certificate` | Dynamic | `https://events.inveontechnologies.in/api/certificates/{{1}}` | `INV-BKG-2026-8F3K2Q.sample` |
 
+### `login_code_v3`
+
+The customer login code. Create it as category **Authentication** (not
+Utility): Meta writes the body itself ("*{{1}}* is your verification
+code.") and adds the button.
+
+- **Code delivery:** Copy code
+- **Button text:** `Copy code`
+- Optional: add the security recommendation and a 10-minute expiry.
+
+If WhatsApp isn't set up, or this template isn't approved yet, the code
+still goes by email; customers just don't get the WhatsApp copy.
+
 ## 6. Create one API campaign per template
 
 The app sends each message by triggering an AiSensy **API campaign**. In
@@ -203,7 +217,7 @@ The app sends each message by triggering an AiSensy **API campaign**. In
 
 1. **Campaign name:** exactly the template name: `booking_confirmation_v3`,
    `event_reminder_v3`, `booking_cancelled_v3`, `post_event_thanks_v3`,
-   `certificate_ready_v3`.
+   `certificate_ready_v3`, `login_code_v3`.
 2. Pick the matching template.
 3. Leave the parameters as they are. The app sends them.
 4. Set the campaign **Live**.
