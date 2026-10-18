@@ -202,7 +202,10 @@ describe('sending group tickets to each attendee', () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('Enter a valid WhatsApp number for Meera Patil');
-    const noEmail = await book({ ticketDelivery: 'individual', attendeeContacts: [null, { whatsapp: '9876533333' }, { whatsapp: '9876544444', email: 'm@example.com' }] });
+    const noEmail = await book({
+      ticketDelivery: 'individual',
+      attendeeContacts: [null, { whatsapp: '9876533333' }, { whatsapp: '9876544444', email: 'm@example.com' }],
+    });
     expect(noEmail.status).toBe(400);
     expect(noEmail.body.error).toBe('Enter a valid email address for Ravi Kale');
     expect((await TicketCategory.findByPk(tierId))!.quotaRemaining).toBe(before);
