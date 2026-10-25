@@ -249,6 +249,7 @@ const GROUP_TITLES: Record<string, string> = {
   email: 'Email (SMTP)',
   cashfree: 'Cashfree payments',
   whatsapp: 'WhatsApp (AiSensy or Meta)',
+  firebase: 'Push notifications (Firebase, for the mobile apps)',
 };
 
 const FIELD_HINTS: Record<string, string> = {
@@ -261,6 +262,9 @@ const FIELD_HINTS: Record<string, string> = {
   PLATFORM_FEE_PERCENT: "Inveon's cut of each online payment, 0–50 (e.g. 5)",
   WHATSAPP_PROVIDER: 'aisensy or meta',
   SMTP_FROM_NAME: 'Sender name shown in the inbox',
+  FIREBASE_PROJECT_ID: 'Firebase project id, e.g. inveon-events',
+  FIREBASE_CLIENT_EMAIL: 'client_email from the service account JSON',
+  FIREBASE_PRIVATE_KEY: 'private_key from the service account JSON (Project settings → Service accounts → Generate new private key)',
 };
 
 export function IntegrationsPage() {

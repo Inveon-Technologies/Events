@@ -14,6 +14,8 @@ import { AdminAuditLog } from './AdminAuditLog';
 import { PlatformSetting } from './PlatformSetting';
 import { NotificationLog } from './NotificationLog';
 import { BlockedCustomer } from './BlockedCustomer';
+import { MobileDevice } from './MobileDevice';
+import { MobileNotification } from './MobileNotification';
 
 // event_custom_questions, ticket_custom_answers, event_media, and
 // certificates exist as tables (see the migration) but deliberately have
@@ -85,5 +87,7 @@ export {
   PlatformSetting,
   NotificationLog,
   BlockedCustomer,
+  MobileDevice,
+  MobileNotification,
 };
 export type { EventScheduleItem, EventPackingItem, EventFaqItem, EventLocationPoint };

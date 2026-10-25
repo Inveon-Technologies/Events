@@ -13,6 +13,7 @@ import {
   Server,
   DatabaseBackup,
   Palette,
+  Smartphone,
   FileText,
   Award,
   Plug,
@@ -38,6 +39,7 @@ import { SystemPage, ServerPage, BackupsPage } from './pages/Technical';
 import { BrandingPage, InvoicePage, IntegrationsPage } from './pages/Settings';
 import { CertificateFooterDesignerPage, InvoiceDesignerPage, EmailTemplatesPage } from './pages/Designers';
 import { AdminsPage, AuditPage } from './pages/Security';
+import { MobileAppsPage } from './pages/MobileApps';
 import { ConfigCheckPage, MonitoringPage, ConsolePage, DangerPage } from './pages/Ops';
 
 // Inveon's super admin portal. Reached only at /x/<SUPERADMIN_PATH>; any
@@ -202,6 +204,7 @@ const NAV: { section: string; items: [string, string, typeof LayoutDashboard][] 
       ['certificate', 'Certificate footer', Award],
       ['email-templates', 'Email templates', MailPlus],
       ['integrations', 'Integrations', Plug],
+      ['mobile-apps', 'Mobile apps', Smartphone],
     ],
   },
   {
@@ -287,6 +290,7 @@ function Shell({ session, onSignOut }: { session: SaSession; onSignOut: () => vo
             <Route path="certificate" element={<CertificateFooterDesignerPage />} />
             <Route path="email-templates" element={<EmailTemplatesPage />} />
             <Route path="integrations" element={<IntegrationsPage />} />
+            <Route path="mobile-apps" element={<MobileAppsPage />} />
             <Route path="admins" element={<AdminsPage />} />
             <Route path="audit" element={<AuditPage />} />
             <Route path="*" element={<Navigate to="dashboard" replace />} />

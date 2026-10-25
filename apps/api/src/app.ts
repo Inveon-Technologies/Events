@@ -6,6 +6,7 @@ import { webhooksRouter } from './routes/webhooks';
 import { integrationApiRouter } from './routes/integrationApi';
 import { superAdminRouter } from './routes/superAdmin';
 import { seoRouter } from './routes/seo';
+import { mobileRouter } from './routes/mobile';
 import { getBranding, getCertificateFooter, getInvoiceSettings } from './services/platformSettings';
 import { getCertificateFooterDesign } from './services/certificateFooterDesign';
 import { UPLOAD_DIR } from './services/eventMedia';
@@ -121,6 +122,7 @@ export function createApp(): Express {
   app.use('/api/seo', seoRouter);
   app.use('/api/v1', integrationApiRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/mobile', mobileRouter);
   app.use('/api/organizer', organizerRouter);
   app.use('/api', publicBookingsRouter);
 
