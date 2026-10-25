@@ -8,6 +8,7 @@ import { EventUnavailablePage } from './pages/EventUnavailablePage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { PaymentVerificationPendingPage } from './pages/PaymentVerificationPendingPage';
 import { PaymentFailedPage } from './pages/PaymentFailedPage';
+import { PaymentHandoffPage } from './pages/PaymentHandoffPage';
 import { BookingConfirmedPage } from './pages/BookingConfirmedPage';
 import { ManageBookingPage } from './pages/ManageBookingPage';
 import { VerificationLookupPage } from './pages/VerificationLookupPage';
@@ -54,6 +55,7 @@ export default function App() {
         <Route path="/events/:eventId/checkout" element={<CheckoutPage />} />
         <Route path="/checkout/pending" element={<PaymentVerificationPendingPage />} />
         <Route path="/checkout/failed" element={<PaymentFailedPage />} />
+        <Route path="/pay" element={<PaymentHandoffPage />} />
 
         <Route path="/bookings" element={<BookingsIndexRedirect />} />
         <Route path="/bookings/lookup" element={<VerificationLookupPage />} />

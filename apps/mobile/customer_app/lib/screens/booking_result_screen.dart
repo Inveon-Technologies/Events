@@ -15,14 +15,12 @@ class BookingResultScreen extends StatefulWidget {
     required this.event,
     required this.bookingReference,
     required this.status,
-    required this.cash,
     required this.email,
   });
 
   final EventDetail event;
   final String bookingReference;
   final String status;
-  final bool cash;
   final String email;
 
   @override
@@ -69,12 +67,6 @@ class _BookingResultScreenState extends State<BookingResultScreen> with TickerPr
         'Your tickets are on their way to ${widget.email} and WhatsApp.',
         InveonColors.success,
         Icons.check_rounded,
-      ),
-      'pending' when widget.cash => (
-        'Booking received',
-        'Pay the organizer in cash. Your tickets are confirmed once they mark it paid.',
-        InveonColors.secondary,
-        Icons.hourglass_top_rounded,
       ),
       'pending' => (
         'Confirming your payment',

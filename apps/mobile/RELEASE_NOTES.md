@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.0.1 (build 2), 25 Oct 2026
+
+- **Online payment works on any install.** The Inveon Events app now
+  takes payment on Cashfree's secure checkout page in a browser tab. Before
+  this, Cashfree's in-app SDK refused installs that didn't come from the
+  Play Store, showing "… is not a trusted source".
+- **Online payment only in the app.** The "Pay cash to the organizer"
+  option is removed from the app. It is still available on the website.
+- The Inveon Organizer app has no changes. Its version moves to 1.0.1 so
+  both apps share one release.
+
 ## 1.0.0 (build 1), 25 Oct 2026
 
 The first release of the two Inveon mobile apps. Both use the same server

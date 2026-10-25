@@ -30,6 +30,25 @@ function renderApp(initialPath = '/', state?: unknown) {
   );
 }
 
+describe('mobile app payment hand-off (/pay)', () => {
+  it("opens Cashfree's checkout for the session the app passes", async () => {
+    mockCashfreeCheckout.mockClear();
+    mockCashfreeCheckout.mockResolvedValueOnce({});
+    renderApp('/pay?session=session_abc&mode=production');
+    expect(screen.getByText(/Opening secure payment/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockCashfreeCheckout).toHaveBeenCalledWith({ paymentSessionId: 'session_abc', redirectTarget: '_self' }),
+    );
+  });
+
+  it('explains an incomplete link instead of opening checkout', async () => {
+    mockCashfreeCheckout.mockClear();
+    renderApp('/pay');
+    expect(await screen.findByText(/payment link is incomplete/i)).toBeInTheDocument();
+    expect(mockCashfreeCheckout).not.toHaveBeenCalled();
+  });
+});
+
 describe('App routing', () => {
   it('renders the home page hero at /', () => {
     renderApp('/');
