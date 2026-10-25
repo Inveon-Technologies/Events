@@ -1,4 +1,4 @@
-import { registerJobHandler } from './index';
+import { enqueueNotification, registerJobHandler } from './index';
 import { buildBookingEmailPayload, deliverBookingConfirmationEmail } from '../services/bookingEmails';
 import { deliverBookingCancellationEmail } from '../services/bookingCancellation';
 import { checkAndSendEventReminders } from '../services/eventReminders';
@@ -8,6 +8,7 @@ import { deliverWhatsApp } from '../services/whatsapp/messages';
 import { deliverAttendeeTicketEmail } from '../services/attendeeTickets';
 import { WHATSAPP_MESSAGES, WhatsAppMessage } from '../services/whatsapp/client';
 import { isEmailConfigured } from '../services/email';
+import { sendBookingPushes, BookingPushEvent } from '../services/mobileApps';
 import { Booking } from '../models';
 import { logger } from '../logger';
 
@@ -19,10 +20,26 @@ function requireString(data: Record<string, unknown>, key: string): string {
 
 // ---- notifications (retried with backoff on failure) ----
 
+export function enqueuePush(event: BookingPushEvent, bookingId: string): Promise<void> {
+  return enqueueNotification('push', { event, bookingId }, { jobId: `push-${event}-${bookingId}` });
+}
+
+// Push notifications to the mobile apps (FCM) plus their in-app inbox.
+// Best effort and never retried: a push that arrives twice is worse than
+// one that doesn't arrive (the inbox and email still have it).
+registerJobHandler('push', async (data) => {
+  await sendBookingPushes(requireString(data, 'event') as BookingPushEvent, requireString(data, 'bookingId')).catch((err) =>
+    logger.warn({ err, data }, 'Mobile push failed'),
+  );
+});
+
 // Also records the outcome for the ticket page's "Ticket delivered to". A
 // failed attempt is recorded at once and overwritten if a retry succeeds.
 registerJobHandler('booking-confirmation', async (data) => {
   const bookingId = requireString(data, 'bookingId');
+  // Mobile app pushes ride along with the confirmation email. Their own
+  // job id, so an email retry never pushes twice.
+  void enqueuePush('booking-confirmed', bookingId);
   const record = (status: 'sent' | 'failed' | 'skipped') =>
     Booking.update({ confirmationEmailStatus: status }, { where: { id: bookingId } });
   if (!isEmailConfigured()) {
@@ -41,6 +58,7 @@ registerJobHandler('booking-confirmation', async (data) => {
 });
 
 registerJobHandler('booking-cancelled', async (data) => {
+  void enqueuePush(data.isEventCancellation === true ? 'event-cancelled' : 'booking-cancelled', requireString(data, 'bookingId'));
   await deliverBookingCancellationEmail(requireString(data, 'bookingId'), data.isEventCancellation === true);
 });
 

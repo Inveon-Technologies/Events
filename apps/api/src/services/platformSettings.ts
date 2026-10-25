@@ -82,6 +82,10 @@ export const INTEGRATION_KEYS = {
     'WHATSAPP_ACCESS_TOKEN',
     'WHATSAPP_TEMPLATE_LANGUAGE',
   ],
+  // Push notifications for the mobile apps (Firebase Cloud Messaging):
+  // a service account from Firebase console → Project settings →
+  // Service accounts → Generate new private key.
+  firebase: ['FIREBASE_PROJECT_ID', 'FIREBASE_CLIENT_EMAIL', 'FIREBASE_PRIVATE_KEY'],
 } as const;
 export type IntegrationKey = (typeof INTEGRATION_KEYS)[keyof typeof INTEGRATION_KEYS][number];
 const ALL_INTEGRATION_KEYS = new Set<string>(Object.values(INTEGRATION_KEYS).flat());
@@ -98,6 +102,8 @@ const PLAIN_INTEGRATION_KEYS = new Set<string>([
   'AISENSY_API_URL',
   'WHATSAPP_PHONE_NUMBER_ID',
   'WHATSAPP_TEMPLATE_LANGUAGE',
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_CLIENT_EMAIL',
 ]);
 
 export function isIntegrationKey(key: string): key is IntegrationKey {
@@ -239,7 +245,7 @@ export async function saveIntegrations(values: Record<string, string>, updatedBy
   for (const [key, raw] of Object.entries(values)) {
     if (!isIntegrationKey(key)) continue;
     const value = String(raw ?? '').trim();
-    if (value.length > 2000) continue;
+    if (value.length > 4000) continue;
     if (value === '') delete next[key];
     else next[key] = encryptSecret(value);
     changed.push(key);

@@ -106,6 +106,15 @@ import {
 } from '../services/emailTemplates';
 import { certificateFooterPreviewPng, emailPreview, invoicePreviewPdf } from '../services/designerPreviews';
 import { getStoredSetting } from '../services/platformSettings';
+import {
+  announceMobileAppUpdate,
+  getMobileAppsSettings,
+  MOBILE_APPS,
+  MobileAppsValidationError,
+  saveMobileAppRelease,
+} from '../services/mobileApps';
+import { isPushConfigured } from '../services/push';
+import type { MobileApp } from '../models/MobileDevice';
 import { getPendingSettlements, markOrganizerSettled, SettlementError } from '../services/organizerSettlements';
 import { queueOverview, retryFailedJob, retryAllFailed, cleanQueue, QUEUE_NAMES } from '../queue';
 import { sendEmail } from '../services/email';
@@ -888,6 +897,41 @@ superAdminRouter.post(
     } finally {
       await fsp.unlink(req.file.path).catch(() => undefined);
     }
+  }),
+);
+
+// ---- mobile apps: release versions and "update available" push ----
+superAdminRouter.get('/mobile-apps', (_req, res) => {
+  res.json({ apps: getMobileAppsSettings(), pushConfigured: isPushConfigured() });
+});
+
+function mobileApp(value: string): MobileApp {
+  if (!(MOBILE_APPS as readonly string[]).includes(value)) throw new AdminNotFoundError('Unknown app');
+  return value as MobileApp;
+}
+
+superAdminRouter.put(
+  '/mobile-apps/:app',
+  handle(async (req, res) => {
+    const app = mobileApp(req.params.app);
+    try {
+      const apps = await saveMobileAppRelease(app, req.body, admin(req).email);
+      await log(req, 'mobile_apps.release', app, { latestVersion: apps[app].latestVersion, minVersion: apps[app].minVersion });
+      res.json({ apps, pushConfigured: isPushConfigured() });
+    } catch (err) {
+      if (err instanceof MobileAppsValidationError) throw new AdminValidationError(err.message);
+      throw err;
+    }
+  }),
+);
+
+superAdminRouter.post(
+  '/mobile-apps/:app/announce',
+  handle(async (req, res) => {
+    const app = mobileApp(req.params.app);
+    const result = await announceMobileAppUpdate(app);
+    await log(req, 'mobile_apps.announce', app, { devices: result.devices, sent: result.sent });
+    res.json({ ...result, pushConfigured: isPushConfigured() });
   }),
 );
 

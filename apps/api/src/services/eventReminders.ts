@@ -7,6 +7,7 @@ import { getBranding } from './platformSettings';
 import { buildVenueMapUrl } from './mapsUrl';
 import { logger } from '../logger';
 import { enqueueWhatsApp } from './whatsapp/messages';
+import { enqueueNotification } from '../queue';
 
 const REMINDER_LEAD_TIME_MS = 3 * 60 * 60 * 1000; // 3 hours
 
@@ -70,6 +71,8 @@ export async function sendEventReminder(event: Event): Promise<ReminderSendResul
   for (const booking of bookings) {
     // eslint-disable-next-line no-await-in-loop
     await enqueueWhatsApp('eventReminder', booking.id);
+    // eslint-disable-next-line no-await-in-loop
+    await enqueueNotification('push', { event: 'event-reminder', bookingId: booking.id }, { jobId: `push-event-reminder-${booking.id}` });
   }
 
   if (!isEmailConfigured()) return result;

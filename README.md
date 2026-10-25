@@ -22,6 +22,7 @@ What exists today (see the roadmap for what's planned):
 - **Reminders** — an email to every booking 3 hours before the event.
 - **Maps** — organizers place the venue, or several group pickup points with times and notes, on a real OpenStreetMap map (free, no API key); attendees see the pins with directions.
 - **Post-event photos** — organizers share a Google Drive / Google Photos link after the event; attendees see it on their booking page.
+- **Mobile apps** — Flutter customer app (browse, book, QR passes) and organizer app (dashboard, bookings, QR check-in), with push and in-app notifications and an "update available" prompt driven from the super admin portal. See [apps/mobile/README.md](apps/mobile/README.md).
 - **Integrations API** — organizers create app key + secret pairs (Settings → Integrations) to read their events, tickets and images from their own website via the read-only `/api/v1` API.
 
 Not built yet: WhatsApp delivery, organizer approval of cash payments, post-event galleries and certificates.
@@ -52,7 +53,8 @@ Not built yet: WhatsApp delivery, organizer approval of cash payments, post-even
 Events/
 ├── apps/
 │   ├── web/              # React frontend (organizer portal + public event site)
-│   └── api/               # Express backend
+│   ├── api/               # Express backend
+│   └── mobile/            # Flutter apps: customer + organizer (see apps/mobile/README.md)
 ├── docker/
 │   ├── nginx/             # Nginx config, SSL
 │   └── docker-compose.yml

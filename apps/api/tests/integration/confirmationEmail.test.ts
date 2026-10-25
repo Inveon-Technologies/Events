@@ -47,7 +47,7 @@ describe('booking confirmation email (real DB)', () => {
       .send({
         title: `Dandiya Night 2026 ${suffix}`,
         shortDescription: 'An Evening of Music • Dance • Celebration',
-        startDate: '2026-10-18',
+        startDate: '2030-10-18',
         startTime: '19:00',
         venueName: 'Cultural Ground',
         city: 'Pandharpur',
