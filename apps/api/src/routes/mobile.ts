@@ -35,7 +35,9 @@ function principalFrom(req: Request): Principal {
   }
   try {
     const user = verifyAccessToken(token);
-    if (user.organizerId) return { kind: 'organizer', userId: user.sub, organizerId: user.organizerId };
+    // Gate volunteers only scan tickets: no booking or revenue
+    // notifications for them (their devices still get update notices).
+    if (user.organizerId && user.role !== 'gate_volunteer') return { kind: 'organizer', userId: user.sub, organizerId: user.organizerId };
   } catch {
     // Expired or invalid.
   }
