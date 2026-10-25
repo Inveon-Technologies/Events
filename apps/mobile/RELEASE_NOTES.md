@@ -1,5 +1,15 @@
 # Release notes
 
+## 1.0.2 (build 3), 25 Oct 2026
+
+- **Organizer app: check-in shows events that have already started.** Before
+  this, Check-In said "No live events" from the moment an event's start time
+  passed, which is when the gate needs to scan. It now lists every
+  published event, including ones in progress or just finished, and opens on
+  today's (or the next) event.
+- The Inveon Events app has no changes. Its version moves to 1.0.2 so both
+  apps share one release.
+
 ## 1.0.1 (build 2), 25 Oct 2026
 
 - **Online payment works on any install.** The Inveon Events app now
