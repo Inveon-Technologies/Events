@@ -53,8 +53,11 @@ publishes them on the GitHub Release `mobile-v<version>` (one APK per CPU type: 
 the repo), ready to download onto a phone. They are debug-signed until a
 release keystore is set up, so they are for testing, not the Play Store.
 
-1. Bump `version:` in the app's `pubspec.yaml` (e.g. `1.1.0+2`) and
-   publish to Play Store / App Store.
+1. Bump `version:` in **both** apps' `pubspec.yaml` (e.g. `1.1.0+2`; the
+   two stay in lockstep) and add a `## 1.1.0 (build 2), <date>` section at
+   the top of `RELEASE_NOTES.md`. The Mobile workflow fails without it, and
+   the GitHub Release shows only that section. Publish to Play Store / App
+   Store when that is set up.
 2. Super admin portal → **Mobile apps**: set *Latest version* to `1.1.0`,
    add the "What's new" lines and the store links. Raise *Minimum
    version* only when old versions must stop working (e.g. an API change).
