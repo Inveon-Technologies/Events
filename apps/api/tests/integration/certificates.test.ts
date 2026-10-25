@@ -64,7 +64,7 @@ describe('participation certificates', () => {
       .set('Authorization', `Bearer ${auth}`)
       .send({
         title: `Dandiya Night 2026 ${suffix}`,
-        startDate: '2026-10-18',
+        startDate: '2030-10-18',
         startTime: '19:00',
         venueName: 'Cultural Ground',
         city: 'Pandharpur',
