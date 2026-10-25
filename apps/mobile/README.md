@@ -49,7 +49,7 @@ stays on the web portal (the app links to it).
 ## Releasing a new version
 
 Every merge to `main` that touches `apps/mobile` builds both APKs and
-publishes them on the GitHub Release `mobile-v<version>` (Releases page of
+publishes them on the GitHub Release `mobile-v<version>` (one APK per CPU type: the plain name is arm64, `-older-phones` is 32-bit ARM) (Releases page of
 the repo), ready to download onto a phone. They are debug-signed until a
 release keystore is set up, so they are for testing, not the Play Store.
 
