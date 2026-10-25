@@ -50,17 +50,28 @@ jobs:
       # leaves an installable APK on the run. Without google-services.json
       # push is off in this build, and until a release keystore is set up
       # it is signed with the debug key (fine for sideloading, not the stores).
-      - name: Build release APK
+      #
+      # One APK per CPU type instead of one "fat" APK carrying all three:
+      # arm64 covers nearly every phone, armeabi-v7a the old 32-bit ones,
+      # and x86_64 (emulators only) is left out. Dart code is obfuscated,
+      # with its debug symbols kept out of the APK.
+      - name: Build release APKs
         if: matrix.project != 'packages/inveon_core'
         working-directory: apps/mobile/${{ matrix.project }}
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64 \
+            --obfuscate --split-debug-info=build/symbols
+          ls -lh build/app/outputs/flutter-apk/*.apk
 
-      - name: Upload APK
+      - name: Upload APKs
         if: matrix.project != 'packages/inveon_core'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-apk
-          path: apps/mobile/${{ matrix.project }}/build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            apps/mobile/${{ matrix.project }}/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            apps/mobile/${{ matrix.project }}/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
           retention-days: 30
 
   # Publishes both APKs on a GitHub Release (mobile-v<version>) so they can
@@ -87,8 +98,12 @@ jobs:
         run: |
           version=$(sed -n 's/^version: *\([^+]*\).*/\1/p' apps/mobile/customer_app/pubspec.yaml)
           tag="mobile-v$version"
-          cp apks/customer_app-apk/app-release.apk "inveon-events-$version.apk"
-          cp apks/organizer_app-apk/app-release.apk "inveon-organizer-$version.apk"
+          # The plain name is the one to install; "-older-phones" is for
+          # 32-bit phones that refuse it.
+          cp apks/customer_app-apk/app-arm64-v8a-release.apk "inveon-events-$version.apk"
+          cp apks/customer_app-apk/app-armeabi-v7a-release.apk "inveon-events-$version-older-phones.apk"
+          cp apks/organizer_app-apk/app-arm64-v8a-release.apk "inveon-organizer-$version.apk"
+          cp apks/organizer_app-apk/app-armeabi-v7a-release.apk "inveon-organizer-$version-older-phones.apk"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" inveon-*.apk --clobber
           else

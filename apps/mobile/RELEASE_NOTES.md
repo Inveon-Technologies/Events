@@ -1,5 +1,16 @@
 # Release notes
 
+## 1.0.3 (build 4), 25 Oct 2026
+
+- **Much smaller downloads.** Each app now ships one APK per phone type
+  instead of one APK holding code for every type, so you download only
+  what your phone uses. Install `inveon-events-1.0.3.apk` /
+  `inveon-organizer-1.0.3.apk`. If a very old phone refuses it ("app not
+  installed"), use the `-older-phones` file instead.
+- **Organizer app: smaller scanner.** The QR scanner now uses Google Play
+  services' shared barcode model instead of carrying its own copy.
+- App code is obfuscated, and an unused icon font was removed.
+
 ## 1.0.2 (build 3), 25 Oct 2026
 
 - **Organizer app: check-in shows events that have already started.** Before
