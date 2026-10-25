@@ -10,6 +10,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Every app update ships with release notes: both apps carry the same
+  # version, and apps/mobile/RELEASE_NOTES.md must have a section for it.
+  release-notes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check version and release notes
+        run: |
+          v() { sed -n 's/^version: *\([^+]*\).*/\1/p' "apps/mobile/$1/pubspec.yaml"; }
+          customer=$(v customer_app); organizer=$(v organizer_app)
+          if [ "$customer" != "$organizer" ]; then
+            echo "::error::customer_app is $customer but organizer_app is $organizer. Bump both pubspec versions together."
+            exit 1
+          fi
+          if ! grep -q "^## $customer " apps/mobile/RELEASE_NOTES.md; then
+            echo "::error file=apps/mobile/RELEASE_NOTES.md::No release notes for $customer. Add a '## $customer (build N), <date>' section at the top."
+            exit 1
+          fi
+          echo "Release notes found for $customer"
+
   flutter:
     runs-on: ubuntu-latest
     strategy:
@@ -79,7 +101,7 @@ jobs:
   # replaces the APKs on that release.
   release:
     if: github.event_name != 'pull_request'
-    needs: flutter
+    needs: [release-notes, flutter]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -104,11 +126,13 @@ jobs:
           cp apks/customer_app-apk/app-armeabi-v7a-release.apk "inveon-events-$version-older-phones.apk"
           cp apks/organizer_app-apk/app-arm64-v8a-release.apk "inveon-organizer-$version.apk"
           cp apks/organizer_app-apk/app-armeabi-v7a-release.apk "inveon-organizer-$version-older-phones.apk"
+          # This version's section of RELEASE_NOTES.md only.
+          awk -v v="$version" '/^## /{on = index($0, "## " v " ") == 1} on' apps/mobile/RELEASE_NOTES.md > notes.md
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" inveon-*.apk --clobber
           else
             gh release create "$tag" inveon-*.apk \
               --title "Inveon mobile apps $version" \
-              --notes-file apps/mobile/RELEASE_NOTES.md \
+              --notes-file notes.md \
               --target "$GITHUB_SHA"
           fi
