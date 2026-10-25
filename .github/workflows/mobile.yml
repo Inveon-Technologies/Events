@@ -45,9 +45,19 @@ jobs:
         working-directory: apps/mobile/${{ matrix.project }}
         run: flutter test
 
-      # Proves the Android project (Gradle, plugins, manifest) builds.
-      # Without google-services.json push is simply off in this build.
-      - name: Build debug APK
+      # Proves the Android project (Gradle, plugins, manifest) builds, and
+      # leaves an installable APK on the run. Without google-services.json
+      # push is off in this build, and until a release keystore is set up
+      # it is signed with the debug key (fine for sideloading, not the stores).
+      - name: Build release APK
         if: matrix.project != 'packages/inveon_core'
         working-directory: apps/mobile/${{ matrix.project }}
-        run: flutter build apk --debug
+        run: flutter build apk --release
+
+      - name: Upload APK
+        if: matrix.project != 'packages/inveon_core'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-apk
+          path: apps/mobile/${{ matrix.project }}/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
