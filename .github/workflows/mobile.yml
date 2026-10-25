@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
     paths: ['apps/mobile/**', '.github/workflows/mobile.yml']
+  workflow_dispatch:
 
 jobs:
   flutter:
@@ -61,3 +62,38 @@ jobs:
           name: ${{ matrix.project }}-apk
           path: apps/mobile/${{ matrix.project }}/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
+
+  # Publishes both APKs on a GitHub Release (mobile-v<version>) so they can
+  # be downloaded straight to a phone. Re-running for the same version
+  # replaces the APKs on that release.
+  release:
+    if: github.event_name != 'pull_request'
+    needs: flutter
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          path: apks
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^version: *\([^+]*\).*/\1/p' apps/mobile/customer_app/pubspec.yaml)
+          tag="mobile-v$version"
+          cp apks/customer_app-apk/app-release.apk "inveon-events-$version.apk"
+          cp apks/organizer_app-apk/app-release.apk "inveon-organizer-$version.apk"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" inveon-*.apk --clobber
+          else
+            gh release create "$tag" inveon-*.apk \
+              --title "Inveon mobile apps $version" \
+              --notes-file apps/mobile/RELEASE_NOTES.md \
+              --target "$GITHUB_SHA"
+          fi

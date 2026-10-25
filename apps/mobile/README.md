@@ -47,6 +47,11 @@ stays on the web portal (the app links to it).
 
 ## Releasing a new version
 
+Every merge to `main` that touches `apps/mobile` builds both APKs and
+publishes them on the GitHub Release `mobile-v<version>` (Releases page of
+the repo), ready to download onto a phone. They are debug-signed until a
+release keystore is set up, so they are for testing, not the Play Store.
+
 1. Bump `version:` in the app's `pubspec.yaml` (e.g. `1.1.0+2`) and
    publish to Play Store / App Store.
 2. Super admin portal → **Mobile apps**: set *Latest version* to `1.1.0`,
