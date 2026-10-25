@@ -61,8 +61,12 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
   Future<void> _load() async {
     try {
-      final page = await Services.read(context).api.events(status: 'published');
-      final events = page.events..sort((a, b) => a.eventDate.compareTo(b.eventDate));
+      // 'all', not 'published': the server reports an event as 'completed'
+      // as soon as its start time passes, which is exactly when the gate
+      // needs it. Drafts and cancelled events can't be checked in.
+      final page = await Services.read(context).api.events(status: 'all');
+      final events = page.events.where((e) => e.status == 'published' || e.status == 'completed').toList()
+        ..sort((a, b) => a.eventDate.compareTo(b.eventDate));
       // Today's (or the next) event first, unless one was picked.
       final now = DateTime.now().subtract(const Duration(hours: 12));
       final pick =
@@ -235,7 +239,7 @@ class _CheckInScreenState extends State<CheckInScreen> {
     if (_event == null) {
       return const Scaffold(
         appBar: WorkspaceHeader(),
-        body: EmptyState(icon: Icons.event_busy_rounded, title: 'No live events', message: 'Check-in opens for published events.'),
+        body: EmptyState(icon: Icons.event_busy_rounded, title: 'No events to check in', message: 'Publish an event to start checking people in.'),
       );
     }
     final e = _event!;
