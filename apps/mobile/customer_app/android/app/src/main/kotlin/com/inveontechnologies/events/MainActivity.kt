@@ -1,4 +1,4 @@
-package `in`.inveontechnologies.inveon_events
+package com.inveontechnologies.events
 
 import io.flutter.embedding.android.FlutterActivity
 

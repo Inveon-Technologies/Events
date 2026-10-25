@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "`in`.inveontechnologies.inveon_events"
+    namespace = "com.inveontechnologies.events"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,7 +17,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "`in`.inveontechnologies.inveon_events"
+        applicationId = "com.inveontechnologies.events"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Firebase BoM 35 (firebase_messaging 17) needs Android 7.0+.

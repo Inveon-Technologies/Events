@@ -4,8 +4,8 @@ Two apps, one shared package:
 
 | Folder | App | For |
 |---|---|---|
-| `customer_app/` | **Inveon Events** (`in.inveontechnologies.inveon_events`) | Attendees: discover events, book and pay, QR passes, booking notifications |
-| `organizer_app/` | **Inveon Organizer** (`in.inveontechnologies.inveon_organizer`) | Organizers, staff and gate volunteers: dashboard, events, bookings, QR check-in |
+| `customer_app/` | **Inveon Events** (`com.inveontechnologies.events`) | Attendees: discover events, book and pay, QR passes, booking notifications |
+| `organizer_app/` | **Inveon Organizer** (`com.inveontechnologies.organizer`) | Organizers, staff and gate volunteers: dashboard, events, bookings, QR check-in |
 | `packages/inveon_core/` | shared | Design system (Stitch "Electric Discovery"), API client, push notifications, in-app inbox and banner, the update prompt, animated splash and onboarding |
 
 Both apps talk to the same API as the website (`apps/api`), so there is no

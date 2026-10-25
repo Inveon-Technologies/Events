@@ -1,4 +1,4 @@
-package `in`.inveontechnologies.inveon_organizer
+package com.inveontechnologies.organizer
 
 import io.flutter.embedding.android.FlutterActivity
 
