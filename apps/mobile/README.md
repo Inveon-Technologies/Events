@@ -17,7 +17,8 @@ check-in rules and sign-in all run on the server.
 **Customer app.** Animated splash, a three-slide onboarding carousel, home
 (search, trending events, organizer promo), explore with filters, event
 details (collapsing hero, schedule timeline, tickets, FAQs), checkout with
-live seat counts and Cashfree payment (UPI, cards, net banking) or cash,
+live seat counts and online payment through Cashfree (UPI, cards, net
+banking; cash bookings stay on the website),
 a confetti confirmation, sign-in with Booking ID / mobile / email and a
 6-digit code (same as the website), My Tickets with ticket-stub QR passes,
 notifications and profile.
@@ -83,10 +84,13 @@ Without the Firebase files the apps still build and run with push off.
 
 ### Payments
 
-Cashfree's Flutter SDK opens the same order the website would create
-(`POST /api/events/:id/bookings`). The booking is confirmed by Cashfree's
-webhook, as on the web; the app waits for that before showing the
-confirmation.
+The app creates the order through the API (`POST
+/api/events/:id/bookings`), then opens the website's `/pay` page in a
+browser tab, which hands off to Cashfree's hosted checkout. The native
+Cashfree SDK is not used: in production it refuses apps that weren't
+installed from the Play Store. The booking is confirmed by Cashfree's
+webhook, as on the web; when the customer comes back to the app it waits
+for that before showing the confirmation.
 
 ## Running
 

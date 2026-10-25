@@ -30,7 +30,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _email = TextEditingController();
   final _city = TextEditingController();
   final _attendees = <TextEditingController>[];
-  String _payment = 'online';
   bool _genderConfirmed = false;
   bool _busy = false;
   Timer? _poll;
@@ -118,22 +117,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         'profile',
         jsonEncode({'name': _name.text.trim(), 'phone': _phone.text.trim(), 'email': _email.text.trim(), 'city': _city.text.trim()}),
       );
-      final paid = _total > 0;
       final created = await services.api.createBooking(event.id, {
         'items': items,
         'primaryContactName': _name.text.trim(),
         'primaryContactWhatsapp': phone,
         'primaryContactEmail': _email.text.trim(),
         if (_city.text.trim().isNotEmpty) 'primaryContactCity': _city.text.trim(),
-        'paymentMethod': paid ? _payment : 'online',
+        'paymentMethod': 'online',
         'attendeeNames': names,
         if (event.genderRestriction != null) 'attendeeGenders': List.filled(_count, event.genderRestriction),
       });
 
-      var status = paid && _payment == 'cash' ? 'pending' : 'confirmed';
+      var status = 'confirmed';
       if (created.paymentSessionId != null) {
         final outcome = await payWithCashfree(
-          orderId: created.bookingReference,
           paymentSessionId: created.paymentSessionId!,
           mode: created.cashfreeMode ?? 'sandbox',
         );
@@ -152,7 +149,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             event: event,
             bookingReference: created.bookingReference,
             status: status,
-            cash: paid && _payment == 'cash',
             email: _email.text.trim(),
           ),
         ),
@@ -315,20 +311,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             if (paid) ...[
               _Heading(_count > 1 ? '4' : '3', 'Payment'),
+              // Online only: cash bookings stay on the website.
               _PayOption(
-                selected: _payment == 'online',
+                selected: true,
                 icon: Icons.bolt_rounded,
                 title: 'Pay online',
                 subtitle: 'UPI, cards, net banking · instant confirmation',
-                onTap: () => setState(() => _payment = 'online'),
-              ),
-              const SizedBox(height: 10),
-              _PayOption(
-                selected: _payment == 'cash',
-                icon: Icons.payments_outlined,
-                title: 'Pay cash to the organizer',
-                subtitle: 'Your booking stays pending until the organizer confirms',
-                onTap: () => setState(() => _payment = 'cash'),
+                onTap: () {},
               ),
             ],
           ],
@@ -363,7 +352,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             SizedBox(
               width: 180,
               child: AmberButton(
-                label: paid && _payment == 'online' ? 'Pay ${rupees(_total)}' : 'Confirm booking',
+                label: paid ? 'Pay ${rupees(_total)}' : 'Confirm booking',
                 busy: _busy,
                 onPressed: _count == 0 ? null : _submit,
               ),
